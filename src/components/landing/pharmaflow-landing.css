@@ -1,0 +1,176 @@
+.pf-landing {
+  --pf-ink: #0b0d0f;
+  --pf-panel: #111418;
+  --pf-elevated: #171b20;
+  --pf-mist: #a7afb8;
+  --pf-snow: #f5f7fa;
+  --pf-signal: #5b8cff;
+  --pf-aqua: #7dd3fc;
+  --pf-teal: #39c6b0;
+  color: var(--pf-snow);
+  background: var(--pf-ink);
+  font-family: var(--font-landing-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.pf-landing .font-serif {
+  font-family: var(--font-landing-serif), Georgia, serif;
+}
+
+.pf-grid-fade {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse 70% 55% at 70% 20%, #000 20%, transparent 70%);
+}
+
+.pf-btn-primary {
+  background: linear-gradient(180deg, #7aa4ff 0%, #5b8cff 100%);
+  box-shadow:
+    0 0 0 1px rgba(91, 140, 255, 0.35),
+    0 8px 24px rgba(91, 140, 255, 0.18);
+}
+
+.pf-btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.pf-mock-ring {
+  background: linear-gradient(
+    145deg,
+    rgba(125, 211, 252, 0.4),
+    rgba(91, 140, 255, 0.12) 45%,
+    rgba(255, 255, 255, 0.05)
+  );
+}
+
+/* Hero product: render at a comfortable UI width, scale into the column */
+.pf-hero-mock {
+  width: 100%;
+}
+
+@keyframes pf-hero-float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-12px);
+  }
+}
+
+.pf-hero-mock-float {
+  animation: pf-hero-float 6.5s ease-in-out infinite;
+  will-change: transform;
+  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.35));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-hero-mock-float {
+    animation: none;
+  }
+}
+
+@media (min-width: 1024px) {
+  .pf-hero-mock {
+    position: relative;
+    height: 21.5rem;
+    overflow: visible;
+  }
+
+  .pf-hero-mock > .pf-mock-ring {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 40rem;
+    max-width: none;
+    transform: translateY(-50%) scale(0.84);
+    transform-origin: left center;
+  }
+}
+
+@media (min-width: 1280px) {
+  .pf-hero-mock {
+    height: 24rem;
+  }
+
+  .pf-hero-mock > .pf-mock-ring {
+    width: 44rem;
+    transform: translateY(-50%) scale(0.92);
+  }
+}
+
+.pf-surface {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: var(--pf-panel);
+}
+
+.pf-field {
+  margin-top: 0.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #0b0d0f;
+  padding: 0.75rem 1rem;
+  color: #f5f7fa;
+  outline: none;
+}
+
+.pf-field:focus {
+  border-color: rgba(91, 140, 255, 0.5);
+  box-shadow: 0 0 0 2px rgba(91, 140, 255, 0.2);
+}
+
+.pf-field::placeholder {
+  color: rgba(167, 175, 184, 0.65);
+}
+
+select.pf-field {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' stroke='%23A7AFB8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  padding-right: 2.5rem;
+}
+
+.pf-form-group {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.pf-form-group + .pf-form-group {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pf-form-legend {
+  padding: 0;
+  margin-bottom: 0.75rem;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #5b8cff;
+  float: left;
+  width: 100%;
+}
+
+.pf-form-group > div {
+  clear: both;
+}
+
+.pf-faq details summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.pf-faq details summary::-webkit-details-marker {
+  display: none;
+}
+
+.pf-faq details[open] summary .pf-faq-chevron {
+  transform: rotate(180deg);
+}

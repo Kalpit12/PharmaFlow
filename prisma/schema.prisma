@@ -1,0 +1,942 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum TenantStatus {
+  DEMO
+  ACTIVE
+  SUSPENDED
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum UserRole {
+  ADMIN
+  MANAGER
+  OPERATOR
+  VIEWER
+}
+
+enum ProductStatus {
+  ACTIVE
+  DISCONTINUED
+}
+
+enum CustomerType {
+  DISTRIBUTOR
+  PHARMACY
+  HOSPITAL
+  WHOLESALER
+  OTHER
+}
+
+enum CustomerStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OrderStatus {
+  DRAFT
+  CONFIRMED
+  FULFILLED
+  CANCELLED
+}
+
+enum RFQStatus {
+  NEW
+  IN_REVIEW
+  QUOTED
+  WON
+  LOST
+  CLOSED
+}
+
+enum OpportunityType {
+  DEMAND
+  CUSTOMER
+  REGIONAL
+  SALES
+  OTHER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum OpportunityStatus {
+  OPEN
+  IN_PROGRESS
+  CLOSED
+}
+
+enum ActivityType {
+  RFQ
+  ORDER
+  QUOTE
+  DOCUMENT
+  ENQUIRY
+  NOTE
+}
+
+enum ActionType {
+  CREATE_FOLLOW_UP_TASK
+  CREATE_SALES_OPPORTUNITY
+  CREATE_CUSTOMER_FOLLOW_UP
+}
+
+enum ActionStatus {
+  PROPOSED
+  PENDING_APPROVAL
+  APPROVED
+  EXECUTED
+  REJECTED
+  FAILED
+  CANCELLED
+}
+
+enum WorkflowType {
+  RFQ_FOLLOW_UP
+  CUSTOMER_REENGAGEMENT
+  SALES_OPPORTUNITY_FOLLOW_UP
+}
+
+enum WorkflowStatus {
+  PROPOSED
+  PENDING_APPROVAL
+  RUNNING
+  COMPLETED
+  FAILED
+  REJECTED
+  CANCELLED
+}
+
+enum CommunicationType {
+  CUSTOMER_FOLLOW_UP
+  RFQ_FOLLOW_UP
+  SALES_OPPORTUNITY_FOLLOW_UP
+  CUSTOMER_REENGAGEMENT
+}
+
+enum CommunicationStatus {
+  DRAFT
+  REVIEWED
+  APPROVED
+  ARCHIVED
+}
+
+enum ProductionPriority {
+  LOW
+  NORMAL
+  HIGH
+  CRITICAL
+}
+
+enum ProductionOrderStatus {
+  UNSCHEDULED
+  SCHEDULED
+  IN_PROGRESS
+  COMPLETED
+  AT_RISK
+}
+
+enum InventoryClass {
+  FINISHED_GOOD
+  RAW_MATERIAL
+  PACKAGING
+}
+
+enum ReceiptStatus {
+  OPEN
+  RECEIVED
+  CANCELLED
+}
+
+enum SupplierStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ProcurementRequisitionStatus {
+  DRAFT
+  REVIEWED
+  REJECTED
+}
+
+enum ProcurementRfqStatus {
+  DRAFT
+  REVIEW
+  READY
+  RESPONSES
+  EVALUATION
+  AWARDED
+  CLOSED
+  CANCELLED
+}
+
+enum ProcurementRfqSupplierStatus {
+  INVITED
+  RESPONDED
+  DECLINED
+  AWARDED
+}
+
+enum ProcurementRfqResponseStatus {
+  DRAFT
+  SUBMITTED
+  AWARDED
+  REJECTED
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+  CLOSED
+}
+
+enum EntityType {
+  PRODUCT
+  CUSTOMER
+  ORDER
+  RFQ
+  OPPORTUNITY
+  REGION
+  PURCHASE_ORDER
+}
+
+model Tenant {
+  id        String       @id @default(uuid())
+  name      String
+  slug      String       @unique
+  status    TenantStatus @default(DEMO)
+  createdAt DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime     @updatedAt @db.Timestamptz(6)
+
+  users         User[]
+  products      Product[]
+  customers     Customer[]
+  regions       Region[]
+  orders        Order[]
+  rfqs          Rfq[]
+  opportunities Opportunity[]
+  activities    Activity[]
+  actions              Action[]
+  workflows            Workflow[]
+  communicationDrafts  CommunicationDraft[]
+  workstations         Workstation[]
+  productionOrders     ProductionOrder[]
+  warehouses           Warehouse[]
+  inventoryLots        InventoryLot[]
+  suppliers            Supplier[]
+  supplierMaterials    SupplierMaterial[]
+  inventoryReceipts    InventoryReceipt[]
+  billOfMaterials      BillOfMaterial[]
+  inventorySnapshots   InventorySnapshot[]
+  procurementRequisitions ProcurementRequisition[]
+  procurementRfqs         ProcurementRfq[]
+  purchaseOrders          PurchaseOrder[]
+}
+
+model User {
+  id           String     @id @default(uuid())
+  tenantId     String
+  name         String
+  email        String     @unique
+  passwordHash String?
+  role         UserRole
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  actionsCreated     Action[]   @relation("ActionCreatedBy")
+  actionsApproved    Action[]   @relation("ActionApprovedBy")
+  workflowsCreated          Workflow[]           @relation("WorkflowCreatedBy")
+  workflowsApproved         Workflow[]           @relation("WorkflowApprovedBy")
+  communicationDraftsCreated CommunicationDraft[] @relation("CommunicationDraftCreatedBy")
+  procurementRequisitionsCreated ProcurementRequisition[] @relation("ProcurementRequisitionCreatedBy")
+  procurementRequisitionsReviewed ProcurementRequisition[] @relation("ProcurementRequisitionReviewedBy")
+  procurementRfqsCreated ProcurementRfq[] @relation("ProcurementRfqCreatedBy")
+  purchaseOrdersCreated  PurchaseOrder[]  @relation("PurchaseOrderCreatedBy")
+  purchaseOrdersReviewed PurchaseOrder[]  @relation("PurchaseOrderReviewedBy")
+  inventoryReceiptsReceived InventoryReceipt[] @relation("InventoryReceiptReceivedBy")
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model Region {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  country   String
+  code      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customers Customer[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model Product {
+  id           String        @id @default(uuid())
+  tenantId     String
+  name         String
+  sku          String
+  category     String
+  description  String?
+  status       ProductStatus @default(ACTIVE)
+  unit         String?
+  manufacturer String?
+  dosageForm   String?
+  safetyStock  Int           @default(0)
+  createdAt    DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orderItems OrderItem[]
+  rfqItems   RfqItem[]
+  productionOrders ProductionOrder[]
+  inventoryLots    InventoryLot[]
+  receipts         InventoryReceipt[]
+  snapshots        InventorySnapshot[]
+  bomParents       BillOfMaterial[] @relation("BomFinishedGood")
+  bomComponents    BillOfMaterial[] @relation("BomComponent")
+  procurementRequisitions ProcurementRequisition[]
+  supplierMaterials       SupplierMaterial[]
+  procurementRfqItems     ProcurementRfqItem[]
+  purchaseOrderItems      PurchaseOrderItem[]
+
+  @@unique([tenantId, sku])
+  @@index([tenantId])
+  @@index([tenantId, status])
+}
+
+model Customer {
+  id        String         @id @default(uuid())
+  tenantId  String
+  name      String
+  type      CustomerType
+  email     String?
+  phone     String?
+  regionId  String?
+  status    CustomerStatus @default(ACTIVE)
+  createdAt DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime       @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  region Region? @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  orders Order[]
+  rfqs   Rfq[]
+  communicationDrafts CommunicationDraft[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, regionId])
+  @@index([tenantId, createdAt])
+}
+
+model Order {
+  id          String      @id @default(uuid())
+  tenantId    String
+  customerId  String
+  status      OrderStatus
+  totalAmount Decimal     @db.Decimal(18, 2)
+  currency    String      @default("KES") @db.Char(3)
+  orderedAt   DateTime    @db.Timestamptz(6)
+  createdAt   DateTime    @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime    @updatedAt @db.Timestamptz(6)
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer    @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items    OrderItem[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, orderedAt])
+}
+
+model OrderItem {
+  id          String  @id @default(uuid())
+  orderId     String
+  productId   String
+  quantity    Int
+  unitPrice   Decimal @db.Decimal(18, 2)
+  totalAmount Decimal @db.Decimal(18, 2)
+
+  order   Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([orderId])
+  @@index([productId])
+}
+
+model Rfq {
+  id         String    @id @default(uuid())
+  tenantId   String
+  customerId String
+  status     RFQStatus
+  reference  String
+  receivedAt DateTime  @db.Timestamptz(6)
+  dueAt      DateTime? @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @db.Timestamptz(6)
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  items    RfqItem[]
+
+  @@unique([tenantId, reference])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, createdAt])
+  @@map("rfqs")
+}
+
+model RfqItem {
+  id        String @id @default(uuid())
+  rfqId     String
+  productId String
+  quantity  Int
+
+  rfq     Rfq     @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([rfqId])
+  @@index([productId])
+  @@map("rfq_items")
+}
+
+model Opportunity {
+  id          String            @id @default(uuid())
+  tenantId    String
+  title       String
+  description String
+  type        OpportunityType
+  priority    Priority
+  status      OpportunityStatus @default(OPEN)
+  createdAt   DateTime          @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime          @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  communicationDrafts CommunicationDraft[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  tenantId    String
+  type        ActivityType
+  title       String
+  description String
+  entityType  EntityType?
+  entityId    String?
+  createdAt   DateTime     @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, entityType, entityId])
+}
+
+model Action {
+  id             String       @id @default(uuid())
+  tenantId       String
+  createdById    String
+  approvedById   String?
+  type           ActionType
+  status         ActionStatus @default(PENDING_APPROVAL)
+  title          String
+  description    String
+  reason         String
+  targetKind     String
+  targetId       String?
+  targetLabel    String
+  failureReason  String?
+  audit          Json         @default("[]")
+  proposedAt     DateTime     @default(now()) @db.Timestamptz(6)
+  approvedAt     DateTime?    @db.Timestamptz(6)
+  executedAt     DateTime?    @db.Timestamptz(6)
+  rejectedAt     DateTime?    @db.Timestamptz(6)
+  workflowId     String?
+  createdAt      DateTime     @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy  User      @relation("ActionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?     @relation("ActionApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  workflow   Workflow? @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([workflowId])
+}
+
+model Workflow {
+  id             String         @id @default(uuid())
+  tenantId       String
+  createdById    String
+  approvedById   String?
+  type           WorkflowType
+  status         WorkflowStatus @default(PENDING_APPROVAL)
+  title          String
+  description    String
+  context        Json
+  failureReason  String?
+  proposedAt     DateTime       @default(now()) @db.Timestamptz(6)
+  approvedAt     DateTime?      @db.Timestamptz(6)
+  completedAt    DateTime?      @db.Timestamptz(6)
+  failedAt       DateTime?      @db.Timestamptz(6)
+  createdAt      DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime       @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy  User    @relation("WorkflowCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  approvedBy User?   @relation("WorkflowApprovedBy", fields: [approvedById], references: [id], onDelete: SetNull)
+  actions    Action[]
+  communicationDrafts CommunicationDraft[]
+
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+}
+
+model CommunicationDraft {
+  id             String               @id @default(uuid())
+  tenantId       String
+  createdById    String
+  type           CommunicationType
+  status         CommunicationStatus  @default(DRAFT)
+  customerId     String
+  opportunityId  String?
+  workflowId     String?
+  subject        String
+  body           String
+  reason         String
+  reviewedAt     DateTime?            @db.Timestamptz(6)
+  approvedAt     DateTime?            @db.Timestamptz(6)
+  createdAt      DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime             @updatedAt @db.Timestamptz(6)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy   User         @relation("CommunicationDraftCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  customer    Customer     @relation(fields: [customerId], references: [id], onDelete: Restrict)
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id], onDelete: SetNull)
+  workflow    Workflow?    @relation(fields: [workflowId], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@index([tenantId, customerId])
+}
+
+model Workstation {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  name                 String
+  code                 String
+  capacityHoursPerDay  Int
+  active               Boolean  @default(true)
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant           Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productionOrders ProductionOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@index([tenantId, active])
+}
+
+model ProductionOrder {
+  id               String                 @id @default(uuid())
+  tenantId         String
+  orderNumber      String
+  productId        String
+  workstationId    String?
+  quantity         Int
+  priority         ProductionPriority     @default(NORMAL)
+  status           ProductionOrderStatus  @default(UNSCHEDULED)
+  dueDate          DateTime               @db.Timestamptz(6)
+  plannedStart     DateTime?              @db.Timestamptz(6)
+  plannedEnd       DateTime?              @db.Timestamptz(6)
+  durationMinutes  Int
+  isLocked         Boolean                @default(false)
+  createdAt        DateTime               @default(now()) @db.Timestamptz(6)
+  updatedAt        DateTime               @updatedAt @db.Timestamptz(6)
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id], onDelete: Restrict)
+  workstation Workstation? @relation(fields: [workstationId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, orderNumber])
+  @@index([tenantId])
+  @@index([tenantId, status])
+  @@index([tenantId, dueDate])
+  @@index([workstationId])
+}
+
+model Warehouse {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant   Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lots     InventoryLot[]
+  receipts InventoryReceipt[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model Supplier {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  status    SupplierStatus @default(ACTIVE)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant            Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  lots              InventoryLot[]
+  receipts          InventoryReceipt[]
+  supplierMaterials SupplierMaterial[]
+  procurementRfqSuppliers ProcurementRfqSupplier[]
+  purchaseOrders          PurchaseOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model SupplierMaterial {
+  id                   String   @id @default(uuid())
+  tenantId             String
+  supplierId           String
+  productId            String
+  leadTimeDays         Int?
+  unitPrice            Decimal? @db.Decimal(18, 2)
+  currency             String?  @db.Char(3)
+  minimumOrderQuantity Int?
+  isPreferred          Boolean  @default(false)
+  createdAt            DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, supplierId, productId])
+  @@index([tenantId, productId])
+  @@index([tenantId, supplierId])
+}
+
+model InventoryLot {
+  id          String         @id @default(uuid())
+  tenantId    String
+  productId   String
+  warehouseId String
+  supplierId  String?
+  class       InventoryClass
+  batchCode   String
+  quantity    Int
+  unitValue   Decimal        @db.Decimal(18, 2)
+  receivedAt  DateTime       @db.Timestamptz(6)
+  expiryDate  DateTime?      @db.Timestamptz(6)
+  createdAt   DateTime       @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime       @updatedAt @db.Timestamptz(6)
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product   Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse Warehouse  @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  supplier  Supplier?  @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  receipt   InventoryReceipt?
+
+  @@unique([tenantId, batchCode])
+  @@index([tenantId])
+  @@index([tenantId, class])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([supplierId])
+}
+
+model InventoryReceipt {
+  id                  String        @id @default(uuid())
+  tenantId            String
+  productId           String
+  warehouseId         String?
+  supplierId          String?
+  purchaseOrderId     String?
+  purchaseOrderItemId String?
+  inventoryLotId      String?       @unique
+  receivedById        String?
+  reference           String
+  quantity            Int
+  status              ReceiptStatus @default(OPEN)
+  expectedAt          DateTime      @db.Timestamptz(6)
+  receivedAt          DateTime?     @db.Timestamptz(6)
+  idempotencyKey      String?
+  discrepancyReason   String?
+  notes               String?
+  createdAt           DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt           DateTime      @updatedAt @db.Timestamptz(6)
+
+  tenant            Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product           Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  warehouse         Warehouse?         @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
+  supplier          Supplier?          @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  purchaseOrder     PurchaseOrder?     @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  purchaseOrderItem PurchaseOrderItem? @relation(fields: [purchaseOrderItemId], references: [id], onDelete: SetNull)
+  inventoryLot      InventoryLot?      @relation(fields: [inventoryLotId], references: [id], onDelete: SetNull)
+  receivedBy        User?              @relation("InventoryReceiptReceivedBy", fields: [receivedById], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, reference])
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, status])
+  @@index([productId])
+  @@index([purchaseOrderId])
+}
+
+model BillOfMaterial {
+  id           String  @id @default(uuid())
+  tenantId     String
+  productId    String
+  componentId  String
+  quantityPer  Decimal @db.Decimal(18, 6)
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product    Product @relation("BomFinishedGood", fields: [productId], references: [id], onDelete: Restrict)
+  component  Product @relation("BomComponent", fields: [componentId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, productId, componentId])
+  @@index([tenantId])
+  @@index([productId])
+  @@index([componentId])
+}
+
+model InventorySnapshot {
+  id         String         @id @default(uuid())
+  tenantId   String
+  productId  String
+  class      InventoryClass
+  capturedOn DateTime       @db.Date
+  quantity   Int
+  value      Decimal        @db.Decimal(18, 2)
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, capturedOn, productId])
+  @@index([tenantId, capturedOn])
+}
+
+model ProcurementRequisition {
+  id                 String                       @id @default(uuid())
+  tenantId           String
+  productId          String
+  quantity           Int
+  reason             String
+  risk               String
+  status             ProcurementRequisitionStatus @default(DRAFT)
+  materialSku        String
+  materialName       String
+  materialUnit       String
+  grossRequirement   Decimal                      @db.Decimal(18, 3)
+  available          Int
+  incoming           Int
+  projectedAvailable Decimal                      @db.Decimal(18, 3)
+  netRequirement     Int
+  earliestDueDate    DateTime?                    @db.Timestamptz(6)
+  affectedOrders     Json
+  createdById        String
+  reviewedById       String?
+  reviewedAt         DateTime?                    @db.Timestamptz(6)
+  rejectedAt         DateTime?                    @db.Timestamptz(6)
+  createdAt          DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt          DateTime                     @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product    Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  createdBy  User    @relation("ProcurementRequisitionCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy User?   @relation("ProcurementRequisitionReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  procurementRfqs ProcurementRfq[]
+  purchaseOrders  PurchaseOrder[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, productId])
+  @@index([tenantId, createdAt])
+}
+
+model ProcurementRfq {
+  id                       String               @id @default(uuid())
+  tenantId                 String
+  reference                String
+  title                    String
+  status                   ProcurementRfqStatus @default(DRAFT)
+  createdById              String
+  dueDate                  DateTime?            @db.Timestamptz(6)
+  notes                    String?
+  procurementRequisitionId String?
+  awardedResponseId        String?              @unique
+  createdAt                DateTime             @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime             @updatedAt @db.Timestamptz(6)
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy              User                    @relation("ProcurementRfqCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  procurementRequisition ProcurementRequisition? @relation(fields: [procurementRequisitionId], references: [id], onDelete: SetNull)
+  items                  ProcurementRfqItem[]
+  suppliers              ProcurementRfqSupplier[]
+  awardedResponse        ProcurementRfqResponse? @relation("ProcurementRfqAward", fields: [awardedResponseId], references: [id], onDelete: SetNull)
+  purchaseOrder          PurchaseOrder?
+
+  @@unique([tenantId, reference])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("procurement_rfqs")
+}
+
+model ProcurementRfqItem {
+  id        String  @id @default(uuid())
+  rfqId     String
+  productId String
+  quantity  Int
+  unit      String
+  notes     String?
+
+  rfq     ProcurementRfq @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  product Product        @relation(fields: [productId], references: [id], onDelete: Restrict)
+  responseItems ProcurementRfqResponseItem[]
+
+  @@index([rfqId])
+  @@index([productId])
+  @@map("procurement_rfq_items")
+}
+
+model ProcurementRfqSupplier {
+  id         String                       @id @default(uuid())
+  rfqId      String
+  supplierId String
+  status     ProcurementRfqSupplierStatus @default(INVITED)
+
+  rfq      ProcurementRfq           @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplier Supplier                 @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  responses ProcurementRfqResponse[]
+
+  @@unique([rfqId, supplierId])
+  @@index([rfqId])
+  @@index([supplierId])
+  @@map("procurement_rfq_suppliers")
+}
+
+model ProcurementRfqResponse {
+  id             String                       @id @default(uuid())
+  rfqSupplierId  String
+  responseStatus ProcurementRfqResponseStatus @default(DRAFT)
+  quotedAt       DateTime?                    @db.Timestamptz(6)
+  currency       String?                      @db.Char(3)
+  totalAmount    Decimal?                     @db.Decimal(18, 2)
+  leadTimeDays   Int?
+  notes          String?
+  createdAt      DateTime                     @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                     @updatedAt @db.Timestamptz(6)
+
+  rfqSupplier ProcurementRfqSupplier @relation(fields: [rfqSupplierId], references: [id], onDelete: Cascade)
+  items       ProcurementRfqResponseItem[]
+  awardedFor  ProcurementRfq?          @relation("ProcurementRfqAward")
+
+  @@index([rfqSupplierId])
+  @@map("procurement_rfq_responses")
+}
+
+model ProcurementRfqResponseItem {
+  id        String   @id @default(uuid())
+  responseId String
+  rfqItemId String
+  unitPrice Decimal? @db.Decimal(18, 2)
+  quantity  Int
+  notes     String?
+
+  response ProcurementRfqResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  rfqItem  ProcurementRfqItem     @relation(fields: [rfqItemId], references: [id], onDelete: Cascade)
+
+  @@index([responseId])
+  @@index([rfqItemId])
+  @@map("procurement_rfq_response_items")
+}
+
+model PurchaseOrder {
+  id                       String              @id @default(uuid())
+  tenantId                 String
+  poNumber                 String
+  status                   PurchaseOrderStatus @default(DRAFT)
+  supplierId               String
+  procurementRfqId         String?             @unique
+  procurementRequisitionId String?
+  createdById              String
+  reviewedById             String?
+  reviewedAt               DateTime?           @db.Timestamptz(6)
+  currency                 String              @db.Char(3)
+  subtotal                 Decimal             @db.Decimal(18, 2)
+  notes                    String?
+  createdAt                DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt                DateTime            @updatedAt @db.Timestamptz(6)
+
+  tenant                 Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  supplier               Supplier                @relation(fields: [supplierId], references: [id], onDelete: Restrict)
+  procurementRfq         ProcurementRfq?         @relation(fields: [procurementRfqId], references: [id], onDelete: SetNull)
+  procurementRequisition ProcurementRequisition? @relation(fields: [procurementRequisitionId], references: [id], onDelete: SetNull)
+  createdBy              User                    @relation("PurchaseOrderCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  reviewedBy             User?                   @relation("PurchaseOrderReviewedBy", fields: [reviewedById], references: [id], onDelete: SetNull)
+  items                  PurchaseOrderItem[]
+  receipts               InventoryReceipt[]
+
+  @@unique([tenantId, poNumber])
+  @@index([tenantId, status])
+  @@index([tenantId, createdAt])
+  @@map("purchase_orders")
+}
+
+model PurchaseOrderItem {
+  id               String  @id @default(uuid())
+  purchaseOrderId  String
+  productId        String
+  description      String
+  quantity         Int
+  receivedQuantity Int     @default(0)
+  unitPrice        Decimal @db.Decimal(18, 2)
+  currency         String  @db.Char(3)
+  lineTotal        Decimal @db.Decimal(18, 2)
+
+  purchaseOrder PurchaseOrder      @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product       Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  receipts      InventoryReceipt[]
+
+  @@index([purchaseOrderId])
+  @@index([productId])
+  @@map("purchase_order_items")
+}

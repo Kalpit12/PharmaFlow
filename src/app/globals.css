@@ -1,0 +1,247 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --font-sans: var(--font-ui-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) * 0.5);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.25);
+  --radius-2xl: calc(var(--radius) * 1.5);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-muted: var(--primary-muted);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  /* Pharmora signature accents */
+  --color-intel: var(--pharmora-secondary);
+  --color-material: var(--pharmora-material);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+}
+
+/*
+ * Pharmora Color System 2.0 (Phase 29.1)
+ *
+ * Single source of truth: the --pharmora-* tokens below.
+ * Every shadcn/Tailwind token maps onto them. Components must not use raw hex.
+ *
+ * Graphite → cool surfaces → white typography → blue intelligence →
+ * teal operations → amber material risk → restrained red exceptions.
+ */
+
+/* Light "paper" analytical theme — cool neutrals, same accent roles. */
+:root {
+  --radius: 0.1875rem;
+
+  --pharmora-background: #f4f5f2;
+  --pharmora-surface: #ffffff;
+  --pharmora-surface-elevated: #ffffff;
+  --pharmora-surface-subtle: #e9ece8;
+  --pharmora-text: #15191d;
+  --pharmora-text-secondary: #47515c;
+  --pharmora-text-muted: #6b7580;
+  --pharmora-border: #d6dad5;
+  --pharmora-border-hairline: #e3e6e1;
+  --pharmora-primary: #3663d6;
+  --pharmora-primary-contrast: #ffffff;
+  --pharmora-secondary: #10806d;
+  --pharmora-success: #1c7f63;
+  --pharmora-warning: #a9761a;
+  --pharmora-danger: #c2453f;
+  --pharmora-info: #2f63c4;
+  --pharmora-material: #926c26;
+
+  --background: var(--pharmora-background);
+  --foreground: var(--pharmora-text);
+  --card: var(--pharmora-surface);
+  --card-foreground: var(--pharmora-text);
+  --popover: var(--pharmora-surface-elevated);
+  --popover-foreground: var(--pharmora-text);
+  --primary: var(--pharmora-primary);
+  --primary-foreground: var(--pharmora-primary-contrast);
+  --primary-muted: #e2e8fa;
+  --secondary: var(--pharmora-surface-subtle);
+  --secondary-foreground: var(--pharmora-text);
+  --muted: var(--pharmora-surface-subtle);
+  --muted-foreground: var(--pharmora-text-muted);
+  --accent: #e4eafb;
+  --accent-foreground: #23407f;
+  --destructive: var(--pharmora-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--pharmora-border);
+  --input: var(--pharmora-border);
+  --ring: var(--pharmora-primary);
+  --surface: var(--pharmora-surface);
+  --surface-muted: var(--pharmora-surface-subtle);
+  --success: var(--pharmora-success);
+  --success-foreground: #ffffff;
+  --warning: var(--pharmora-warning);
+  --warning-foreground: #63470c;
+  --danger: var(--pharmora-danger);
+  --info: var(--pharmora-info);
+  --info-foreground: #ffffff;
+
+  /* Executive navigation stays graphite in both themes. */
+  --sidebar: #0b0d0f;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #5b8cff;
+  --sidebar-primary-foreground: #0b0d0f;
+  --sidebar-accent: #171b20;
+  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-border: #272d34;
+  --sidebar-ring: #5b8cff;
+
+  --chart-1: var(--pharmora-primary);
+  --chart-2: var(--pharmora-secondary);
+  --chart-3: var(--pharmora-material);
+  --chart-4: #7c5cd6;
+  --chart-5: var(--pharmora-danger);
+  --chart-6: #6d7783;
+}
+
+/* Dark graphite — the primary Pharmora identity. */
+.dark {
+  --pharmora-background: #0b0d0f;
+  --pharmora-surface: #111418;
+  --pharmora-surface-elevated: #171b20;
+  --pharmora-surface-subtle: #1d2228;
+  --pharmora-text: #f5f7fa;
+  --pharmora-text-secondary: #a7afb8;
+  --pharmora-text-muted: #727b86;
+  --pharmora-border: #272d34;
+  --pharmora-border-hairline: #20262c;
+  --pharmora-primary: #5b8cff;
+  --pharmora-primary-contrast: #ffffff;
+  --pharmora-secondary: #39c6b0;
+  --pharmora-success: #43c59e;
+  --pharmora-warning: #e4b95a;
+  --pharmora-danger: #e06a6a;
+  --pharmora-info: #6ea8ff;
+  --pharmora-material: #d6a85f;
+
+  --background: var(--pharmora-background);
+  --foreground: var(--pharmora-text);
+  --card: var(--pharmora-surface);
+  --card-foreground: var(--pharmora-text);
+  --popover: var(--pharmora-surface-elevated);
+  --popover-foreground: var(--pharmora-text);
+  --primary: var(--pharmora-primary);
+  --primary-foreground: var(--pharmora-primary-contrast);
+  --primary-muted: #1b2740;
+  --secondary: var(--pharmora-surface-subtle);
+  --secondary-foreground: var(--pharmora-text);
+  --muted: var(--pharmora-surface-subtle);
+  --muted-foreground: var(--pharmora-text-muted);
+  --accent: #1b2740;
+  --accent-foreground: #adc4ff;
+  --destructive: var(--pharmora-danger);
+  --destructive-foreground: #ffffff;
+  --border: var(--pharmora-border);
+  --input: var(--pharmora-border);
+  --ring: var(--pharmora-primary);
+  --surface: var(--pharmora-surface);
+  --surface-muted: var(--pharmora-surface-elevated);
+  --success: var(--pharmora-success);
+  --success-foreground: #08110e;
+  --warning: var(--pharmora-warning);
+  --warning-foreground: #f0d49a;
+  --danger: var(--pharmora-danger);
+  --info: var(--pharmora-info);
+  --info-foreground: #08101f;
+
+  --sidebar: #0b0d0f;
+  --sidebar-foreground: #f5f7fa;
+  --sidebar-primary: #5b8cff;
+  --sidebar-primary-foreground: #0b0d0f;
+  --sidebar-accent: #171b20;
+  --sidebar-accent-foreground: #f5f7fa;
+  --sidebar-border: #20262c;
+  --sidebar-ring: #5b8cff;
+
+  --chart-1: var(--pharmora-primary);
+  --chart-2: var(--pharmora-secondary);
+  --chart-3: var(--pharmora-material);
+  --chart-4: #a78bfa;
+  --chart-5: var(--pharmora-danger);
+  --chart-6: #8d99a6;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply h-full antialiased;
+  }
+
+  body {
+    @apply min-h-full bg-background font-sans text-[13px] text-foreground;
+    font-synthesis-weight: none;
+    text-rendering: optimizeLegibility;
+  }
+
+  :focus-visible {
+    @apply outline-none;
+  }
+}
+
+@layer components {
+  .label-context {
+    @apply text-[10px] font-medium tracking-[0.16em] text-muted-foreground uppercase;
+  }
+
+  .metric-value {
+    font-variant-numeric: tabular-nums;
+    @apply font-medium tracking-tight tabular-nums;
+  }
+
+  .work-surface {
+    @apply min-w-0 overflow-hidden rounded-sm border border-border bg-surface;
+  }
+
+  .gantt-canvas {
+    @apply min-w-0 overflow-hidden rounded-sm border border-border bg-surface;
+  }
+}

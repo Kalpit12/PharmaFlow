@@ -1,8 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
-import { Loader2 } from "lucide-react";
 
 import { FunnelChart } from "@/components/charts/FunnelChart";
 import { GroupedBarChart } from "@/components/charts/GroupedBarChart";
@@ -12,9 +10,9 @@ import { StackedPercentBar } from "@/components/charts/StackedPercentBar";
 import { AttentionItem, AttentionList } from "@/components/ds/attention-item";
 import { EmptyState } from "@/components/ds/empty-state";
 import { MetricStrip } from "@/components/ds/metric-strip";
+import { IntelligenceSurface } from "@/components/intelligence/IntelligenceSurface";
 import { Button } from "@/components/ui/button";
 import type { CommandCenterSnapshot, CommandSeverity } from "@/lib/command-center/types";
-import type { StructuredAIResponse } from "@/lib/ai/response";
 import { cn } from "@/lib/utils";
 
 function healthTone(severity: CommandCenterSnapshot["health"][number]["severity"]) {
@@ -25,10 +23,6 @@ function healthTone(severity: CommandCenterSnapshot["health"][number]["severity"
 }
 
 export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }) {
-  const [loading, setLoading] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [explanation, setExplanation] = useState<StructuredAIResponse | null>(null);
-
   const stamp = new Date(data.generatedAt).toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
@@ -43,30 +37,9 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
   const business = data.summary.find((block) => block.id === "business");
   const analytics = data.analytics;
 
-  async function explainSituation() {
-    setLoading(true);
-    setAiError(null);
-    try {
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: "Explain today's situation across the business." }),
-      });
-      const body = (await res.json()) as { response?: StructuredAIResponse; message?: string };
-      if (!res.ok || !body.response) {
-        setAiError(body.message ?? "AI explanation unavailable");
-        return;
-      }
-      setExplanation(body.response);
-    } catch {
-      setAiError("AI explanation unavailable");
-    } finally {
-      setLoading(false);
-    }
-  }
-
   return (
-    <div className="flex min-w-0 flex-col gap-8">
+    <div className="flex min-w-0 flex-col gap-6">
+      {/* 1 — Business state */}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="label-context">Business state</p>
@@ -75,10 +48,6 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
             <span> · Refreshed {stamp} UTC</span>
           </p>
         </div>
-        <Button type="button" variant="outline" size="sm" className="min-h-11 sm:min-h-8" onClick={explainSituation} disabled={loading}>
-          {loading ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : null}
-          Explain situation
-        </Button>
       </div>
 
       <MetricStrip
@@ -93,11 +62,12 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         }))}
       />
 
-      <div className="grid min-w-0 gap-6 lg:grid-cols-12">
+      {/* 2 — Management Attention (dominant) + 3 — Operational pulse */}
+      <div className="grid min-w-0 gap-5 lg:grid-cols-12">
         <div className="min-w-0 lg:col-span-7">
           <AttentionList
             title="Management Attention"
-            subtitle="Highest-value cross-domain signals."
+            subtitle="Signal → evidence → consequence → inspect."
             empty={
               data.signals.length === 0 ? (
                 <EmptyState
@@ -124,8 +94,8 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
           </AttentionList>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-6 lg:col-span-5">
-          <section>
+        <div className="flex min-w-0 flex-col gap-4 lg:col-span-5">
+          <section className="work-surface p-4" aria-label="Operational pulse">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-sm font-medium tracking-tight">Operational pulse</h2>
               {operations ? (
@@ -148,14 +118,14 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
             )}
           </section>
 
-          <section className="border-t border-border pt-4">
+          <section className="work-surface p-4" aria-label="Action queue">
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="text-sm font-medium tracking-tight">Action queue</h2>
               <Link href="/execution" className="text-[11px] tracking-[0.08em] text-muted-foreground uppercase hover:text-foreground">
                 Execution →
               </Link>
             </div>
-            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
+            <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 sm:grid-cols-4">
               {[
                 { label: "Review", value: data.actionQueue.needsReview },
                 { label: "Ready", value: data.actionQueue.ready },
@@ -191,9 +161,45 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         </div>
       </div>
 
-      <section className="border-t border-border pt-6">
+      <IntelligenceSurface data={data.intelligence} />
+
+      {/* 4 — Production / workload */}
+      <section className="work-surface" aria-label="Planning outlook">
+        <div className="border-b border-border/70 px-4 py-3 sm:px-5">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <p className="label-context">Workload</p>
+              <h2 className="mt-1 text-sm font-medium tracking-tight">Planning outlook</h2>
+              <p className="mt-0.5 text-xs text-muted-foreground">Current state, top risk, and a deterministic scenario opportunity.</p>
+            </div>
+            <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+              <Link href={data.planningOutlook.href}>Open scenarios</Link>
+            </Button>
+          </div>
+        </div>
+        <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-4">
+          <div>
+            <dt className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Current state</dt>
+            <dd className="mt-1 text-sm leading-relaxed">{data.planningOutlook.currentState}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Top operational risk</dt>
+            <dd className="mt-1 text-sm leading-relaxed">{data.planningOutlook.topRisk}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Scenario opportunity</dt>
+            <dd className="mt-1 text-sm leading-relaxed">{data.planningOutlook.scenarioOpportunity}</dd>
+          </div>
+          <div>
+            <dt className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Projected impact</dt>
+            <dd className="mt-1 text-sm leading-relaxed">{data.planningOutlook.projectedImpact}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section aria-label="Analytical command layer">
         <p className="label-context">Analytical command layer</p>
-        <div className="mt-4 grid min-w-0 gap-4 lg:grid-cols-12">
+        <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-12">
           <div className="min-w-0 lg:col-span-8">
             <LineComboChart
               dominant
@@ -248,25 +254,18 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         </div>
       </section>
 
-      <div className="grid min-w-0 gap-8 border-t border-border pt-6 lg:grid-cols-2">
-        <SummaryColumn
-          title="Procurement"
-          href={procurement?.href ?? "/procurement"}
-          lines={procurement?.lines ?? []}
-        />
-        <SummaryColumn
-          title="Commercial"
-          href={business?.href ?? "/dashboard"}
-          lines={business?.lines ?? []}
-        />
+      {/* 5 — Procurement / commercial */}
+      <div className="grid min-w-0 gap-4 lg:grid-cols-2">
+        <SummaryColumn title="Procurement" href={procurement?.href ?? "/procurement"} lines={procurement?.lines ?? []} />
+        <SummaryColumn title="Commercial" href={business?.href ?? "/dashboard"} lines={business?.lines ?? []} />
       </div>
 
       {data.risks.length > 0 ? (
-        <section className="border-t border-border pt-6">
+        <section className="work-surface p-4" aria-label="Top risks">
           <h2 className="text-sm font-medium tracking-tight">Top risks</h2>
           <ul className="mt-3 divide-y divide-border/70">
             {data.risks.map((risk) => (
-              <li key={risk.id} className="flex items-start justify-between gap-3 py-3">
+              <li key={risk.id} className="flex items-start justify-between gap-3 py-3 first:pt-0">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-baseline gap-x-2">
                     <span className="label-context">{risk.category}</span>
@@ -285,7 +284,8 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         </section>
       ) : null}
 
-      <section className="border-t border-border pt-6">
+      {/* 6 — Activity */}
+      <section className="work-surface p-4" aria-label="Recent activity">
         <h2 className="text-sm font-medium tracking-tight">Recent activity</h2>
         {data.activity.length === 0 ? (
           <p className="mt-3 text-sm text-muted-foreground">No recent activity.</p>
@@ -303,26 +303,6 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
           </ul>
         )}
       </section>
-
-      {(explanation || aiError || loading) && (
-        <section className="border-t border-border pt-6">
-          <h2 className="text-sm font-medium tracking-tight">Interpretation</h2>
-          {loading && <p className="mt-2 text-sm text-muted-foreground">Generating explanation…</p>}
-          {aiError && <p className="mt-2 text-sm text-muted-foreground">Explanation unavailable. Deterministic signals remain usable.</p>}
-          {explanation && (
-            <div className="mt-2 space-y-2">
-              <p className="text-sm leading-relaxed">{explanation.summary}</p>
-              {explanation.keySignals.length > 0 && (
-                <ul className="list-disc space-y-1 pl-4 text-sm text-muted-foreground">
-                  {explanation.keySignals.map((signal) => (
-                    <li key={signal}>{signal}</li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          )}
-        </section>
-      )}
 
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-4 text-[11px] text-muted-foreground">
         <Link href="/daily-review" className="hover:text-foreground">
@@ -360,7 +340,7 @@ function SummaryColumn({
   lines: Array<{ label: string; value: string; available: boolean }>;
 }) {
   return (
-    <section>
+    <section className="work-surface p-4">
       <div className="flex items-baseline justify-between gap-2">
         <h2 className="text-sm font-medium tracking-tight">{title}</h2>
         <Link href={href} className="text-[11px] tracking-[0.08em] text-muted-foreground uppercase hover:text-foreground">
@@ -370,7 +350,7 @@ function SummaryColumn({
       {lines.length === 0 ? (
         <p className="mt-3 text-sm text-muted-foreground">No {title.toLowerCase()} figures.</p>
       ) : (
-        <dl className="mt-3 space-y-2.5">
+        <dl className="mt-3 space-y-2.5 border-t border-border pt-3">
           {lines.map((line) => (
             <div key={line.label} className="flex items-start justify-between gap-3 text-sm">
               <dt className="text-muted-foreground">{line.label}</dt>

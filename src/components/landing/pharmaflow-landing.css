@@ -7,6 +7,8 @@
   --pf-signal: #5b8cff;
   --pf-aqua: #7dd3fc;
   --pf-teal: #39c6b0;
+  --px: 50%;
+  --py: 20%;
   color: var(--pf-snow);
   background: var(--pf-ink);
   font-family: var(--font-landing-sans), ui-sans-serif, system-ui, sans-serif;
@@ -16,12 +18,36 @@
   font-family: var(--font-landing-serif), Georgia, serif;
 }
 
+.pf-gradient-word {
+  color: #7dd3fc;
+}
+
+.pf-progress {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 70;
+  height: 2px;
+  width: 100%;
+  transform-origin: 0 50%;
+  background: linear-gradient(90deg, #7dd3fc, #5b8cff 55%, #39c6b0);
+  will-change: transform;
+}
+
+.pf-hero-wash {
+  background:
+    radial-gradient(ellipse 80% 55% at 18% 0%, rgba(91, 140, 255, 0.22), transparent 58%),
+    radial-gradient(ellipse 70% 50% at 88% 8%, rgba(57, 198, 176, 0.14), transparent 52%),
+    radial-gradient(ellipse 50% 40% at 50% 0%, rgba(125, 211, 252, 0.08), transparent 62%);
+  animation: pf-wash 8s ease-in-out infinite;
+}
+
 .pf-grid-fade {
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: radial-gradient(ellipse 70% 55% at 70% 20%, #000 20%, transparent 70%);
+    linear-gradient(rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px);
+  background-size: 64px 64px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, #000 18%, transparent 72%);
 }
 
 .pf-btn-primary {
@@ -29,80 +55,262 @@
   box-shadow:
     0 0 0 1px rgba(91, 140, 255, 0.35),
     0 8px 24px rgba(91, 140, 255, 0.18);
+  transition: transform 160ms ease;
 }
 
 .pf-btn-primary:hover {
-  filter: brightness(1.06);
+  transform: translateY(-1px);
+}
+
+.pf-btn-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.pf-btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.2);
 }
 
 .pf-mock-ring {
   background: linear-gradient(
     145deg,
-    rgba(125, 211, 252, 0.4),
-    rgba(91, 140, 255, 0.12) 45%,
-    rgba(255, 255, 255, 0.05)
+    rgba(125, 211, 252, 0.55),
+    rgba(91, 140, 255, 0.18) 42%,
+    rgba(255, 255, 255, 0.06)
   );
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 255, 255, 0.04);
 }
 
-/* Hero product: render at a comfortable UI width, scale into the column */
-.pf-hero-mock {
-  width: 100%;
+.pf-hero-stage {
+  perspective: 1400px;
 }
 
-@keyframes pf-hero-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-12px);
-  }
+.pf-hero-device {
+  transform: rotateX(6deg);
+  transform-origin: center top;
+  animation: pf-float 7s ease-in-out infinite;
 }
 
-.pf-hero-mock-float {
-  animation: pf-hero-float 6.5s ease-in-out infinite;
-  will-change: transform;
-  filter: drop-shadow(0 18px 40px rgba(0, 0, 0, 0.35));
+.pf-float-chip {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111418;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  font-size: 12px;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.32);
+  animation: pf-chip 5.6s ease-in-out infinite;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .pf-hero-mock-float {
-    animation: none;
-  }
+.pf-float-chip-b {
+  animation-delay: -1.8s;
 }
 
-@media (min-width: 1024px) {
-  .pf-hero-mock {
-    position: relative;
-    height: 21.5rem;
-    overflow: visible;
-  }
-
-  .pf-hero-mock > .pf-mock-ring {
-    position: absolute;
-    left: 0;
-    top: 50%;
-    width: 40rem;
-    max-width: none;
-    transform: translateY(-50%) scale(0.84);
-    transform-origin: left center;
-  }
+.pf-float-chip-c {
+  animation-delay: -3.2s;
 }
 
-@media (min-width: 1280px) {
-  .pf-hero-mock {
-    height: 24rem;
-  }
+.pf-traffic {
+  height: 0.625rem;
+  width: 0.625rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+}
 
-  .pf-hero-mock > .pf-mock-ring {
-    width: 44rem;
-    transform: translateY(-50%) scale(0.92);
-  }
+.pf-traffic-live {
+  background: #39c6b0;
+}
+
+.pf-live-pill {
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 999px;
+  border: 1px solid rgba(57, 198, 176, 0.28);
+  background: rgba(57, 198, 176, 0.1);
+  padding: 0.2rem 0.55rem;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #39c6b0;
+}
+
+.pf-live-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #39c6b0;
+  animation: pf-dot 1.8s ease-in-out infinite;
+}
+
+.pf-attention-row {
+  box-shadow: inset 3px 0 0 #e06a6a;
 }
 
 .pf-surface {
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: var(--pf-panel);
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+.pf-featured {
+  transition: transform 180ms ease, border-color 180ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pf-surface:hover,
+  .pf-featured:hover {
+    transform: translateY(-2px);
+    border-color: rgba(255, 255, 255, 0.16);
+  }
+
+  .pf-featured:hover {
+    border-color: rgba(91, 140, 255, 0.55);
+  }
+}
+
+.pf-prompt {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(17, 20, 24, 0.92);
+  border-radius: 0.9rem;
+  padding: 0.4rem 0.4rem 0.4rem 1rem;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+}
+
+.pf-prompt input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  outline: none;
+  color: var(--pf-snow);
+  font-size: 0.95rem;
+}
+
+.pf-prompt input::placeholder {
+  color: rgba(167, 175, 184, 0.75);
+}
+
+@media (max-width: 640px) {
+  .pf-prompt {
+    flex-wrap: wrap;
+    padding: 0.55rem;
+  }
+
+  .pf-prompt input {
+    width: 100%;
+    padding: 0.35rem 0.4rem 0.55rem;
+  }
+
+  .pf-prompt button {
+    width: 100%;
+  }
+}
+
+.pf-marquee {
+  overflow: hidden;
+  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+}
+
+.pf-marquee-track {
+  display: flex;
+  width: max-content;
+  gap: 2.5rem;
+  animation: pf-marquee 48s linear infinite;
+  will-change: transform;
+}
+
+.pf-marquee-track span {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: #a7afb8;
+  white-space: nowrap;
+}
+
+@keyframes pf-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.pf-workflow-line {
+  background: linear-gradient(90deg, transparent, rgba(91, 140, 255, 0.45), rgba(57, 198, 176, 0.5), transparent);
+}
+
+.pf-node {
+  width: 3.1rem;
+  height: 3.1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #111418;
+  color: #a7afb8;
+  display: grid;
+  place-items: center;
+  transition:
+    transform 240ms ease,
+    border-color 240ms ease,
+    box-shadow 240ms ease,
+    color 240ms ease;
+}
+
+.pf-node.is-active {
+  color: #f5f7fa;
+  transform: scale(1.08);
+}
+
+.pf-node-material.is-active {
+  border-color: #d6a85f;
+  box-shadow: 0 0 0 6px rgba(214, 168, 95, 0.16);
+}
+
+.pf-node-info.is-active {
+  border-color: #5b8cff;
+  box-shadow: 0 0 0 6px rgba(91, 140, 255, 0.16);
+}
+
+.pf-node-signal.is-active {
+  border-color: #7dd3fc;
+  box-shadow: 0 0 0 6px rgba(125, 211, 252, 0.14);
+}
+
+.pf-node-intel.is-active,
+.pf-node-aqua.is-active {
+  border-color: #39c6b0;
+  box-shadow: 0 0 0 6px rgba(57, 198, 176, 0.16);
+}
+
+.pf-node.is-done {
+  border-color: rgba(57, 198, 176, 0.45);
+  color: #39c6b0;
+}
+
+.pf-tone-material {
+  color: #d6a85f;
+}
+.pf-tone-watch {
+  color: #e4b95a;
+}
+.pf-tone-info {
+  color: #5b8cff;
+}
+.pf-tone-high {
+  color: #e06a6a;
+}
+.pf-tone-intel {
+  color: #39c6b0;
 }
 
 .pf-field {
@@ -173,4 +381,147 @@ select.pf-field {
 
 .pf-faq details[open] summary .pf-faq-chevron {
   transform: rotate(180deg);
+}
+
+.pf-nav-link {
+  transition: color 160ms ease;
+}
+
+.pf-nav-link:hover {
+  color: #f5f7fa;
+}
+
+.pf-reveal {
+  opacity: 0;
+  transform: translateY(12px);
+  transition:
+    opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.pf-reveal.is-in {
+  opacity: 1;
+  transform: none;
+}
+
+.pf-hero-copy > * {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: pf-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+.pf-hero-copy > *:nth-child(1) {
+  animation-delay: 0.04s;
+}
+.pf-hero-copy > *:nth-child(2) {
+  animation-delay: 0.1s;
+}
+.pf-hero-copy > *:nth-child(3) {
+  animation-delay: 0.16s;
+}
+.pf-hero-copy > *:nth-child(4) {
+  animation-delay: 0.22s;
+}
+.pf-hero-copy > *:nth-child(5) {
+  animation-delay: 0.28s;
+}
+
+@keyframes pf-rise {
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pf-float {
+  0%,
+  100% {
+    transform: rotateX(6deg) translateY(0);
+  }
+  50% {
+    transform: rotateX(6deg) translateY(-6px);
+  }
+}
+
+@keyframes pf-chip {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
+  }
+}
+
+@keyframes pf-wash {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+@keyframes pf-dot {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+html.pf-paused .pf-marquee-track,
+html.pf-paused .pf-hero-device,
+html.pf-paused .pf-hero-wash,
+html.pf-paused .pf-live-pill::before,
+html.pf-paused .pf-float-chip {
+  animation-play-state: paused;
+}
+
+#product,
+#platform,
+#pricing,
+#faq,
+#contact,
+#proof {
+  scroll-margin-top: 5.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pf-marquee-track,
+  .pf-hero-device,
+  .pf-hero-wash,
+  .pf-live-pill::before,
+  .pf-hero-copy > *,
+  .pf-float-chip {
+    animation: none !important;
+  }
+
+  .pf-hero-copy > * {
+    opacity: 1;
+    transform: none;
+  }
+
+  .pf-hero-device {
+    transform: rotateX(6deg);
+  }
+
+  .pf-reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .pf-surface:hover,
+  .pf-featured:hover,
+  .pf-btn-primary:hover {
+    transform: none;
+  }
+
+  .pf-gradient-word {
+    color: #7dd3fc;
+  }
 }

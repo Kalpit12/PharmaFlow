@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import { EmptyState } from "@/components/ds/empty-state";
 import { ScenarioWorkspace } from "@/components/scenarios/ScenarioWorkspace";
 import { PageHeader } from "@/components/layout/PageHeader";
+import { WorkspacePage } from "@/components/layout/WorkspacePage";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { getScenarioSnapshot, resolveScenarioInput } from "@/lib/server/scenarios";
 import { ServerError } from "@/lib/server/errors";
@@ -32,26 +33,26 @@ export default async function ScenariosPage({
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
     return (
-      <div className="mx-auto flex w-full max-w-[1280px] flex-col gap-4 overflow-x-hidden px-4 py-5 sm:px-6">
-        <PageHeader context="Intelligence" title="Scenarios" description="Test operational decisions before they affect the business." />
+      <WorkspacePage width="full">
+        <PageHeader context="Planning" title="Planning & Simulation" description="Test operational decisions before changing the live plan." />
         <EmptyState title="Unable to load scenarios" description="Refresh the page and try again." />
-      </div>
+      </WorkspacePage>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-[1280px] min-w-0 flex-col gap-5 overflow-x-hidden px-4 py-5 sm:px-6">
+    <WorkspacePage width="full">
       <PageHeader
-        context="Intelligence"
-        title="Scenarios"
-        description="Test operational decisions before they affect the business."
+        context="Planning"
+        title="Planning & Simulation"
+        description="Test operational decisions before changing the live plan."
         relatedPath="/scenarios"
-        metadata={`${data.disclaimer} · ${data.horizonLabel}`}
+        metadata={`${data.brand} · ${data.horizonLabel} · ${data.statusLabel}`}
         badge={<StatusBadge tone="warning">Simulation only</StatusBadge>}
       />
       <Suspense>
         <ScenarioWorkspace data={data} />
       </Suspense>
-    </div>
+    </WorkspacePage>
   );
 }

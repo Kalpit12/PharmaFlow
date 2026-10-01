@@ -14,7 +14,16 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "db:verify": "tsx prisma/verify.ts",
-    "qa:phase31": "node scripts/phase31-browser-qa.mjs"
+    "verify:phase28": "tsx scripts/run-phase28-verify.ts",
+    "qa:phase28": "node scripts/phase28-browser-qa.mjs",
+    "qa:phase31": "node scripts/phase31-browser-qa.mjs",
+    "qa:phase32": "node scripts/phase32-browser-qa.mjs",
+    "qa:phase33": "node scripts/phase33-browser-qa.mjs",
+    "qa:phase34": "node scripts/phase34-browser-qa.mjs",
+    "qa:phase35": "node scripts/phase35-browser-qa.mjs",
+    "qa:phase36": "node scripts/phase36-browser-qa.mjs",
+    "qa:phase37": "node scripts/phase37-browser-qa.mjs",
+    "qa:phase38": "node scripts/phase38-browser-qa.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

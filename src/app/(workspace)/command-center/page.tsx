@@ -35,7 +35,7 @@ export default async function CommandCenterPage() {
       <PageHeader
         context="Overview"
         title="Command Center"
-        description="Business operating state, ranked attention, and where to inspect next."
+        description="Pharmaceutical operations command — business state, ranked attention, and where to inspect next."
         metadata={`${data.disclaimer} · ${data.brand}`}
         relatedPath="/command-center"
       />

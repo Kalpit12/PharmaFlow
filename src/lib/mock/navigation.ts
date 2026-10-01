@@ -60,6 +60,10 @@ export const navSections: NavSection[] = [
     label: "Operations",
     items: [
       { id: "operations-planner", label: "Operations", href: "/operations", icon: "factory", phase: "Phase 12.5" },
+      { id: "production-execution", label: "Production Execution", href: "/execution/production", icon: "factory", phase: "Phase 28" },
+      { id: "batches", label: "Batches", href: "/batches", icon: "microscope", phase: "Phase 33" },
+      { id: "quality", label: "Quality", href: "/quality", icon: "file-text", phase: "Phase 35" },
+      { id: "traceability", label: "Traceability", href: "/traceability", icon: "shield-check", phase: "Phase 34" },
       { id: "materials", label: "Materials", href: "/materials", icon: "package", phase: "Phase 14" },
       { id: "inventory", label: "Inventory", href: "/inventory", icon: "warehouse", phase: "Phase 13" },
     ],
@@ -97,6 +101,7 @@ export const navSections: NavSection[] = [
     id: "system",
     label: "System",
     items: [
+      { id: "governance", label: "Governance", href: "/governance", icon: "shield-check", phase: "Phase 36" },
       { id: "admin", label: "Administration", href: "/administration", icon: "users", comingSoon: true, phase: "Later" },
       { id: "settings", label: "Settings", href: "/settings", icon: "settings", comingSoon: true, phase: "Later" },
     ],

@@ -1,5 +1,7 @@
 import { Prisma, PrismaClient } from "@prisma/client";
 
+import { ensureBatchDemoData } from "./seed-batches";
+import { ensureQualityDemoData } from "./seed-quality";
 import { ensureOperationsDemoData } from "./seed-operations";
 import { ensureReportingDemoData } from "./seed-reports";
 import { hashPassword } from "../src/lib/server/password";
@@ -491,6 +493,8 @@ async function main() {
   console.log("Seeded empty tenant tenant-c-empty.");
   await ensureOperationsDemoData(prisma);
   await ensureReportingDemoData(prisma);
+  await ensureBatchDemoData(prisma);
+  await ensureQualityDemoData(prisma);
 }
 
 main()

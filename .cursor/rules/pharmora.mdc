@@ -1,0 +1,46 @@
+---
+description: Pharmora Phase 1 frontend rules — docs as source of truth, phase-gated work
+alwaysApply: true
+---
+
+# Pharmora
+
+Premium multi-tenant pharmaceutical SaaS. Demo tenant is Laboratory & Allied (Kenya) via config — never hard-code the whole app around LabAllied.
+
+## Source of truth
+
+Read `docs/pharmora/PROGRESS.md` first. Then only the doc needed for the current phase. Do not re-scan the whole repo, `node_modules`, or build output.
+
+- Product: `docs/pharmora/PRODUCT.md`
+- Design: `docs/pharmora/DESIGN-SYSTEM.md`
+- UX: `docs/pharmora/UX.md`
+- Architecture: `docs/pharmora/ARCHITECTURE.md`
+
+## This phase of the company roadmap
+
+Frontend + UX + design system + mock data only. No backend, database, production APIs, real auth, OpenAI/WhatsApp/ERP/payments, secrets, or fake production login.
+
+## How to work
+
+- One phase at a time. Do not skip ahead or rebuild completed work.
+- Reuse components. Tokens in CSS variables. Mock data centralized when pages exist.
+- Quality over speed. No lorem, no medical advice, no fake clinical claims.
+
+## Phase order
+
+1. Repo + docs  
+2. Tokens, typography, base UI  
+3. App shell, nav, search, command palette  
+4. Dashboard  
+5. AI Assistant  
+6. Products  
+7. RFQs  
+8. Customers  
+9. Quotes + Orders  
+10. Documents  
+11. Analytics  
+12. Distributor portal  
+13. Public `/ask`  
+14–17. Responsive, motion, a11y/perf, visual QA  
+
+Update `PROGRESS.md` after each phase.

@@ -102,11 +102,18 @@ export type ScenarioBaselineFacts = {
   inventoryItems: ScenarioInventoryFact[];
   pendingRequisitions: number;
   executionNeedsReview: number;
+  batchesOnHold: number;
+  qualityOpen: number;
+  qualityCritical: number;
+  customerExposure: number;
   hasOperations: boolean;
   hasMaterials: boolean;
   hasInventory: boolean;
   hasProcurement: boolean;
   hasExecution: boolean;
+  hasBatches: boolean;
+  hasQuality: boolean;
+  hasTraceability: boolean;
 };
 
 export type ScenarioSimulation = {
@@ -153,6 +160,79 @@ export type ScenarioChartPoint = {
   scenario: number;
 };
 
+export type ScenarioAssumptionRow = {
+  id: string;
+  label: string;
+  current: string;
+  scenario: string;
+  change: string;
+  supported: boolean;
+};
+
+export type JourneyStageId =
+  | "demand"
+  | "materials"
+  | "production"
+  | "batches"
+  | "quality"
+  | "delivery"
+  | "customer";
+
+export type JourneyStage = {
+  id: JourneyStageId;
+  label: string;
+  status: ScenarioSeverity;
+  metric: string;
+  reason: string;
+  baseline: string;
+  projected: string;
+  delta: string;
+  href: string;
+  confidence: "KNOWN" | "PARTIAL" | "INSUFFICIENT_DATA";
+};
+
+export type ImpactChainLink = {
+  id: string;
+  trigger: string;
+  consequence: string;
+  severity: ScenarioSeverity;
+  href: string;
+};
+
+export type ScenarioComparisonRow = {
+  id: string;
+  domain: string;
+  label: string;
+  current: string;
+  scenario: string;
+  variance: string;
+};
+
+export type ScenarioDecision = {
+  headline: string;
+  why: string[];
+  tradeOffs: string[];
+  limitations: string[];
+  reviewLinks: Array<{ label: string; href: string }>;
+};
+
+export type PlanningOutlook = {
+  currentState: string;
+  topRisk: string;
+  scenarioOpportunity: string;
+  projectedImpact: string;
+  href: string;
+};
+
+export type ScenarioExplanation = {
+  summary: string;
+  keyDrivers: string[];
+  impact: string[];
+  tradeOffs: string[];
+  limitations: string[];
+  source: "deterministic" | "openai";
+};
+
 export type ScenarioSnapshot = {
   brand: string;
   disclaimer: string;
@@ -161,6 +241,8 @@ export type ScenarioSnapshot = {
   horizonLabel: string;
   inputs: ScenarioInput;
   simulationOnly: true;
+  openaiCallsOnLoad: 0;
+  statusLabel: string;
   baseline: {
     revenue: string;
     demand: string;
@@ -175,11 +257,17 @@ export type ScenarioSnapshot = {
     shortages: string | null;
     procurement: string | null;
   };
+  assumptions: ScenarioAssumptionRow[];
+  comparison: ScenarioComparisonRow[];
+  journey: JourneyStage[];
+  impactChain: ImpactChainLink[];
+  decision: ScenarioDecision;
   impacts: ScenarioImpact[];
   risks: ScenarioRisk[];
   recommendations: string[];
   dataConfidence: ForecastConfidence;
   series: ScenarioChartPoint[];
+  excludedDomains: string[];
   planningNote: string;
 };
 
@@ -187,6 +275,11 @@ export type CompactScenarioContext = {
   simulation: "SIMULATED";
   horizon: string;
   inputs: ScenarioInput;
+  assumptions: Array<{ label: string; change: string; supported: boolean }>;
+  comparison: Array<{ label: string; current: string; scenario: string; variance: string }>;
+  journey: Array<{ stage: string; metric: string; reason: string; confidence: string }>;
+  impactChain: Array<{ trigger: string; consequence: string }>;
+  decision: { headline: string; why: string[]; tradeOffs: string[]; limitations: string[] };
   impacts: Array<{
     domain: string;
     metric: string;
@@ -196,4 +289,5 @@ export type CompactScenarioContext = {
     severity: string;
   }>;
   risks: Array<{ title: string; severity: string; impact: string }>;
+  excludedDomains: string[];
 };

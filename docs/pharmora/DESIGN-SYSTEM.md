@@ -8,14 +8,18 @@ Inspiration for craft only (Aura-style premium composition, editorial type, rest
 
 ## Visual system 2.0 (Phase 29)
 
-- **Graphite** foundation and navigation
-- Cool neutral workspace surfaces
-- Accent for active state, selection, intelligence, and interaction — never decoration
-- Hairline borders, controlled contrast, minimal radius (`--radius` 3px)
-- Shared surfaces and metric strips instead of card grids
-- Strong typography hierarchy; dense, readable data
+Position: **Pharmaceutical Operations Command System** — industrial control room density, premium enterprise craft, Bloomberg-like information hierarchy, pharmaceutical precision. Not generic SaaS, CRM chrome, Power BI clone, or marketing glass.
 
-Avoid: oversized rounded cards, pills, gradients, glassmorphism, glow, decorative illustration, “Good morning” copy.
+- **Graphite** foundation and navigation (`#0B0D0F`)
+- Cool neutral workspace surfaces (`#111418` / `#171B20` / `#1D2228`)
+- Accent for active state, selection, intelligence, and interaction — never decoration (`#5B8CFF`)
+- Hairline borders, controlled contrast, minimal radius (`--radius` 3px)
+- Shared surfaces (`.work-surface`, `.ops-table`, metric strips) instead of card grids
+- Strong typography hierarchy (IBM Plex Sans); dense, readable data; tabular metrics
+- Management Attention signature: **Signal → Evidence → Consequence → Inspect**
+- Detail sheets: **Identity · Status · Key metrics · Context · History · Actions** via `InspectionSection`
+
+Avoid: oversized rounded cards, pills, gradients, glassmorphism, glow, decorative illustration, “Good morning” copy, AI sparkle panels.
 
 ## Pharmora Color System 2.0 (Phase 29.1)
 

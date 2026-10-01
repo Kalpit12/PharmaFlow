@@ -24,15 +24,50 @@ export const DOMAIN_TRAILS: Record<string, DomainLink[]> = {
     { label: "Command Center", href: "/command-center" },
     { label: "Reports", href: "/reports" },
   ],
+  "/execution": [
+    { label: "Production Execution", href: "/execution/production" },
+    { label: "Command Center", href: "/command-center" },
+    { label: "Approvals", href: "/approvals" },
+  ],
   "/reports": [
     { label: "Command Center", href: "/command-center" },
     { label: "Operations", href: "/operations" },
+    { label: "Production Execution", href: "/execution/production" },
     { label: "Forecast", href: "/forecast" },
   ],
   "/operations": [
+    { label: "Production Execution", href: "/execution/production" },
+    { label: "Batches", href: "/batches" },
     { label: "Materials", href: "/materials" },
     { label: "Inventory", href: "/inventory" },
     { label: "Command Center", href: "/command-center" },
+  ],
+  "/execution/production": [
+    { label: "Operations", href: "/operations" },
+    { label: "Batches", href: "/batches" },
+    { label: "Reports", href: "/reports?view=production" },
+    { label: "Command Center", href: "/command-center" },
+  ],
+  "/batches": [
+    { label: "Operations", href: "/operations" },
+    { label: "Production Execution", href: "/execution/production" },
+    { label: "Quality", href: "/quality" },
+    { label: "Traceability", href: "/traceability" },
+    { label: "Materials", href: "/materials" },
+    { label: "Inventory", href: "/inventory" },
+  ],
+  "/quality": [
+    { label: "Batches", href: "/batches" },
+    { label: "Traceability", href: "/traceability" },
+    { label: "Operations", href: "/operations" },
+    { label: "Materials", href: "/materials" },
+  ],
+  "/traceability": [
+    { label: "Quality", href: "/quality" },
+    { label: "Batches", href: "/batches" },
+    { label: "Inventory", href: "/inventory" },
+    { label: "Materials", href: "/materials" },
+    { label: "Operations", href: "/operations" },
   ],
   "/materials": [
     { label: "Operations", href: "/operations" },
@@ -83,10 +118,6 @@ export const DOMAIN_TRAILS: Record<string, DomainLink[]> = {
     { label: "Forecast", href: "/forecast" },
     { label: "Command Center", href: "/command-center" },
     { label: "Operations", href: "/operations" },
-  ],
-  "/execution": [
-    { label: "Command Center", href: "/command-center" },
-    { label: "Approvals", href: "/approvals" },
   ],
   "/ai": [
     { label: "Command Center", href: "/command-center" },

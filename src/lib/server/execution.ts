@@ -9,6 +9,7 @@ import type {
   ExecutionSnapshot,
 } from "@/lib/execution/types";
 import { canApprove, listActions } from "@/lib/server/actions";
+import { getBatchesSnapshot } from "@/lib/server/batches";
 import { listCommunications } from "@/lib/server/communications";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
@@ -94,13 +95,15 @@ async function listRecentRequisitions(ctx: TenantContext) {
 export async function getExecutionSnapshot(ctx: TenantContext): Promise<ExecutionSnapshot> {
   const tenant = await getTenant(ctx);
   const approve = canApprove(ctx.role);
-  const [actions, workflows, pendingRequisitions, recentRequisitions, communications, pendingPurchaseOrders] = await Promise.all([
+  const [actions, workflows, pendingRequisitions, recentRequisitions, communications, pendingPurchaseOrders, batchSnapshot] =
+    await Promise.all([
     listActions(ctx),
     listWorkflows(ctx),
     listPendingRequisitions(ctx),
     listRecentRequisitions(ctx),
     listCommunications(ctx),
     listPendingPurchaseOrders(ctx),
+    getBatchesSnapshot(ctx, { view: "all" }).catch(() => null),
   ]);
 
   const items: ExecutionItem[] = [];
@@ -338,6 +341,54 @@ export async function getExecutionSnapshot(ctx: TenantContext): Promise<Executio
         "Communication drafts never become automatic sends from Execution. Review and approve drafts in Communications only.",
       preparedSummary: `${row.subject} — ${row.preview}`,
       impactSummary: `Customer: ${row.customerName}`,
+    });
+  }
+
+  for (const row of batchSnapshot?.batches.filter(
+    (batch) => batch.qualityStatus === "PENDING_REVIEW" && batch.manufacturingStatus === "COMPLETED"
+  ) ?? []) {
+    items.push({
+      id: `batch:${row.id}`,
+      kind: "REQUISITION",
+      domain: "operations",
+      priority: row.risk === "CRITICAL" || row.risk === "HIGH" ? "HIGH" : "MEDIUM",
+      title: `Batch quality · ${row.batchNumber}`,
+      reason: `${row.productName} · production ${row.manufacturingStatus.replace(/_/g, " ").toLowerCase()}`,
+      recommendedAction: "Review batch quality",
+      status: "NEEDS_REVIEW",
+      sourceStatus: row.qualityStatus,
+      targetLabel: row.productName,
+      createdAt: row.updatedAt,
+      createdByName: row.reviewOwnerName ?? "—",
+      sourceHref: `/batches?batch=${row.id}`,
+      executable: true,
+      canDecide: false,
+      safetyNote: "Quality release, hold, and reject are explicit actions on the batch inspection sheet. No automatic inventory posting.",
+      preparedSummary: `${row.orderNumber} · ${row.producedLabel}/${row.plannedQuantity} ${row.unit}`,
+      impactSummary: `Batch: ${row.batchNumber}`,
+    });
+  }
+
+  for (const row of batchSnapshot?.batches.filter((batch) => batch.qualityStatus === "ON_HOLD") ?? []) {
+    items.push({
+      id: `batch-hold:${row.id}`,
+      kind: "REQUISITION",
+      domain: "operations",
+      priority: "HIGH",
+      title: `Batch on hold · ${row.batchNumber}`,
+      reason: row.holdReason ?? "Quality hold",
+      recommendedAction: "Open batch inspection",
+      status: "BLOCKED",
+      sourceStatus: row.qualityStatus,
+      targetLabel: row.productName,
+      createdAt: row.updatedAt,
+      createdByName: row.reviewOwnerName ?? "—",
+      sourceHref: `/batches?batch=${row.id}`,
+      executable: false,
+      canDecide: false,
+      safetyNote: "Batch remains on quality hold until explicitly released or rejected.",
+      preparedSummary: row.holdReason ?? "Review hold reason",
+      impactSummary: `Batch: ${row.batchNumber}`,
     });
   }
 

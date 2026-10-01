@@ -1,4 +1,6 @@
 import type { DailySeverity } from "@/lib/daily-review/types";
+import type { IntelligenceSnapshot } from "@/lib/intelligence/types";
+import type { PlanningOutlook } from "@/lib/scenarios/types";
 import type { DashboardRange, SalesPoint } from "@/lib/mock/dashboard";
 
 export type CommandSeverity = DailySeverity;
@@ -139,6 +141,8 @@ export type CommandCenterSnapshot = {
   salesRanges: Record<DashboardRange, SalesPoint[]>;
   emptyReason: string | null;
   planningNote: string;
+  intelligence: IntelligenceSnapshot;
+  planningOutlook: PlanningOutlook;
 };
 
 /** Compact packet for explicit AI explanation — no tenant UUID / Prisma. */

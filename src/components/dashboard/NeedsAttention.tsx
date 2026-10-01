@@ -12,8 +12,8 @@ function toSeverity(value: string): AttentionSeverity {
 export function NeedsAttention({ items }: { items: AttentionRecord[] }) {
   return (
     <AttentionList
-      title="Needs Attention"
-      subtitle="Operational items requiring action"
+      title="Management Attention"
+      subtitle="Signal → evidence → consequence → inspect."
       empty={
         items.length === 0 ? (
           <EmptyState

@@ -1,5 +1,10 @@
 import type { CommandCenterAnalytics } from "@/lib/command-center/types";
-import { buildProductionPlannedVsActual } from "@/lib/analytics/production";
+import {
+  buildInventoryHealthSegments,
+  buildProcurementPipelineStages,
+  buildProductionPlannedVsActual,
+  toRevenueBarRows,
+} from "@/lib/analytics";
 import { utilizationTone } from "@/lib/charts/tokens";
 import { productAggregates } from "@/lib/server/analytics";
 import type { DashboardData } from "@/lib/server/dashboard";
@@ -37,9 +42,24 @@ export async function buildCommandCenterAnalytics(
     getPrisma()
       .productionOrder.findMany({
         where: { tenantId: ctx.tenantId },
-        select: { status: true, quantity: true, productId: true, product: { select: { name: true } } },
+        select: {
+          status: true,
+          quantity: true,
+          productId: true,
+          product: { select: { name: true } },
+          batch: { select: { producedQuantity: true } },
+        },
       })
-      .catch(() => []),
+      .catch(
+        () =>
+          [] as Array<{
+            status: string;
+            quantity: number;
+            productId: string;
+            product: { name: string };
+            batch: { producedQuantity: number | null } | null;
+          }>
+      ),
   ]);
 
   const salesPoints = deps.dashboard?.sales["30D"] ?? [];
@@ -52,18 +72,17 @@ export async function buildCommandCenterAnalytics(
     empty: salesPoints.length < 2,
   };
 
-  const revenueByProduct = [...products]
-    .filter((row) => row.revenue.gt(0))
-    .sort((a, b) => Number(b.revenue.cmp(a.revenue)))
-    .slice(0, 8)
-    .map((row) => ({
-      id: row.productId,
-      label: row.name,
-      value: Number(toChartMillions(row.revenue)),
-      hint: `${row.units.toLocaleString("en-KE")} units`,
-      href: "/inventory",
-      tone: "primary" as const,
-    }));
+  const revenueByProduct = toRevenueBarRows(
+    products
+      .filter((row) => row.revenue.gt(0))
+      .map((row) => ({
+        id: row.productId,
+        label: row.name,
+        value: Number(toChartMillions(row.revenue)),
+        hint: `${row.units.toLocaleString("en-KE")} units`,
+        href: "/reports?view=sales",
+      }))
+  );
 
   const productionPlannedVsActual = buildProductionPlannedVsActual(
     productionRows.map((row) => ({
@@ -71,6 +90,7 @@ export async function buildCommandCenterAnalytics(
       productName: row.product.name,
       status: row.status,
       quantity: row.quantity,
+      producedQuantity: row.batch?.producedQuantity ?? null,
     }))
   );
 
@@ -84,87 +104,31 @@ export async function buildCommandCenterAnalytics(
       tone: utilizationTone(ws.utilization),
     })) ?? [];
 
-  const expiringQty = inventory?.expiringSoonQty ?? 0;
   const inventoryHealth = inventory
-    ? [
-        {
-          id: "HEALTHY",
-          label: "Healthy",
-          value: inventory.health.find((row) => row.id === "HEALTHY")?.quantity ?? 0,
-          tone: "intel" as const,
-          href: "/inventory?view=health&status=HEALTHY",
-        },
-        {
-          id: "LOW",
-          label: "Low stock",
-          value: inventory.health.find((row) => row.id === "LOW")?.quantity ?? 0,
-          tone: "material" as const,
-          href: "/inventory?view=health&status=LOW",
-        },
-        {
-          id: "EXPIRING",
-          label: "Expiring soon",
-          value: expiringQty,
-          tone: "material" as const,
-          href: "/inventory/expiry",
-        },
-        {
-          id: "CRITICAL",
-          label: "Critical / out",
-          value:
-            (inventory.health.find((row) => row.id === "CRITICAL")?.quantity ?? 0) +
-            (inventory.health.find((row) => row.id === "OUT_OF_STOCK")?.quantity ?? 0),
-          tone: "danger" as const,
-          href: "/inventory?view=health&status=CRITICAL",
-        },
-      ]
+    ? buildInventoryHealthSegments({
+        health: inventory.health,
+        expiringSoonQty: inventory.expiringSoonQty,
+      })
     : [];
 
-  const procurementPipeline = [
-    {
-      id: "need",
-      label: "Needs review",
-      count: procurement?.pendingReviewCount ?? 0,
-      href: "/procurement?view=needs-review",
-    },
-    {
-      id: "rfq",
-      label: "RFQs",
-      count: rfqMetrics?.total ?? 0,
-      href: "/rfqs",
-    },
-    {
-      id: "responses",
-      label: "Responses",
-      count: rfqMetrics ? rfqMetrics.total - rfqMetrics.awaitingResponse : 0,
-      href: "/rfqs?status=responses",
-    },
-    {
-      id: "award",
-      label: "Awarded",
-      count: rfqMetrics?.awarded ?? 0,
-      href: "/rfqs?status=awarded",
-    },
-    {
-      id: "po",
-      label: "Purchase orders",
-      count: (poMetrics?.draft ?? 0) + (poMetrics?.pendingApproval ?? 0) + (poMetrics?.approved ?? 0),
-      href: "/purchase-orders",
-    },
-    {
-      id: "receiving",
-      label: "Receiving",
-      count: (receivingMetrics?.awaiting ?? 0) + (receivingMetrics?.partial ?? 0),
-      href: "/receiving",
-    },
-  ];
+  const procurementPipeline = buildProcurementPipelineStages({
+    pendingReviewCount: procurement?.pendingReviewCount ?? 0,
+    rfqTotal: rfqMetrics?.total ?? 0,
+    rfqAwaitingResponse: rfqMetrics?.awaitingResponse ?? 0,
+    rfqAwarded: rfqMetrics?.awarded ?? 0,
+    poDraft: poMetrics?.draft ?? 0,
+    poPendingApproval: poMetrics?.pendingApproval ?? 0,
+    poApproved: poMetrics?.approved ?? 0,
+    receivingAwaiting: receivingMetrics?.awaiting ?? 0,
+    receivingPartial: receivingMetrics?.partial ?? 0,
+  });
 
   return {
     revenueTrend,
     revenueByProduct,
     productionPlannedVsActual,
     productionNote:
-      "Produced quantity reflects completed production orders only. Open pipeline orders have no recorded actual output.",
+      "Actual uses ProductionBatch.producedQuantity on completed orders only. Open pipeline has no actual output — planned is never shown as actual.",
     workstationCapacity,
     inventoryHealth,
     procurementPipeline,

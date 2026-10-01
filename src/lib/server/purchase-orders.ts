@@ -10,7 +10,8 @@ import {
   type PurchaseOrderStatus,
   type PurchaseOrderViewId,
 } from "@/lib/purchase-orders/types";
-import { canApprove } from "@/lib/server/actions";
+import { canProcurementApprove, requirePermission } from "@/lib/auth/authorization";
+import { formatStateChange, writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount } from "@/lib/server/money";
@@ -29,7 +30,7 @@ function requireUser(ctx: TenantContext): string {
 }
 
 function requireReviewer(ctx: TenantContext): void {
-  if (!canApprove(ctx.role)) throw new ServerError("Only managers can perform this action.", "FORBIDDEN");
+  if (!canProcurementApprove(ctx.role)) throw new ServerError("You do not have permission to perform this action.", "FORBIDDEN");
 }
 
 export function resolvePurchaseOrderFilters(input: { view?: string; q?: string }): PurchaseOrderFilters {
@@ -146,7 +147,7 @@ async function loadDetail(ctx: TenantContext, id: string): Promise<PurchaseOrder
     })),
     canEdit: row.status === "DRAFT",
     canSubmit: row.status === "DRAFT",
-    canApprove: canApprove(ctx.role) && row.status === "PENDING_APPROVAL",
+    canApprove: canProcurementApprove(ctx.role) && row.status === "PENDING_APPROVAL",
     canReceive,
     receivingHref: canReceive ? `/receiving/${row.id}` : null,
     receivedQuantity: totals.received,
@@ -233,6 +234,7 @@ export async function findPurchaseOrderByRfq(ctx: TenantContext, rfqId: string):
 }
 
 export async function createPurchaseOrderFromRfq(ctx: TenantContext, rfqId: string): Promise<PurchaseOrderDetail> {
+  requirePermission(ctx, "procurement.create");
   const userId = requireUser(ctx);
   const prisma = getPrisma();
 
@@ -366,6 +368,7 @@ export async function updatePurchaseOrderDraft(
 }
 
 export async function submitPurchaseOrderForApproval(ctx: TenantContext, id: string): Promise<PurchaseOrderDetail> {
+  requirePermission(ctx, "procurement.create");
   requireUser(ctx);
   const prisma = getPrisma();
   const po = await prisma.purchaseOrder.findFirst({ where: { id, tenantId: ctx.tenantId } });
@@ -397,6 +400,15 @@ export async function approvePurchaseOrder(ctx: TenantContext, id: string): Prom
     await recordActivity(tx, ctx.tenantId, id, "Purchase order approved", `${po.poNumber} · approved for purchasing`);
   }, { timeout: 15_000 });
 
+  const change = formatStateChange("APPROVAL", "PENDING_APPROVAL", "APPROVED");
+  await writeAuditLog(ctx, {
+    action: "PO_APPROVED",
+    entityType: "PURCHASE_ORDER",
+    entityId: id,
+    oldValue: change.oldValue,
+    newValue: change.newValue,
+  });
+
   return loadDetail(ctx, id);
 }
 
@@ -416,6 +428,15 @@ export async function rejectPurchaseOrder(ctx: TenantContext, id: string): Promi
     });
     await recordActivity(tx, ctx.tenantId, id, "Purchase order rejected", po.poNumber);
   }, { timeout: 15_000 });
+
+  const change = formatStateChange("APPROVAL", "PENDING_APPROVAL", "REJECTED");
+  await writeAuditLog(ctx, {
+    action: "PO_REJECTED",
+    entityType: "PURCHASE_ORDER",
+    entityId: id,
+    oldValue: change.oldValue,
+    newValue: change.newValue,
+  });
 
   return loadDetail(ctx, id);
 }

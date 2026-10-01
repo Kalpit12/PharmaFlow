@@ -69,9 +69,28 @@ export function AttentionItem({
               {severity.replace(/_/g, " ")}
             </span>
           </div>
-          <p className="text-[15px] leading-snug font-medium tracking-tight text-foreground">{issue}</p>
-          {evidence ? <p className="text-sm leading-relaxed text-muted-foreground">{evidence}</p> : null}
-          {consequence ? <p className="text-xs leading-relaxed text-foreground/75">{consequence}</p> : null}
+          <div className="space-y-1.5">
+            <p className="text-[15px] leading-snug font-medium tracking-tight text-foreground">
+              <span className="sr-only">Signal: </span>
+              {issue}
+            </p>
+            {evidence ? (
+              <p className="text-sm leading-relaxed text-muted-foreground">
+                <span className="mr-1.5 text-[10px] font-medium tracking-[0.14em] text-muted-foreground/80 uppercase">
+                  Evidence
+                </span>
+                {evidence}
+              </p>
+            ) : null}
+            {consequence ? (
+              <p className="text-xs leading-relaxed text-foreground/80">
+                <span className="mr-1.5 text-[10px] font-medium tracking-[0.14em] text-muted-foreground/80 uppercase">
+                  Consequence
+                </span>
+                {consequence}
+              </p>
+            ) : null}
+          </div>
         </div>
         <span className="inline-flex min-h-11 shrink-0 items-center gap-1 text-[11px] font-medium tracking-[0.08em] text-primary uppercase sm:min-h-0 sm:pt-0.5">
           {actionLabel}

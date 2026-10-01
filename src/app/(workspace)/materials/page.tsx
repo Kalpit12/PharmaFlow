@@ -29,7 +29,7 @@ export default async function MaterialsPage({
         <PageHeader
           context="Operations"
           title="Materials"
-          description="Requirement against available, incoming and projected stock — shortage first."
+          description="From material availability to production impact — shortages, timing, and procurement linkage."
         />
         <EmptyState title="Unable to load material requirements" description="Refresh the page." />
       </WorkspacePage>
@@ -41,7 +41,7 @@ export default async function MaterialsPage({
       <PageHeader
         context="Operations"
         title="Materials"
-        description="Requirement against available, incoming and projected stock — shortage first."
+        description="From material availability to production impact — shortages, timing, and procurement linkage."
         metadata={data.disclaimer}
         relatedPath="/materials"
         actions={

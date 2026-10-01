@@ -3,9 +3,11 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useSession } from "next-auth/react";
 
 import { navIcons } from "@/components/layout/nav-icons";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { hasPermission, navPermissionForHref } from "@/lib/auth/permissions";
 import { getNavSections, type NavItem } from "@/lib/mock/navigation";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +25,18 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const sections = getNavSections();
+  const { data: session } = useSession();
+  const role = session?.user?.role ?? null;
+  const sections = getNavSections()
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => {
+        if (item.comingSoon) return true;
+        const permission = navPermissionForHref(item.href);
+        return !permission || hasPermission(role, permission);
+      }),
+    }))
+    .filter((section) => section.items.length > 0);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-4 px-2 pb-4">

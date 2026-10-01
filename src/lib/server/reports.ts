@@ -16,6 +16,12 @@ import {
   type TimeBucket,
 } from "@/lib/reports/risk";
 import { buildProductionPlannedVsActual } from "@/lib/analytics/production";
+import { METRIC_CATALOG } from "@/lib/reports/metric-catalog";
+import { getBatchesSnapshot } from "@/lib/server/batches";
+import { getTraceabilityAttention } from "@/lib/server/traceability";
+import { getQualityAttention } from "@/lib/server/quality";
+import { emptyIntelligenceSnapshot, getIntelligenceSnapshot } from "@/lib/server/intelligence";
+import { getScenarioPlanningSlice } from "@/lib/server/scenarios";
 import {
   REPORT_VIEWS,
   type BucketRow,
@@ -43,6 +49,7 @@ import { getPurchaseOrderReportMetrics } from "@/lib/server/purchase-orders";
 import { getSupplierPerformanceReportMetrics } from "@/lib/server/supplier-performance";
 import { getSupplierSnapshot, resolveSupplierFilters } from "@/lib/server/suppliers";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
+import { getProductionExecutionSignals } from "@/lib/server/production-execution";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { formatCount, formatKes, percentChange, toChartMillions } from "@/lib/server/money";
@@ -236,7 +243,18 @@ type LotRecord = {
 
 type DepthRecord = {
   suppliers: Array<{ id: string; name: string }>;
-  receipts: Array<{ productId: string; sku: string; quantity: number; supplierName: string | null }>;
+  receipts: Array<{
+    id: string;
+    reference: string;
+    productId: string;
+    productName: string;
+    sku: string;
+    quantity: number;
+    supplierName: string | null;
+    expectedAt: Date;
+    purchaseOrderId: string | null;
+    purchaseOrderNumber: string | null;
+  }>;
   boms: Array<{ productId: string; componentId: string; componentSku: string; quantityPer: Prisma.Decimal }>;
   snapshots: Array<{ capturedOn: Date; productId: string; class: InventoryClassId; quantity: number; value: Prisma.Decimal }>;
   completed: number;
@@ -328,12 +346,37 @@ async function loadReportingDepth(tenantId: string): Promise<DepthRecord> {
       prisma.$queryRaw<Array<{ id: string; name: string }>>(
         Prisma.sql`SELECT id, name FROM "Supplier" WHERE "tenantId" = ${tenantId} ORDER BY name ASC`
       ),
-      prisma.$queryRaw<Array<{ productId: string; sku: string; quantity: number; supplierName: string | null }>>(Prisma.sql`
-        SELECT r."productId", p.sku, r.quantity, s.name AS "supplierName"
+      prisma.$queryRaw<
+        Array<{
+          id: string;
+          reference: string;
+          productId: string;
+          productName: string;
+          sku: string;
+          quantity: number;
+          supplierName: string | null;
+          expectedAt: Date;
+          purchaseOrderId: string | null;
+          purchaseOrderNumber: string | null;
+        }>
+      >(Prisma.sql`
+        SELECT
+          r.id,
+          r.reference,
+          r."productId",
+          p.name AS "productName",
+          p.sku,
+          r.quantity,
+          s.name AS "supplierName",
+          r."expectedAt",
+          r."purchaseOrderId",
+          po."poNumber" AS "purchaseOrderNumber"
         FROM "InventoryReceipt" r
         INNER JOIN "Product" p ON p.id = r."productId"
         LEFT JOIN "Supplier" s ON s.id = r."supplierId"
+        LEFT JOIN "PurchaseOrder" po ON po.id = r."purchaseOrderId"
         WHERE r."tenantId" = ${tenantId} AND r.status = 'OPEN'
+        ORDER BY r."expectedAt" ASC
       `),
       prisma.$queryRaw<Array<{ productId: string; componentId: string; componentSku: string; quantityPer: Prisma.Decimal }>>(Prisma.sql`
         SELECT b."productId", b."componentId", p.sku AS "componentSku", b."quantityPer"
@@ -466,7 +509,7 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
   const to = parseDay(filters.to);
   const toEnd = to ? new Date(to.getTime() + 86_400_000 - 1) : null;
 
-  const [tenant, inventory, planner, depth, productionRows] = await Promise.all([
+  const [tenant, inventory, planner, depth, productionRows, executionSignals] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { name: true, status: true } }),
     loadReportingRows(ctx.tenantId),
     getOperationsPlanner(ctx, resolvePlanningWindow({ weeks: "1" })).catch((error) => {
@@ -486,14 +529,36 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
     prisma.productionOrder
       .findMany({
         where: { tenantId: ctx.tenantId },
-        select: { status: true, quantity: true, productId: true, product: { select: { name: true } } },
+        select: {
+          status: true,
+          quantity: true,
+          productId: true,
+          product: { select: { name: true } },
+          batch: { select: { producedQuantity: true } },
+        },
       })
-      .catch(() => []),
+      .catch(
+        () =>
+          [] as Array<{
+            status: string;
+            quantity: number;
+            productId: string;
+            product: { name: string };
+            batch: { producedQuantity: number | null } | null;
+          }>
+      ),
+    getProductionExecutionSignals(ctx),
   ]);
-  const [materialPlan, procurementPlan, supplierPlan] = await Promise.all([
+  const [materialPlan, procurementPlan, supplierPlan, batchPlan, traceabilityAttention, qualityAttention, intelligence, scenarioPlanning] =
+    await Promise.all([
     getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null),
     getProcurementSnapshot(ctx, resolveProcurementFilters({ view: "all" })).catch(() => null),
     getSupplierSnapshot(ctx, resolveSupplierFilters({ view: "all" })).catch(() => null),
+    getBatchesSnapshot(ctx, { view: "all" }).catch(() => null),
+    getTraceabilityAttention(ctx).catch(() => []),
+    getQualityAttention(ctx).catch(() => []),
+    filters.view === "executive" ? getIntelligenceSnapshot(ctx) : Promise.resolve(emptyIntelligenceSnapshot()),
+    filters.view === "executive" ? getScenarioPlanningSlice(ctx).catch(() => null) : Promise.resolve(null),
   ]);
   const [rfqMetrics, poMetrics, receivingMetrics, supplierPerfMetrics] = await Promise.all([
     getProcurementRfqReportMetrics(ctx).catch(() => null),
@@ -557,6 +622,12 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
     if (filters.category && lot.category !== filters.category) return false;
     if (filters.classId && lot.classId !== filters.classId) return false;
     if (filters.supplierId && lot.supplierId !== filters.supplierId) return false;
+    if (from || toEnd) {
+      const received = new Date(lot.receivedAt).getTime();
+      if (Number.isNaN(received)) return false;
+      if (from && received < from.getTime()) return false;
+      if (toEnd && received > toEnd.getTime()) return false;
+    }
     if (filters.query) {
       const q = filters.query.toLowerCase();
       if (
@@ -728,6 +799,7 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
         productName: row.product.name,
         status: row.status,
         quantity: row.quantity,
+        producedQuantity: row.batch?.producedQuantity ?? null,
       }))
     ),
   };
@@ -860,10 +932,28 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
     {
       id: "late",
       label: "Late production",
-      value: formatCount(production.late),
-      hint: "Planned end after due date",
-      risk: production.late > 0 ? "HIGH" : "HEALTHY",
-      href: "/operations",
+      value: formatCount(executionSignals?.late ?? production.late),
+      hint: "Past planned end while incomplete",
+      risk: (executionSignals?.late ?? production.late) > 0 ? "HIGH" : "HEALTHY",
+      href: "/execution/production?view=at-risk",
+      available: true,
+    },
+    {
+      id: "exec-active",
+      label: "Active production",
+      value: formatCount(executionSignals?.active ?? 0),
+      hint: "Shop-floor in progress",
+      risk: (executionSignals?.paused ?? 0) > 0 ? "MEDIUM" : "HEALTHY",
+      href: "/execution/production?view=active",
+      available: true,
+    },
+    {
+      id: "exec-paused",
+      label: "Paused production",
+      value: formatCount(executionSignals?.paused ?? 0),
+      hint: "Awaiting resume",
+      risk: (executionSignals?.paused ?? 0) > 0 ? "HIGH" : "HEALTHY",
+      href: "/execution/production?view=paused",
       available: true,
     },
     {
@@ -979,6 +1069,39 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
       href: "/forecast",
     });
   }
+  for (const item of batchPlan?.attention ?? []) {
+    managementAttention.push({
+      id: item.id,
+      domain: "Quality",
+      severity: item.severity === "WARNING" ? "MEDIUM" : item.severity,
+      issue: item.title,
+      evidence: item.detail,
+      impact: "Batch quality review — explicit hold, release, or reject required.",
+      href: item.href,
+    });
+  }
+  for (const item of traceabilityAttention) {
+    managementAttention.push({
+      id: item.id,
+      domain: "Traceability",
+      severity: item.severity === "WARNING" ? "MEDIUM" : item.severity,
+      issue: item.title,
+      evidence: item.detail,
+      impact: "Traceability & Recall Intelligence — investigate missing or partial genealogy.",
+      href: item.href,
+    });
+  }
+  for (const item of qualityAttention) {
+    managementAttention.push({
+      id: item.id,
+      domain: "Quality",
+      severity: item.severity === "WARNING" ? "MEDIUM" : item.severity,
+      issue: item.title,
+      evidence: item.detail,
+      impact: "Quality exception ownership, investigation, and corrective action required.",
+      href: item.href,
+    });
+  }
   const rank: Record<ManagementAttentionItem["severity"], number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
   managementAttention.sort((a, b) => rank[b.severity] - rank[a.severity] || a.id.localeCompare(b.id));
 
@@ -1082,8 +1205,12 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
     }),
     historyNote:
       history.length >= 2
-        ? "Inventory trend uses stored weekly snapshots. Current lots are on-hand now, not time-travelled."
-        : "Historical trend unavailable",
+        ? from || to
+          ? "Date range filters weekly inventory snapshots and current lots by received date. Lots are not time-travelled to historical on-hand."
+          : "Inventory trend uses stored weekly snapshots. Set History from/to to also scope current lots by received date."
+        : from || to
+          ? "Historical trend unavailable — no weekly snapshots. Date range still scopes current lots by received date."
+          : "Historical trend unavailable — no weekly inventory snapshots for this tenant.",
     history,
     lots: scoped,
     expiryBuckets,
@@ -1170,10 +1297,23 @@ export async function getReportingSnapshot(ctx: TenantContext, filters: ReportFi
     supplierBands,
     supplierAttention: supplierPerfMetrics?.topAttention ?? [],
     procurementPipeline,
-    metricNotes: [
-      { id: "revenue", label: "Revenue", how: "Confirmed + fulfilled order total." },
-      { id: "mrp", label: "Material net requirement", how: "Gross requirement − available − incoming." },
-      { id: "completion", label: "Supplier completion", how: "Received quantity ÷ ordered quantity." },
-    ],
+    inboundReceipts: depth.receipts.map((row) => ({
+      id: row.id,
+      reference: row.reference,
+      productName: row.productName,
+      sku: row.sku,
+      quantity: row.quantity,
+      supplierName: row.supplierName,
+      expectedAt: row.expectedAt.toISOString(),
+      purchaseOrderId: row.purchaseOrderId,
+      purchaseOrderNumber: row.purchaseOrderNumber,
+    })),
+    metricNotes: METRIC_CATALOG.slice(0, 8).map((row) => ({
+      id: row.id,
+      label: row.label,
+      how: row.how,
+    })),
+    intelligence,
+    scenarioPlanning: scenarioPlanning ?? undefined,
   };
 }

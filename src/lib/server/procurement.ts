@@ -15,7 +15,8 @@ import {
   type ProcurementSnapshot,
   type ProcurementViewId,
 } from "@/lib/procurement/types";
-import { canApprove } from "@/lib/server/actions";
+import { canProcurementApprove, requirePermission } from "@/lib/auth/authorization";
+import { formatStateChange, writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount } from "@/lib/server/money";
@@ -288,6 +289,7 @@ export async function getProcurementSnapshot(ctx: TenantContext, filters: Procur
 }
 
 export async function createRequisitionDraft(ctx: TenantContext, productId: string) {
+  requirePermission(ctx, "procurement.create");
   requireUser(ctx);
   const prisma = getPrisma();
 
@@ -332,7 +334,7 @@ export async function createRequisitionDraft(ctx: TenantContext, productId: stri
 }
 
 export async function reviewRequisition(ctx: TenantContext, id: string, decision: "review" | "reject") {
-  if (!canApprove(ctx.role)) {
+  if (!canProcurementApprove(ctx.role)) {
     throw new ServerError("You do not have permission to review requisitions.", "FORBIDDEN");
   }
   requireUser(ctx);

@@ -241,7 +241,40 @@
     @apply min-w-0 overflow-hidden rounded-sm border border-border bg-surface;
   }
 
+  .work-surface-elevated {
+    @apply min-w-0 overflow-hidden rounded-sm border border-border bg-card;
+    background-color: var(--pharmora-surface-elevated);
+  }
+
   .gantt-canvas {
     @apply min-w-0 overflow-hidden rounded-sm border border-border bg-surface;
+  }
+
+  .ops-table {
+    @apply w-full text-sm;
+  }
+
+  .ops-table thead {
+    @apply text-left text-[10px] font-medium tracking-[0.12em] text-muted-foreground uppercase;
+  }
+
+  .ops-table th {
+    @apply border-b border-border px-3 py-2 font-medium;
+  }
+
+  .ops-table td {
+    @apply border-t border-border/80 px-3 py-2 align-middle;
+  }
+
+  .ops-table tbody tr {
+    @apply transition-colors hover:bg-muted/30;
+  }
+
+  .progress-track {
+    @apply h-1 w-full overflow-hidden rounded-sm bg-muted;
+  }
+
+  .progress-fill {
+    @apply h-full rounded-sm bg-primary;
   }
 }

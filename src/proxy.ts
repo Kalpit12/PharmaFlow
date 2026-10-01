@@ -1,7 +1,7 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-const PROTECTED = ["/dashboard", "/ai", "/app-preview", "/approvals", "/communications", "/operations", "/reports", "/inventory", "/materials", "/procurement", "/suppliers", "/daily-review", "/execution", "/command-center", "/forecast", "/scenarios", "/rfqs", "/purchase-orders", "/receiving", "/supplier-performance"];
+const PROTECTED = ["/dashboard", "/ai", "/app-preview", "/approvals", "/communications", "/operations", "/reports", "/inventory", "/materials", "/procurement", "/suppliers", "/daily-review", "/execution", "/command-center", "/forecast", "/scenarios", "/rfqs", "/purchase-orders", "/receiving", "/supplier-performance", "/batches", "/quality", "/traceability", "/governance"];
 
 const handler = auth((request) => {
   const { pathname } = request.nextUrl;
@@ -51,5 +51,13 @@ export const config = {
     "/receiving/:path*",
     "/supplier-performance",
     "/supplier-performance/:path*",
+    "/batches",
+    "/batches/:path*",
+    "/quality",
+    "/quality/:path*",
+    "/traceability",
+    "/traceability/:path*",
+    "/governance",
+    "/governance/:path*",
   ],
 };

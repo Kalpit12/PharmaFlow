@@ -11,7 +11,11 @@ export type AuthenticatedUser = {
 export const ROLE_LABEL: Record<UserRole, string> = {
   ADMIN: "Administrator",
   MANAGER: "Operations Manager",
+  OPERATIONS: "Operations",
   OPERATOR: "Operator",
+  PROCUREMENT: "Procurement",
+  QUALITY: "Quality",
+  SALES: "Sales",
   VIEWER: "Viewer",
 };
 

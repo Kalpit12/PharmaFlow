@@ -27,8 +27,8 @@ export async function runPhase17Verify(prisma: PrismaClient) {
   const serverSource = readFileSync(join(process.cwd(), "src/lib/server/daily-review.ts"), "utf8");
   assert(!/openai|OpenAI|generateResponse|runProductionOrchestrator/i.test(pageSource), "Daily Review page load must not call OpenAI");
   assert(!/openai|OpenAI/i.test(serverSource), "Daily review server must not call OpenAI");
-  assert(/Explain today/.test(workspaceSource), "Explicit AI explain action required");
-  assert(/\/api\/ai/.test(workspaceSource), "AI explanation uses existing /api/ai path");
+  assert(/IntelligenceSurface/.test(workspaceSource), "Daily Review includes explicit operational intelligence explain");
+  assert(!/\/api\/ai/.test(workspaceSource), "Daily Review explain does not use the mutating /api/ai orchestrator");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });

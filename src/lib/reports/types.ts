@@ -1,3 +1,4 @@
+import type { IntelligenceSnapshot } from "@/lib/intelligence/types";
 import type { MaterialStatus, ReportRisk } from "@/lib/reports/risk";
 
 export const REPORT_VIEWS = [
@@ -119,6 +120,19 @@ export type ProductionOrderRow = {
   plannedEnd: string | null;
 };
 
+/** Open inbound receipts surfaced on inventory / procurement reports. */
+export type InboundReceiptRow = {
+  id: string;
+  reference: string;
+  productName: string;
+  sku: string;
+  quantity: number;
+  supplierName: string | null;
+  expectedAt: string;
+  purchaseOrderId: string | null;
+  purchaseOrderNumber: string | null;
+};
+
 export type ReportingSnapshot = {
   brand: string;
   disclaimer: string;
@@ -202,10 +216,18 @@ export type ReportingSnapshot = {
   managementAttention: ManagementAttentionItem[];
   forecastOutlook: ForecastOutlookSlice;
   scenarioHref: string;
+  scenarioPlanning?: {
+    baselineLabel: string;
+    scenarioLabel: string;
+    rows: Array<{ id: string; label: string; current: string; scenario: string; variance: string }>;
+    href: string;
+  };
   supplierBands: Array<{ id: string; label: string; count: number }>;
   supplierAttention: Array<{ id: string; name: string; band: string; reason: string }>;
   procurementPipeline: Array<{ id: string; label: string; count: number; href: string }>;
+  inboundReceipts: InboundReceiptRow[];
   metricNotes: Array<{ id: string; label: string; how: string }>;
+  intelligence: IntelligenceSnapshot;
 };
 
 export type ManagementAttentionItem = {

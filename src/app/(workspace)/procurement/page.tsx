@@ -6,7 +6,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { WorkspacePage } from "@/components/layout/WorkspacePage";
 import { ProcurementWorkspace } from "@/components/procurement/ProcurementWorkspace";
 import { ServerError } from "@/lib/server/errors";
-import { canApprove } from "@/lib/server/actions";
+import { canProcurementApprove } from "@/lib/auth/authorization";
 import { getProcurementSnapshot, resolveProcurementFilters } from "@/lib/server/procurement";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 
@@ -23,7 +23,7 @@ export default async function ProcurementPage({
   try {
     const ctx = await getAuthenticatedTenantContext();
     data = await getProcurementSnapshot(ctx, resolveProcurementFilters(params));
-    canReview = canApprove(ctx.role);
+    canReview = canProcurementApprove(ctx.role);
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
     console.error("Procurement failed to load", error);

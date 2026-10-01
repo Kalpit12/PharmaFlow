@@ -7,6 +7,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/ds/empty-state";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { StackedPercentBar } from "@/components/charts/StackedPercentBar";
+import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -15,6 +17,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { buildInventoryHealthSegments } from "@/lib/analytics/inventory";
 import { INVENTORY_VIEWS, type InventoryItem, type InventorySnapshot, type InventoryViewId } from "@/lib/inventory/types";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import type { StatusTone } from "@/types/status";
@@ -183,42 +186,28 @@ export function InventoryWorkspace({ data }: { data: InventorySnapshot }) {
 
       {data.view === "overview" || data.view === "health" ? (
         <div className="grid min-w-0 gap-3 xl:grid-cols-2">
-          <section className="work-surface p-4">
-            <h2 className="text-sm font-semibold tracking-tight">Inventory health</h2>
-            <ul className="mt-3 space-y-2">
-              {data.health.map((row) => (
-                <li key={row.id}>
-                  <Link href={href({ view: "health", status: row.id })} className="block rounded-md hover:bg-muted/50">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-medium">{row.label}</span>
-                      <span className="tabular-nums text-muted-foreground">
-                        {row.count} · {formatQty(row.quantity)}
-                      </span>
-                    </div>
-                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-muted">
-                      <div className="h-full bg-primary" style={{ width: `${Math.max(4, (row.count / Math.max(1, data.items.length)) * 100)}%` }} />
-                    </div>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
-          <section className="work-surface p-4">
-            <h2 className="text-sm font-semibold tracking-tight">By category</h2>
-            <ul className="mt-3 space-y-2">
-              {data.categories.map((row) => (
-                <li key={row.id}>
-                  <Link href={href({ class: row.id })} className="block rounded-lg px-1 py-1.5 hover:bg-muted/50">
-                    <p className="text-sm font-medium">{row.label}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {row.items} items · {formatQty(row.quantity)} · {row.low + row.critical} needing attention
-                      {row.expiryRisk > 0 ? ` · ${row.expiryRisk} expiry risk` : ""}
-                    </p>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </section>
+          <StackedPercentBar
+            title="Inventory health"
+            description="On-hand quantity by stock health — deterministic from safety stock and expiry exposure."
+            segments={buildInventoryHealthSegments({
+              health: data.health,
+              expiringSoonQty: data.expiringSoonQty,
+            })}
+            emptyMessage="No inventory health quantities in scope."
+          />
+          <HorizontalBarChart
+            title="By category"
+            description="Quantity by product class."
+            rows={data.categories.map((row) => ({
+              id: row.id,
+              label: row.label,
+              value: row.quantity,
+              hint: `${row.items} items · ${row.low + row.critical} needing attention`,
+              href: href({ class: row.id }),
+              tone: row.low + row.critical > 0 ? ("material" as const) : ("intel" as const),
+            }))}
+            emptyMessage="No category quantities in scope."
+          />
         </div>
       ) : null}
 

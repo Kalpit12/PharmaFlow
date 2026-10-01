@@ -1,3 +1,5 @@
+import type { IntelligenceSnapshot } from "@/lib/intelligence/types";
+
 export const DAILY_SEVERITIES = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"] as const;
 export type DailySeverity = (typeof DAILY_SEVERITIES)[number];
 
@@ -50,6 +52,7 @@ export type DailyReviewSnapshot = {
   };
   emptyReason: string | null;
   planningNote: string;
+  intelligence: IntelligenceSnapshot;
 };
 
 /** Compact packet for OpenAI — never includes tenant UUID or raw Prisma rows. */

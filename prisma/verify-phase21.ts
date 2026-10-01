@@ -78,11 +78,18 @@ const fixture: ScenarioBaselineFacts = {
   ],
   pendingRequisitions: 1,
   executionNeedsReview: 2,
+  batchesOnHold: 0,
+  qualityOpen: 0,
+  qualityCritical: 0,
+  customerExposure: 0,
   hasOperations: true,
   hasMaterials: true,
   hasInventory: true,
   hasProcurement: true,
   hasExecution: true,
+  hasBatches: true,
+  hasQuality: true,
+  hasTraceability: true,
 };
 
 export async function runPhase21Verify(prisma: PrismaClient) {
@@ -93,7 +100,8 @@ export async function runPhase21Verify(prisma: PrismaClient) {
 
   assert(!/generateResponse|runProductionOrchestrator|chat\.completions|openaiAIProvider/i.test(pageSource + engineSource + serverSource), "Scenario engine has no OpenAI dependency");
   assert(!/tensorflow|scikit|openai/i.test(engineSource), "No ML libraries in scenario engine");
-  assert(/Explain this scenario/.test(uiSource) && /\/api\/ai/.test(uiSource), "Explicit explanation uses existing /api/ai");
+  assert(/Explain/.test(uiSource) && /\/api\/scenarios\/explain/.test(uiSource), "Explicit explanation uses dedicated scenario explain API");
+  assert(!/\/api\/ai/.test(uiSource), "Scenario UI does not use mutating /api/ai orchestrator");
   assert(!/decideAction|createRequisitionDraft|plannedStart/.test(uiSource), "Scenario UI does not execute");
   assert(/Simulation only/.test(uiSource), "Simulation-only labelling");
 

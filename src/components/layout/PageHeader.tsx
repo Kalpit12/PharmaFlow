@@ -29,22 +29,22 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <header className={cn("flex flex-col gap-3 border-b border-border/80 pb-4", className)}>
+    <header className={cn("flex flex-col gap-2.5 border-b border-border pb-3.5", className)}>
       {breadcrumbs && breadcrumbs.length > 0 ? (
         <div className="lg:hidden">
           <Breadcrumbs items={breadcrumbs} />
         </div>
       ) : null}
-      <div className="flex flex-wrap items-end justify-between gap-4">
-        <div className="min-w-0 max-w-2xl space-y-1.5">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="min-w-0 max-w-2xl space-y-1">
           {context ? <p className="label-context">{context}</p> : null}
           <div className="flex flex-wrap items-center gap-2">
-            <h1 className="text-[1.35rem] font-medium tracking-[-0.02em] sm:text-[1.5rem]">{title}</h1>
+            <h1 className="text-[1.25rem] font-medium tracking-[-0.02em] sm:text-[1.4rem]">{title}</h1>
             {badge}
           </div>
           {description ? <p className="max-w-xl text-sm leading-relaxed text-muted-foreground">{description}</p> : null}
           {metadata ? <div className="text-[11px] tabular-nums text-muted-foreground">{metadata}</div> : null}
-          {related || relatedPath ? <DomainTrail pathname={relatedPath} links={related} className="pt-1" /> : null}
+          {related || relatedPath ? <DomainTrail pathname={relatedPath} links={related} className="pt-0.5" /> : null}
         </div>
         {actions ? <div className="flex shrink-0 flex-wrap items-center gap-2 pb-0.5">{actions}</div> : null}
       </div>

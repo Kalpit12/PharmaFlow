@@ -80,6 +80,35 @@ export type MaterialLotSummary = {
 
 export type MaterialCoverageStatus = "SHORTAGE" | "INCOMING_COVERS" | "TIGHT" | "COVERED";
 
+export type ShortageStatus = "NO_SHORTAGE" | "AT_RISK" | "SHORTAGE" | "UNKNOWN";
+
+export type MaterialPriorityLevel = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
+
+export type BomExplosionPath = {
+  rootProductId: string;
+  pathProductIds: string[];
+  pathSkus: string[];
+  quantityPer: number;
+};
+
+export type MaterialDemandSource = {
+  productionOrderId: string;
+  orderNumber: string;
+  productName: string;
+  orderQuantity: number;
+  requiredQuantity: number;
+  paths: BomExplosionPath[];
+};
+
+export type ProcurementLinkage = {
+  openRequisitions: number;
+  openRfqs: number;
+  openPurchaseOrders: number;
+  hrefProcurement: string;
+  hrefRfqs: string;
+  hrefPurchaseOrders: string;
+};
+
 export type MaterialRequirement = {
   productId: string;
   sku: string;
@@ -87,13 +116,28 @@ export type MaterialRequirement = {
   unit: string;
   safetyStock: number;
   grossRequirement: number;
+  /** On-hand from usable inventory lots. */
+  onHand: number;
+  /** Alias retained for existing consumers — equals onHand. */
   available: number;
+  /** Material demand committed to open production (equals gross requirement). */
+  allocated: number;
+  /** On hand minus allocated — uncommitted physical stock. */
+  freeAvailable: number;
   incoming: number;
   projectedAvailable: number;
   netRequirement: number;
   shortage: boolean;
   shortagePercent: number;
+  shortageStatus: ShortageStatus;
+  earliestShortageDate: string | null;
+  requirementDate: string | null;
+  priorityLevel: MaterialPriorityLevel;
+  priorityReason: string;
   affectedOrders: AffectedProductionOrder[];
+  demandSources: MaterialDemandSource[];
+  bomPaths: BomExplosionPath[];
+  procurement: ProcurementLinkage;
   earliestDueDate: string | null;
   urgency: MaterialRisk;
   risk: MaterialRisk;
@@ -121,5 +165,9 @@ export type MaterialsSnapshot = {
   materials: MaterialRequirement[];
   orders: Array<{ id: string; orderNumber: string; productName: string }>;
   orderIdsAtRisk: string[];
+  shortageHorizon: Array<{ id: string; label: string; value: number; hint: string }>;
+  productionOrdersAffected: number;
+  /** Orders whose BOM explosion stopped because of a cycle. Demand for those orders is not calculated. */
+  bomCycles: Array<{ orderId: string; orderNumber: string; path: string[] }>;
   emptyReason: string | null;
 };

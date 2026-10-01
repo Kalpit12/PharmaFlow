@@ -7,6 +7,8 @@ import { ChevronLeft, ChevronRight, Loader2, Lock } from "lucide-react";
 
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { GroupedBarChart } from "@/components/charts/GroupedBarChart";
+import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -18,6 +20,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
+import { buildProductionPlannedVsActual } from "@/lib/analytics/production";
+import { utilizationTone } from "@/lib/charts/tokens";
 import type { OperationsView } from "@/lib/server/operations";
 import type { MaterialReadinessState } from "@/lib/operations/planning";
 import { cn } from "@/lib/utils";
@@ -417,6 +421,14 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+        <p className="text-xs text-muted-foreground">
+          Planning schedules work. Execution releases and runs it on the shop floor.
+        </p>
+        <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+          <Link href="/execution/production">Open production execution</Link>
+        </Button>
+      </div>
       <section
         aria-label="Planning metrics"
         className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 text-sm"
@@ -962,8 +974,42 @@ function CompactCapacity({
 }
 
 function CapacityView({ data }: { data: OperationsView }) {
+  const plannedVsActual = buildProductionPlannedVsActual(
+    data.orders.map((order) => ({
+      productId: order.productId || order.id,
+      productName: order.productName,
+      status: order.status,
+      quantity: order.quantity,
+      producedQuantity: order.producedQuantity,
+    }))
+  );
+
   return (
-    <ul className="grid min-w-0 gap-3 md:grid-cols-2">
+    <div className="flex min-w-0 flex-col gap-3">
+      <div className="grid min-w-0 gap-3 lg:grid-cols-2">
+        <HorizontalBarChart
+          title="Workstation capacity"
+          description="Finite-capacity utilization for the planning window. Existing 85%/95% thresholds."
+          rows={data.workstations.map((ws) => ({
+            id: ws.id,
+            label: ws.name,
+            value: ws.utilization,
+            hint: `${ws.scheduledHours}h / ${ws.availableHours}h`,
+            href: `/operations?workstation=${ws.id}`,
+            tone: utilizationTone(ws.utilization),
+          }))}
+          valueSuffix="%"
+          emptyMessage="No active workstations in this workspace."
+        />
+        <GroupedBarChart
+          title="Production: Planned vs Actual"
+          description="Open pipeline quantity vs recorded producedQuantity on completed orders."
+          rows={plannedVsActual}
+          note="Actual is null when no produced quantity is recorded — planned is never substituted."
+          emptyMessage="No production orders to compare."
+        />
+      </div>
+      <ul className="grid min-w-0 gap-3 md:grid-cols-2">
       {data.workstations.map((ws) => {
         const lineOrders = data.orders.filter((order) => order.workstationId === ws.id && order.plannedStart && order.plannedEnd);
         const critical = lineOrders.filter((order) => order.priority === "CRITICAL").length;
@@ -1015,6 +1061,7 @@ function CapacityView({ data }: { data: OperationsView }) {
         );
       })}
     </ul>
+    </div>
   );
 }
 

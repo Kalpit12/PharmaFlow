@@ -13,7 +13,7 @@ import {
   type ProcurementRfqViewId,
 } from "@/lib/procurement-rfq/types";
 import { suggestedProcurementQuantity } from "@/lib/procurement/recommendations";
-import { canApprove } from "@/lib/server/actions";
+import { canProcurementApprove, requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount } from "@/lib/server/money";
@@ -43,7 +43,7 @@ function requireUser(ctx: TenantContext): string {
 }
 
 function requireReviewer(ctx: TenantContext): void {
-  if (!canApprove(ctx.role)) throw new ServerError("Only managers can perform this action.", "FORBIDDEN");
+  if (!canProcurementApprove(ctx.role)) throw new ServerError("You do not have permission to perform this action.", "FORBIDDEN");
 }
 
 async function nextReference(tenantId: string): Promise<string> {
@@ -194,8 +194,8 @@ async function loadRfqDetail(ctx: TenantContext, id: string): Promise<Procuremen
     currencyComparable: comparison.currencyComparable,
     evaluationSummary: comparison.evaluationSummary,
     awardedResponseId: row.awardedResponseId,
-    canAward: canApprove(ctx.role) && (row.status === "EVALUATION" || row.status === "RESPONSES") && !row.awardedResponseId,
-    canReview: canApprove(ctx.role),
+    canAward: canProcurementApprove(ctx.role) && (row.status === "EVALUATION" || row.status === "RESPONSES") && !row.awardedResponseId,
+    canReview: canProcurementApprove(ctx.role),
     linkedPurchaseOrder: linkedPurchaseOrder
       ? { id: linkedPurchaseOrder.id, poNumber: linkedPurchaseOrder.poNumber, status: linkedPurchaseOrder.status }
       : null,

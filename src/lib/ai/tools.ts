@@ -174,28 +174,7 @@ export type ToolOutput = {
     };
     risks: Array<{ domain: string; title: string; severity: string; reason: string }>;
   };
-  get_scenario: {
-    simulation: "SIMULATED";
-    horizon: string;
-    inputs: {
-      horizon: number;
-      demandChangePct: number;
-      productionCapacityChangePct: number;
-      productionDelayDays: number;
-      inventoryAvailabilityChangePct: number;
-      procurementAvailabilityChangePct: number;
-      priorityMode: string;
-    };
-    impacts: Array<{
-      domain: string;
-      metric: string;
-      baseline: string;
-      projected: string | null;
-      delta: string;
-      severity: string;
-    }>;
-    risks: Array<{ title: string; severity: string; impact: string }>;
-  };
+  get_scenario: import("@/lib/scenarios/types").CompactScenarioContext;
   get_procurement_rfq: {
     reference: string;
     title: string;

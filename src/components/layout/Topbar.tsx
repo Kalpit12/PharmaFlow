@@ -19,7 +19,7 @@ export function Topbar() {
   const context = useMemo(() => contextForPath(pathname, workspace.brand), [pathname, workspace.brand]);
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-3 border-b border-border bg-background px-3 sm:px-4">
+    <header className="flex h-10 shrink-0 items-center gap-3 border-b border-border bg-background px-3 sm:px-4">
       <Button
         variant="ghost"
         size="icon"

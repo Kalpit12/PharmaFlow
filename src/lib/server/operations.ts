@@ -19,6 +19,11 @@ import {
   type MaterialReadinessState,
   type PlanningAttentionItem,
 } from "@/lib/operations/planning";
+import { getBatchesSnapshot } from "@/lib/server/batches";
+import { getTraceabilityAttention } from "@/lib/server/traceability";
+import { getQualityAttention } from "@/lib/server/quality";
+import { requirePermission, can } from "@/lib/auth/authorization";
+import { formatStateChange, writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { ServerError } from "@/lib/server/errors";
@@ -40,10 +45,12 @@ export type OperationsOrder = {
   id: string;
   orderNumber: string;
   productName: string;
+  productId: string;
   workstationId: string | null;
   workstationName: string | null;
   durationMinutes: number;
   quantity: number;
+  producedQuantity: number | null;
   priority: ScheduledOrder["priority"];
   status: ProductionOrderStatus;
   isLocked: boolean;
@@ -76,6 +83,10 @@ export type OperationsView = {
   attention: ScheduleConflict[];
   planningAttention: PlanningAttentionItem[];
   workstationsActive: Array<{ id: string; name: string; code: string }>;
+  capabilities: {
+    canSchedule: boolean;
+    canExecute: boolean;
+  };
 };
 
 function startOfUtcDay(date: Date): Date {
@@ -113,7 +124,11 @@ export async function getOperationsPlanner(
     }),
     prisma.productionOrder.findMany({
       where: { tenantId: ctx.tenantId },
-      include: { product: { select: { name: true, id: true } }, workstation: { select: { name: true } } },
+      include: {
+        product: { select: { name: true, id: true } },
+        workstation: { select: { name: true } },
+        batch: { select: { producedQuantity: true } },
+      },
       orderBy: [{ plannedStart: "asc" }, { createdAt: "asc" }],
     }),
   ]);
@@ -146,6 +161,7 @@ export async function getOperationsPlanner(
   const days = Math.max(1, Math.round((window.end.getTime() - window.start.getTime()) / (24 * 60 * 60 * 1000)));
   const names = new Map(workstationRows.map((row) => [row.id, row.name]));
   const quantities = new Map(orderRows.map((row) => [row.id, row.quantity]));
+  const produced = new Map(orderRows.map((row) => [row.id, row.batch?.producedQuantity ?? null]));
   const statuses = new Map(orderRows.map((row) => [row.id, row.status]));
   const productIds = new Map(orderRows.map((row) => [row.id, row.product.id]));
 
@@ -182,10 +198,12 @@ export async function getOperationsPlanner(
       id: row.id,
       orderNumber: row.orderNumber,
       productName: row.productName,
+      productId: productIds.get(row.id) ?? "",
       workstationId: row.workstationId,
       workstationName: row.workstationId ? names.get(row.workstationId) ?? null : null,
       durationMinutes: row.durationMinutes,
       quantity: quantities.get(row.id) ?? 0,
+      producedQuantity: produced.get(row.id) ?? null,
       priority: row.priority,
       status: statuses.get(row.id) ?? "UNSCHEDULED",
       isLocked: row.isLocked,
@@ -221,7 +239,7 @@ export async function getOperationsPlanner(
       ? 0
       : Math.round(workstationViews.reduce((sum, row) => sum + row.utilization, 0) / workstationViews.length);
 
-  const planningAttention = buildPlanningAttention({
+  const planningAttentionBase = buildPlanningAttention({
     conflicts,
     materialShortageOrderCount: materialShortageOrders,
     unscheduledCount: unscheduled.length,
@@ -229,6 +247,40 @@ export async function getOperationsPlanner(
     overCapacityWorkstations,
     highUtilizationWorkstations,
   });
+  const batchSnapshot = await getBatchesSnapshot(ctx, { view: "all" }).catch(() => null);
+  const traceabilityItems = await getTraceabilityAttention(ctx).catch(() => []);
+  const qualityItems = await getQualityAttention(ctx).catch(() => []);
+  const batchAttention: PlanningAttentionItem[] = (batchSnapshot?.attention ?? []).map((item) => ({
+    id: item.id,
+    severity: item.severity === "CRITICAL" ? "CRITICAL" : "WARNING",
+    title: item.title,
+    detail: item.detail,
+    count: 1,
+    href: item.href,
+    view: "attention",
+    focus: "material",
+  }));
+  const traceabilityAttention: PlanningAttentionItem[] = traceabilityItems.map((item) => ({
+    id: item.id,
+    severity: item.severity === "CRITICAL" ? "CRITICAL" : item.severity === "HIGH" ? "WARNING" : "WARNING",
+    title: item.title,
+    detail: item.detail,
+    count: 1,
+    href: item.href,
+    view: "attention",
+    focus: "material",
+  }));
+  const qualityAttention: PlanningAttentionItem[] = qualityItems.map((item) => ({
+    id: item.id,
+    severity: item.severity === "CRITICAL" ? "CRITICAL" : item.severity === "HIGH" ? "WARNING" : "WARNING",
+    title: item.title,
+    detail: item.detail,
+    count: 1,
+    href: item.href,
+    view: "attention",
+    focus: "material",
+  }));
+  const planningAttention = [...planningAttentionBase, ...batchAttention, ...traceabilityAttention, ...qualityAttention];
 
   return {
     brand: tenant?.name ?? "Workspace",
@@ -250,6 +302,10 @@ export async function getOperationsPlanner(
     attention: conflicts.slice(0, 8),
     planningAttention,
     workstationsActive: workstationRows.map((row) => ({ id: row.id, name: row.name, code: row.code })),
+    capabilities: {
+      canSchedule: can(ctx.role, "production.schedule"),
+      canExecute: can(ctx.role, "production.execute"),
+    },
   };
 }
 
@@ -287,7 +343,7 @@ function parseScheduleDate(value: string, label: string): Date {
 }
 
 export async function updateProductionOrderSchedule(ctx: TenantContext, orderId: string, input: ScheduleUpdateInput) {
-  requireUser(ctx);
+  requirePermission(ctx, "production.schedule");
   const order = await loadMutableOrder(ctx, orderId);
   const prisma = getPrisma();
 
@@ -322,11 +378,18 @@ export async function updateProductionOrderSchedule(ctx: TenantContext, orderId:
     select: { id: true, orderNumber: true, plannedStart: true, plannedEnd: true, workstationId: true, status: true },
   });
 
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_SCHEDULE_UPDATED",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: `STATUS: ${nextStatus}`,
+  });
+
   return updated;
 }
 
 export async function resequenceProductionOrder(ctx: TenantContext, orderId: string, direction: ResequenceDirection) {
-  requireUser(ctx);
+  requirePermission(ctx, "production.schedule");
   const order = await loadMutableOrder(ctx, orderId);
   if (!order.workstationId || !order.plannedStart || !order.plannedEnd) {
     throw new ServerError("Order must be scheduled on a workstation before resequencing.", "INTERNAL");
@@ -369,11 +432,18 @@ export async function resequenceProductionOrder(ctx: TenantContext, orderId: str
     }),
   ]);
 
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_ORDER_RESEQUENCED",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: `DIRECTION: ${direction}; SWAPPED_WITH: ${neighbor.id}`,
+  });
+
   return { id: order.id, direction, swappedWith: neighbor.id };
 }
 
 export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: string, windowStartIso: string) {
-  requireUser(ctx);
+  requirePermission(ctx, "production.schedule");
   const order = await loadMutableOrder(ctx, orderId);
   const prisma = getPrisma();
 

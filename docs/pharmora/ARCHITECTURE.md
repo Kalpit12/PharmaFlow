@@ -237,15 +237,30 @@ Deterministic BI visualizations — no new chart dependency, no OpenAI on render
 
 ```
 PostgreSQL → existing server services / aggregations
+           → src/lib/analytics/* (pure deterministic helpers)
            → typed snapshots (CommandCenterSnapshot, ReportingSnapshot, DashboardData)
            → src/components/charts/*
            → optional client navigation to existing routes
 ```
 
-- `src/lib/server/command-center-analytics.ts` — Command Center chart payload (reuses dashboard, operations, inventory, procurement metrics)
-- `src/lib/analytics/production.ts` — shared planned-vs-actual aggregation from `ProductionOrder`
-- `src/components/charts/*` — token-based SVG chart primitives
-- Reports executive/sales/operations/procurement/suppliers/materials sections compose the same chart layer
+Principles:
+
+- Tenant context from `getAuthenticatedTenantContext()` only
+- Unknown ≠ zero — omit segments or set actual to `null` when source data is missing
+- Planned quantity is never substituted for actual (`producedQuantity` only)
+- Reuse canonical inventory / MRP / procurement / supplier calculations — do not duplicate engines
+
+Modules:
+
+- `src/lib/analytics/production.ts` — planned vs actual
+- `src/lib/analytics/inventory.ts` — health segments
+- `src/lib/analytics/procurement.ts` — pipeline stages
+- `src/lib/analytics/materials.ts` — requirement vs available
+- `src/lib/analytics/sales.ts` — revenue bar mapping
+- `src/lib/server/command-center-analytics.ts` — Command Center chart payload
+- `src/components/charts/*` — token-based SVG primitives
+
+Surfaces: Command Center, Dashboard, Reports, Operations capacity, Inventory health, Materials.
 
 Tenant context remains `getAuthenticatedTenantContext()` only. Zero schema changes.
 
@@ -386,6 +401,30 @@ Signal → Recommendation → Review → Approval → Execute → Activity
 It aggregates tenant-scoped Action, Workflow, ProcurementRequisition, and Communication draft records. It does **not** invent recommendations or create a second execution engine.
 
 Approval and execution call the existing Phase 9 action and Phase 10 workflow server paths (plus procurement requisition review). Communication drafts remain non-sendable from Execution. Tenant identity and authorization come only from `getAuthenticatedTenantContext()` and existing `canApprove` rules.
+
+**Zero OpenAI calls. Zero new infrastructure. Zero schema changes. No database reset.**
+
+## Production Execution (Phase 28)
+
+`/execution/production` is the shop-floor execution surface. It does not replace Phase 18 `/execution` (approvals queue) or Phase 12.5/31 `/operations` (planning).
+
+**Planning vs execution:**
+
+- Planning continues to use `ProductionOrderStatus` and schedule fields.
+- Execution state is layered: `WAITING → RELEASED → IN_PROGRESS ⇄ PAUSED → COMPLETED`.
+- `RELEASED` and `PAUSED` are derived from existing `AuditLog` actions (`PRODUCTION_RELEASE`, `PRODUCTION_PAUSE`, `PRODUCTION_RESUME`) — no enum/schema change.
+- `START` / `COMPLETE` persist `IN_PROGRESS` / `COMPLETED` on `ProductionOrder` and timestamps/quantity on `ProductionBatch` when present.
+
+**Mutations** (`production.execute`, tenant from `getAuthenticatedTenantContext()` only):
+
+- `POST /api/production-orders/[id]/release|start|pause|resume|complete`
+- Release locks the order (`isLocked`) so schedule mutations cannot corrupt released work.
+- Complete validates produced quantity ≤ planned; does not consume materials, create lots, release quality, or notify anyone.
+- Every transition writes the existing `AuditLog`.
+
+**UI:** dense execution board, metric strip, planned-vs-actual, Management Attention, inspection Sheet. Mobile shows decision-critical fields first (state, product, progress, workstation, risk, action).
+
+Command Center and Reports surface compact production-execution signals/KPIs linking to `/execution/production`.
 
 **Zero OpenAI calls. Zero new infrastructure. Zero schema changes. No database reset.**
 

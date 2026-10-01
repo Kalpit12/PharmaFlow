@@ -11,6 +11,7 @@ import {
   type ReceivingViewId,
 } from "@/lib/receiving/types";
 import type { InventoryClassId } from "@/lib/reports/types";
+import { requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount } from "@/lib/server/money";
@@ -250,6 +251,7 @@ export async function receivePurchaseOrderGoods(
   purchaseOrderId: string,
   input: { idempotencyKey: string; lines: ReceivingLineInput[] }
 ): Promise<ReceivePurchaseOrderResult> {
+  requirePermission(ctx, "inventory.receive");
   const userId = requireUser(ctx);
   const idempotencyKey = input.idempotencyKey?.trim();
   if (!idempotencyKey) throw new ServerError("Idempotency key is required.", "INTERNAL");

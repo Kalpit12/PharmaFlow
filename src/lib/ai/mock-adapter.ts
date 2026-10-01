@@ -222,6 +222,16 @@ function buildDemoContext(intent: AIIntent): BusinessContext {
         procurementAvailabilityChangePct: 0,
         priorityMode: "current",
       },
+      assumptions: [{ label: "Demand", change: "+20%", supported: true }],
+      comparison: [{ label: "Production orders", current: "24", scenario: "29", variance: "+5" }],
+      journey: [{ stage: "Demand", metric: "Pipeline pressure", reason: "Simulated surge", confidence: "MEDIUM" }],
+      impactChain: [{ trigger: "+20% demand", consequence: "Material requirement increases" }],
+      decision: {
+        headline: "Higher capacity required",
+        why: ["Capacity reaches 94%"],
+        tradeOffs: ["Higher utilization"],
+        limitations: ["Demo only"],
+      },
       impacts: [
         {
           domain: "sales",
@@ -233,6 +243,7 @@ function buildDemoContext(intent: AIIntent): BusinessContext {
         },
       ],
       risks: [{ title: "Simulated demand pressure", severity: "MEDIUM", impact: "Demo only." }],
+      excludedDomains: [],
     };
   }
 

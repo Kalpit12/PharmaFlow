@@ -291,6 +291,17 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
 
   return (
     <div className="flex min-w-0 flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3 work-surface px-4 py-3">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Production execution</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Shop-floor release → start → pause/resume → complete lives on the production execution board.
+          </p>
+        </div>
+        <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+          <Link href="/execution/production">Open production execution</Link>
+        </Button>
+      </div>
       <section className="-mx-1 flex gap-0 overflow-x-auto border-y border-border px-1 [scrollbar-width:thin]">
         {[
           { label: "Needs review", value: data.kpis.needsReview },

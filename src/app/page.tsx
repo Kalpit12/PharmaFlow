@@ -1,11 +1,13 @@
-import { redirect } from "next/navigation";
+import type { Metadata } from "next";
 
-import { auth } from "@/auth";
+import { LandingShell } from "@/components/landing/LandingShell";
 
-export default async function Home() {
-  const session = await auth();
-  if (session?.user) {
-    redirect("/dashboard");
-  }
-  redirect("/login");
+export const metadata: Metadata = {
+  title: "Pharmaflow — AI-Powered Pharmaceutical Business Platform",
+  description:
+    "Pharmaflow is the operations system for pharmaceutical manufacturers, distributors, and medical suppliers in Kenya. Command, inventory, materials, procurement, and execution in one workspace.",
+};
+
+export default function Home() {
+  return <LandingShell />;
 }

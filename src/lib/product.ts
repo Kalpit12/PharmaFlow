@@ -3,8 +3,8 @@ export const product = {
   name: "Pharmaflow",
   /** Lowercase lockup matching the brand mark. */
   wordmark: "pharmaflow",
-  tagline: "Pharmaceutical Operations Intelligence",
-  shortTagline: "Operations Intelligence",
+  tagline: "Pharmaceutical Operations Command System",
+  shortTagline: "Operations Command",
   logo: {
     mark: "/brand/logo-mark.png",
     markSm: "/brand/logo-mark-64.png",

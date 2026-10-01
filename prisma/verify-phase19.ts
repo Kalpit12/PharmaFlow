@@ -26,7 +26,8 @@ export async function runPhase19Verify(prisma: PrismaClient) {
 
   assert(!/generateResponse|runProductionOrchestrator|chat\.completions|openaiAIProvider/i.test(pageSource + serverSource), "AI is not called during Command Center loading");
   assert(!/fetch\(\s*[\"']\/api\/ai/i.test(pageSource), "Page load must not call /api/ai");
-  assert(/Explain today/.test(uiSource) && /\/api\/ai/.test(uiSource), "Explicit explanation uses existing /api/ai");
+  assert(/IntelligenceSurface/.test(uiSource), "Command Center includes operational intelligence");
+  assert(!/fetch\(\s*[\"']\/api\/ai/i.test(uiSource), "Command Center explain does not use the mutating /api/ai orchestrator");
   assert(!/decideAction|decideWorkflow|createRequisitionDraft/i.test(uiSource), "Command Center is read-only");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });

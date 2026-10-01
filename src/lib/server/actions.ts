@@ -7,6 +7,8 @@ import {
   type ActionProposal,
   type ActionTypeName,
 } from "@/lib/ai/actions";
+import { canApprove } from "@/lib/auth/authorization";
+import { writeAuditLog, formatStateChange } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 
@@ -17,9 +19,7 @@ function requireUser(ctx: TenantContext): string {
   return ctx.userId;
 }
 
-export function canApprove(role: string | null): boolean {
-  return role === "ADMIN" || role === "MANAGER";
-}
+export { canApprove } from "@/lib/auth/authorization";
 
 function appendAudit(existing: Prisma.JsonValue, event: AuditEvent): Prisma.InputJsonValue {
   const list = Array.isArray(existing) ? existing : [];
@@ -180,6 +180,14 @@ export async function decideAction(ctx: TenantContext, actionId: string, decisio
         audit: appendAudit(existing.audit, { at: new Date().toISOString(), userId, event: "rejected" }),
       },
     });
+    const change = formatStateChange("STATUS", "PENDING_APPROVAL", "REJECTED");
+    await writeAuditLog(ctx, {
+      action: "ACTION_REJECTED",
+      entityType: "ACTION",
+      entityId: existing.id,
+      oldValue: change.oldValue,
+      newValue: change.newValue,
+    });
     return toProposal(updated);
   }
 
@@ -225,6 +233,14 @@ export async function decideAction(ctx: TenantContext, actionId: string, decisio
           audit: appendAudit(existing.audit, { at: new Date().toISOString(), userId, event: "executed" }),
         },
       });
+    });
+    const change = formatStateChange("STATUS", "PENDING_APPROVAL", "EXECUTED");
+    await writeAuditLog(ctx, {
+      action: "ACTION_APPROVED",
+      entityType: "ACTION",
+      entityId: existing.id,
+      oldValue: change.oldValue,
+      newValue: change.newValue,
     });
     return toProposal(result);
   } catch (error) {

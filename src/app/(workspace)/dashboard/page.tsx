@@ -39,7 +39,7 @@ export default async function DashboardPage() {
       <PageHeader
         context="Overview"
         title="Dashboard"
-        description="Commercial movement, product demand, and items that need follow-up."
+        description="Executive operating surface — commercial movement and items that need follow-up."
         metadata={data.disclaimer}
         relatedPath="/dashboard"
         actions={<DashboardHeaderActions />}

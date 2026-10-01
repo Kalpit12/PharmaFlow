@@ -1,29 +1,29 @@
 # Pharmaflow public landing
 
-Route: `/pharmaflow`  
-Separate from the app. Single CTA: **Book a call**. No Sign in / Get started.
+1. **Hero** — Centered SaaS hero: rotating product word, static wash + grid, chat-style prompt, Command Center mock with outline attention chips.
+2. **Marquee + trust** — Module names, then Manufacturers · Distributors · Medical suppliers · Kenya-first · Human approval.
+3. **Product** — Bento of Command / Control / Supply chain / Quality / Kenya-native, plus shortage→release trail.
+4. **Live operations** — Attention log (illustrative).
+5. **Product chapters** — Command and supply-chain UI fragments.
+6. **Why / proof** — Buyer-readable stats + illustrative operator quotes.
+7. **How it works** — Book a call → plant walkthrough → scoped workspace.
+8. **Security strip** — Tenant isolation, human approval, no autonomous buying, not medical advice.
+9. **Pricing teaser** — Links to `/pricing` (Plant / Network / Group in KSh).
+10. **FAQ** — ERP, WhatsApp, AI, audience, implementation, medical advice.
+11. **Closing band + contact form** — Sales intake: you / company / call focus
+12. **Corporate footer** — NExora Digital · no React Bits credit.
 
-## Section map
+## Other public pages
 
-1. **Hero** — Editorial split: copy left, Command Center mock right. Soft Aurora. Real `<h1>`.
-2. **Trust strip** — Manufacturers · Distributors · Medical suppliers · Kenya-first · Human approval.
-3. **Product chapters** — Command · Supply chain · Control (UI fragments, not icon grid).
-4. **Why / proof** — Buyer-readable stats + illustrative operator quotes.
-5. **How it works** — Book a call → plant walkthrough → scoped workspace.
-6. **Security strip** — Tenant isolation, human approval, no autonomous buying, not medical advice.
-7. **Pricing** — Plant / Network (recommended) / Group in KSh. All CTAs Book a call.
-8. **FAQ** — ERP, WhatsApp, AI, audience, implementation, medical advice.
-9. **Closing band + contact form** — Sales intake: you / company (what you do) / call focus
-10. **Corporate footer** — no React Bits credit.
+- `/pricing` — Full list prices, notes, pricing FAQs. Primary CTA Book a call (`/#contact`).
+- `/about` — NExora Digital, the Nairobi studio behind Pharmaflow. Not medical advice.
 
-## Motion (React Bits, restrained)
+Route: `/` (canonical). `/pharmaflow` redirects here.  
+Separate from the authenticated app. Primary CTA: **Book a call**. Secondary: **Sign in** / **Open workspace**. Nav: Product · Platform · Pricing · About.
 
-| Effect | Where |
-| --- | --- |
-| Aurora (soft, ~40% opacity) | Hero only |
-| FadeContent | Section enters |
-| Magnet | Primary Book a call only |
-| CountUp | Proof band only (not prices) |
+## Motion
+
+Light motion only: CSS opacity and transform (scroll reveals, hero copy rise, slow device float, wash pulse, marquee). Tab-hidden animations pause. No WebGL, Lenis, blur, or pointer-tracking. Respects `prefers-reduced-motion`.
 
 ## Brand
 

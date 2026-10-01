@@ -21,7 +21,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Pharmaflow",
-  description: "Pharmaceutical Operations Intelligence",
+  description: "Pharmaceutical Operations Command System",
   icons: {
     icon: [{ url: "/brand/favicon.png", type: "image/png" }],
     apple: "/apple-touch-icon.png",

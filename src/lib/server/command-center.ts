@@ -12,6 +12,7 @@ import { getDailyReviewSnapshot } from "@/lib/server/daily-review";
 import { getDashboardData } from "@/lib/server/dashboard";
 import type { TenantContext } from "@/lib/server/errors";
 import { getExecutionSnapshot } from "@/lib/server/execution";
+import { getProductionExecutionSignals } from "@/lib/server/production-execution";
 import { countProcurementRfqsAwaitingEvaluation } from "@/lib/server/procurement-rfqs";
 import { countAwaitingReceipt } from "@/lib/server/receiving";
 import { countPendingPurchaseOrders } from "@/lib/server/purchase-orders";
@@ -19,6 +20,7 @@ import { countSupplierPerformanceAttention } from "@/lib/server/supplier-perform
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
 import { getTenant } from "@/lib/server/services/tenant";
 import { buildCommandCenterAnalytics } from "@/lib/server/command-center-analytics";
+import { getPlanningOutlook } from "@/lib/server/scenarios";
 
 const SEVERITY_RANK: Record<DailySeverity, number> = {
   CRITICAL: 5,
@@ -88,7 +90,7 @@ export function toCompactCommandContext(snapshot: CommandCenterSnapshot): Compac
 
 export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<CommandCenterSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, daily, execution, operations, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention] = await Promise.all([
+  const [dashboard, daily, execution, operations, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, planningOutlook, productionExecution] = await Promise.all([
     getDashboardData(ctx).catch(() => null),
     getDailyReviewSnapshot(ctx),
     getExecutionSnapshot(ctx),
@@ -97,7 +99,16 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
     countPendingPurchaseOrders(ctx).catch(() => 0),
     countAwaitingReceipt(ctx).catch(() => 0),
     countSupplierPerformanceAttention(ctx).catch(() => 0),
+    getPlanningOutlook(ctx).catch(() => ({
+      currentState: "Planning outlook unavailable",
+      topRisk: "—",
+      scenarioOpportunity: "Open scenarios workspace",
+      projectedImpact: "—",
+      href: "/scenarios",
+    })),
+    getProductionExecutionSignals(ctx),
   ]);
+  const intelligence = daily.intelligence;
 
   const metric = (id: string) => dashboard?.metrics.find((row) => row.id === id);
 
@@ -197,6 +208,60 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
       href: "/execution",
       sortDue: item.createdAt,
     });
+  }
+
+  if (productionExecution) {
+    if (productionExecution.late > 0) {
+      addSignal({
+        id: "prod-exec-late",
+        severity: "CRITICAL",
+        domain: "production",
+        title: `${productionExecution.late} late production order${productionExecution.late === 1 ? "" : "s"}`,
+        explanation: "Planned end has passed while execution remains incomplete.",
+        entity: "Production execution",
+        nextStep: "Inspect shop floor",
+        href: "/execution/production?view=at-risk",
+        sortDue: "0",
+      });
+    }
+    if (productionExecution.paused > 0) {
+      addSignal({
+        id: "prod-exec-paused",
+        severity: "HIGH",
+        domain: "production",
+        title: `${productionExecution.paused} production order${productionExecution.paused === 1 ? "" : "s"} paused`,
+        explanation: "Active production is interrupted pending resume or complete.",
+        entity: "Production execution",
+        nextStep: "Resume or complete",
+        href: "/execution/production?view=paused",
+        sortDue: "0",
+      });
+    }
+    if (productionExecution.active > 0) {
+      addSignal({
+        id: "prod-exec-active",
+        severity: "INFO",
+        domain: "production",
+        title: `${productionExecution.active} production order${productionExecution.active === 1 ? "" : "s"} active`,
+        explanation: "Shop-floor execution currently in progress.",
+        entity: "Production execution",
+        nextStep: "Open production execution",
+        href: "/execution/production?view=active",
+        sortDue: "0",
+      });
+    } else if (productionExecution.atRisk > 0 && productionExecution.late === 0) {
+      addSignal({
+        id: "prod-exec-risk",
+        severity: "MEDIUM",
+        domain: "production",
+        title: `${productionExecution.atRisk} production order${productionExecution.atRisk === 1 ? "" : "s"} at risk`,
+        explanation: "Deterministic execution risk requires operator attention.",
+        entity: "Production execution",
+        nextStep: "Inspect shop floor",
+        href: "/execution/production?view=at-risk",
+        sortDue: "0",
+      });
+    }
   }
 
   if (rfqsAwaitingEvaluation > 0) {
@@ -409,6 +474,16 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
       "/execution"
     );
   }
+  if (productionExecution && (productionExecution.late > 0 || productionExecution.paused > 0)) {
+    pushRisk(
+      "risk-production-execution",
+      "Production execution",
+      productionExecution.late > 0 ? "CRITICAL" : "HIGH",
+      `${productionExecution.late} late · ${productionExecution.paused} paused · ${productionExecution.active} active`,
+      "production",
+      "/execution/production"
+    );
+  }
   risks.sort((a, b) => SEVERITY_RANK[b.level] - SEVERITY_RANK[a.level] || a.id.localeCompare(b.id));
 
   const activity: CommandActivityItem[] = (dashboard?.activity ?? []).slice(0, 10).map((item) => ({
@@ -447,6 +522,8 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
         ? "No cross-domain management signals require attention right now."
         : null,
     planningNote:
-      "Command Center composes Dashboard, Daily Review, Operations, and Execution. Read-only. No model calls on load.",
+      "Command Center composes Dashboard, Daily Review, Operations, Execution, Operational Intelligence, and Planning Outlook. Read-only. No model calls on load.",
+    intelligence,
+    planningOutlook,
   };
 }

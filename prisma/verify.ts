@@ -25,6 +25,14 @@ import { runPhase23Verify } from "./verify-phase23";
 import { runPhase24Verify } from "./verify-phase24";
 import { runPhase25Verify } from "./verify-phase25";
 import { runPhase26Verify } from "./verify-phase26";
+import { runPhase28Verify } from "./verify-phase28";
+import { runPhase32Verify } from "./verify-phase32";
+import { runPhase33Verify } from "./verify-phase33";
+import { runPhase34Verify } from "./verify-phase34";
+import { runPhase35Verify } from "./verify-phase35";
+import { runPhase36Verify } from "./verify-phase36";
+import { runPhase37Verify } from "./verify-phase37";
+import { runPhase38Verify } from "./verify-phase38";
 
 const prisma = getPrisma();
 
@@ -168,6 +176,14 @@ async function main() {
   console.log("Phase 25 verification passed.");
   await runPhase26Verify(prisma);
   console.log("Phase 26 verification passed.");
+  await runPhase28Verify(prisma);
+  await runPhase32Verify(prisma);
+  await runPhase33Verify(prisma);
+  await runPhase34Verify(prisma);
+  await runPhase35Verify(prisma);
+  await runPhase36Verify(prisma);
+  await runPhase37Verify(prisma);
+  await runPhase38Verify(prisma);
 }
 
 main()

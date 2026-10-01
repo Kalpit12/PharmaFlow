@@ -4,6 +4,7 @@ import Credentials from "next-auth/providers/credentials";
 import type { NextAuthConfig } from "next-auth";
 
 import { isTenantAccessible } from "@/lib/auth/identity";
+import { resolveRoleForPermissions } from "@/lib/auth/permissions";
 import { getPrisma } from "@/lib/server/db";
 import { verifyPassword } from "@/lib/server/password";
 
@@ -68,11 +69,12 @@ export const authConfig = {
         session.user &&
         typeof token.id === "string" &&
         typeof token.tenantId === "string" &&
-        (role === "ADMIN" || role === "MANAGER" || role === "OPERATOR" || role === "VIEWER")
+        typeof role === "string" &&
+        resolveRoleForPermissions(role)
       ) {
         session.user.id = token.id;
         session.user.tenantId = token.tenantId;
-        session.user.role = role satisfies UserRole;
+        session.user.role = role as UserRole;
       }
       return session;
     },

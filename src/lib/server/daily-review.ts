@@ -18,6 +18,7 @@ import { countPendingPurchaseOrders } from "@/lib/server/purchase-orders";
 import { countSupplierPerformanceAttention } from "@/lib/server/supplier-performance";
 import { getSupplierDataGapCount, getSupplierSnapshot, resolveSupplierFilters } from "@/lib/server/suppliers";
 import { getTenant } from "@/lib/server/services/tenant";
+import { getIntelligenceSnapshot } from "@/lib/server/intelligence";
 
 const SEVERITY_RANK: Record<DailySeverity, number> = {
   CRITICAL: 5,
@@ -41,7 +42,7 @@ function healthStatus(rank: number, limited = false): DomainHealthStatus {
 
 export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyReviewSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention] =
+  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, intelligence] =
     await Promise.all([
     getDashboardData(ctx).catch(() => null),
     getOperationsPlanner(ctx, resolvePlanningWindow({ weeks: "1" })).catch(() => null),
@@ -54,6 +55,7 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     countPendingPurchaseOrders(ctx).catch(() => 0),
     countAwaitingReceipt(ctx).catch(() => 0),
     countSupplierPerformanceAttention(ctx).catch(() => 0),
+    getIntelligenceSnapshot(ctx),
   ]);
 
   const attention: DailyAttentionItem[] = [];
@@ -384,6 +386,7 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     emptyReason,
     planningNote:
       "Deterministic review from current workspace data. AI explanation is optional and does not change records or execute actions.",
+    intelligence,
   };
 }
 

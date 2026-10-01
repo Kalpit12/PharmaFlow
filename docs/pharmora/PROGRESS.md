@@ -448,10 +448,12 @@ Implemented:
 - stored weekly inventory snapshots (demo tenant only; empty tenants stay “unavailable”)
 - class reports (finished goods / raw materials / packaging) with ageing, expiry, and concentration
 - sortable lot table, production status/line filters, clickable bars
+- Export Excel (SpreadsheetML `.xls`) for offline review of the current report view
+- Analyst Metric catalog — named plant measures with how/source/limitation (DAX alternative)
 
 Not implemented:
 
-- Power BI clone / export engine
+- Power BI clone / DAX authoring / Power Query mashup
 - fabricated time-travel of current lots
 - OpenAI report explanations
 - automated purchasing or inventory writes
@@ -861,6 +863,27 @@ Not implemented (deferred):
 
 **Zero OpenAI calls for the redesign. Zero schema changes. Zero new infrastructure. Database was not reset.**
 
+## Phase 29.2
+
+Status: **COMPLETE**
+
+Implemented: Premium Product Experience elevation against the Phase 29 command-system brief (post Phase 28–38 surfaces).
+
+- Product positioning: `Pharmaceutical Operations Command System` (`src/lib/product.ts`, root metadata)
+- Management Attention: explicit Evidence / Consequence labels; Command Center 6-block composition (state → attention → pulse → workload → procurement/commercial → activity)
+- Dashboard: executive framing; AI Opportunities reframed as non-dominant “Follow-up opportunities”
+- Dense production execution board: State · Product · Qty · Progress · Workstation · Risk · Action + progress meters
+- Shared `InspectionSection` / `InspectionMetricGrid` for detail sheets; `.ops-table` / `.progress-track` utilities
+- Shell density: tighter PageHeader / WorkspacePage / Topbar
+- Phase 28 execution logic untouched
+
+Not implemented:
+
+- Full Playwright viewport matrix in this pass (run separately when the app is up)
+- Replacing every legacy sheet with InspectionSection (execution production sheet done; others incremental)
+
+**Zero OpenAI · zero schema · zero migrations · zero new dependencies.**
+
 ## Phase 29.1
 
 Status: **COMPLETE**
@@ -890,6 +913,23 @@ Implemented: Analytical Visualization & BI Layer — deterministic charts from e
 - Chart palette inherits Phase 29.1 tokens (`chart-1`…`chart-6`); click-through to existing workspace routes
 - Zero OpenAI on render, zero schema changes, zero new infrastructure
 
+## Phase 30.1
+
+Status: **COMPLETE**
+
+Implemented: Deterministic analytics layer expansion + operational surface wiring (post Phase 28–29.2).
+
+- `src/lib/analytics/*` focused helpers: production, inventory, materials, procurement, sales (+ index)
+- Planned vs actual uses `producedQuantity` only; planned never substitutes for actual
+- Command Center analytics refactored onto shared helpers
+- Inventory health → `StackedPercentBar` + category `HorizontalBarChart`
+- Operations capacity view → utilization + planned-vs-actual charts (Gantt/scheduling logic unchanged)
+- Materials → requirement vs available `GroupedBarChart` beside shortage horizon
+- Operations orders expose `productId` / `producedQuantity` for analytics only
+- Architecture + PROGRESS updated
+
+**Zero OpenAI · zero migrations · zero new chart libraries · zero fake metrics.**
+
 ## Phase 31
 
 Status: **COMPLETE + VERIFIED**
@@ -907,15 +947,293 @@ Implemented: Production Planning 2.0 — deepens the existing `/operations` plan
 - Mobile fallback list preserved; filters for material risk and planning conflicts
 - Repeatable browser regression: `scripts/phase31-browser-qa.mjs` (Playwright; requires dev server on port 3000)
 - Zero schema changes, zero OpenAI, zero new infrastructure
+- Resequence writes `PRODUCTION_ORDER_RESEQUENCED` through the existing AuditLog (schedule updates already audited)
+
+## Phase 32
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 32 — Advanced Materials & MRP 2.0: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 31 regression (`npm run qa:phase31`) still passes 89/89. Phase 32 browser QA (`npm run qa:phase32`) passes 67/67 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844.
+
+Implemented: Advanced Materials & MRP 2.0 — extends the existing MRP/material-readiness architecture (does not replace it).
+
+- **Multi-level BOM explosion** — `src/lib/materials/mrp.ts` recursively resolves demand through nested `BillOfMaterial` lines (cycle-safe, max depth 16); single-level behaviour preserved for regression
+- **Canonical MRP enrichment** — `computeMaterialRequirements` now exposes on hand, allocated (open production demand), free available, incoming, projected, net requirement, shortage status, and deterministic MRP breakdown text in the inspection sheet
+- **Shortage timing** — `src/lib/materials/shortages.ts` computes `NO_SHORTAGE` / `AT_RISK` / `SHORTAGE` / `UNKNOWN`, earliest shortage date from scheduled demand, and shortage horizon bars
+- **Production impact** — affected production orders per material; production-impact summary with links to `/operations`
+- **Material priority** — deterministic `CRITICAL` / `HIGH` / `MEDIUM` / `LOW` with human-readable reasons
+- **Procurement linkage** — batched counts of open requisitions, procurement RFQs, and purchase orders per material with links to existing workflows (no auto-creation)
+- **`/materials` workspace upgrade** — metric strip (at risk, shortages, critical, orders affected, incoming quantity), risk/shortage table, horizon chart, expanded inspection sheet (BOM paths, demand sources, MRP transparency)
+- **Tests** — `prisma/verify-phase32.ts` hooked into `npm run db:verify` (multi-level BOM, cycle protection, Phase 14 + Phase 31 regression, tenant isolation)
+- **Browser QA** — `scripts/phase32-browser-qa.mjs` + `npm run qa:phase32`
+
+**Files added/changed:** `src/lib/materials/mrp.ts`, `src/lib/materials/shortages.ts`, `src/lib/materials/requirements.ts`, `src/lib/materials/types.ts`, `src/lib/server/materials.ts`, `src/components/materials/MaterialsWorkspace.tsx`, `src/app/(workspace)/materials/page.tsx`, `prisma/verify-phase32.ts`, `prisma/verify.ts`, `scripts/phase32-browser-qa.mjs`, `package.json`, `docs/pharmora/PROGRESS.md`
+
+**Limitations:**
+
+- Demo seed BOM for AMOX-500-CAP remains single-level; multi-level explosion activates when nested BOM rows exist in tenant data
+- No reservation transaction system — allocated equals gross open production demand; free available = on hand − allocated
+- Net requirement is max(gross − on hand − incoming, 0). It is not gross − projected, because allocated already equals gross demand
+- Circular BOMs abort explosion for that order and are listed on the materials snapshot (`bomCycles`); demand is not invented
+- Lead time, purchase price, and reorder point remain `Not available` until supplier/pricing data is authoritative in a later phase
+- Shortage horizon chart renders only when at-risk or shortage materials exist
+
+**Zero OpenAI calls. Zero schema changes. Zero new infrastructure. Zero new dependencies. Database was not reset.**
+
+## Phase 33
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 33 — Pharmaceutical Batch & Quality Operations: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 31 regression (`npm run qa:phase31`) passes 89/89. Phase 32 regression (`npm run qa:phase32`) passes 67/67. Phase 33 browser QA (`npm run qa:phase33`) passes 62/62 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844.
+
+Implemented: Pharmaceutical batch & quality operations — a pharma-native batch/quality layer on the existing production architecture (manufacturing status separate from quality status).
+
+- **Schema** — `ProductionBatch` (1:1 with `ProductionOrder`, unique batch number per tenant), `ProductionBatchInputLot` (optional lot consumption), `ProductionBatchQualityEvent` (audit trail); enums `BatchQualityStatus` (PENDING_REVIEW, ON_HOLD, RELEASED, REJECTED) and `BatchQualityAction` (HOLD, RELEASE, REJECT). Migration: `20260910183000_production_batches`
+- **Domain service** — `src/lib/batches/service.ts`: state transitions, quantity math (`NOT_RECORDED` when produced quantity unavailable), material lot trace (`NOT_RECORDED` when not recorded), hold reason validation, management attention
+- **Server + API** — `getBatchesSnapshot`, hold/release/reject mutations via `POST /api/batches/[id]/hold|release|reject`; tenant-scoped via `getAuthenticatedTenantContext()` only
+- **`/batches` workspace** — metric strip, quality views, batch table, inspection sheet (identity, quantity, material trace, quality, timeline) with controlled hold/release/reject actions
+- **Integrations** — batch attention merged into Operations planning attention, Reports management attention, Execution queue (awaiting review + on hold)
+- **Seed** — `prisma/seed-batches.ts` (5 demo batches LAB-2026-001…005 in varied quality states)
+- **Tests** — `prisma/verify-phase33.ts` hooked into `npm run db:verify` (transitions, tenant isolation, Phase 31/32 regression)
+- **Browser QA** — `scripts/phase33-browser-qa.mjs` + `npm run qa:phase33`
+
+**Files added/changed:** `prisma/schema.prisma`, `prisma/migrations/20260910183000_production_batches/`, `prisma/seed-batches.ts`, `prisma/seed.ts`, `prisma/verify-phase33.ts`, `prisma/verify.ts`, `src/lib/batches/*`, `src/lib/server/batches.ts`, `src/lib/server/operations.ts`, `src/lib/server/reports.ts`, `src/lib/server/execution.ts`, `src/components/batches/BatchesWorkspace.tsx`, `src/app/(workspace)/batches/page.tsx`, API hold/release/reject routes, `scripts/phase33-browser-qa.mjs`, `package.json`, `src/lib/mock/navigation.ts`, `src/lib/ux/domain-links.ts`, `docs/pharmora/PROGRESS.md`
+
+**Limitations:**
+
+- Not a full QMS — no regulatory claims, no auto release/reject, no inventory posting on quality decisions
+- Produced quantity nullable → `NOT_RECORDED` in UI; lot consumption shows `NOT_RECORDED` when unavailable
+- Multiple recorded input lots for one material are listed together; quantity used is summed only when every lot has a recorded quantity
+- Awaiting-review attention covers one batch or any count of two or more (previously two completed batches raised nothing)
+- Full `npm run db:seed` may fail on tenant delete FK conflicts (pre-existing); batch demo data applied via `ensureBatchDemoData`
+- After schema migration, restart dev server and run `npm run db:generate` if Prisma client is stale (Windows EPERM if engine DLL is locked)
+
+**Zero OpenAI calls. One additive migration. Zero new infrastructure. Database was not reset.**
+
+## Phase 34
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 34 — Traceability & Recall Intelligence: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 34 browser QA (`npm run qa:phase34`) passes 59/59 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844 (includes Phase 31/32/33 workspace regression on each viewport).
+
+Implemented: Traceability & Recall Intelligence — deterministic forward/backward investigation from recorded relational data only (read-only; not a regulatory recall system).
+
+- **Traceability graph** — `src/lib/traceability/service.ts` builds tenant-scoped indexes from `InventoryLot`, `ProductionBatchInputLot`, `ProductionBatch`, `BillOfMaterial`, `Order` / `OrderItem`, and `Customer`
+- **Forward trace** — material lot → production batch → finished product → sales orders → customers (where relationships exist)
+- **Reverse trace** — customer / sales order → finished batch → production batch → input lots → supplier
+- **Coverage honesty** — each link labelled `TRACEABLE`, `PARTIAL`, or `NOT_RECORDED`; batch-to-order allocation explicitly **not recorded** in schema (product match only — never fabricated)
+- **Recall impact analysis** — potential impact summary with scope (`NO_KNOWN_IMPACT` / `LIMITED_IMPACT` / `SIGNIFICANT_IMPACT` / `UNKNOWN`) and confidence (`COMPLETE` / `PARTIAL` / `INSUFFICIENT_DATA`)
+- **Exceptions** — missing input-lot linkage, idle lots, incomplete downstream allocation surfaced in workspace + Management Attention (Operations, Reports)
+- **`/traceability` workspace** — entity selector, search, metrics, trace path, impact summary, coverage table, affected entities, inspection sheet
+- **Tests** — `prisma/verify-phase34.ts` hooked into `npm run db:verify` (forward/reverse trace, tenant isolation, partial data, impact scope, Phase 31/32/33 regression)
+- **Browser QA** — `scripts/phase34-browser-qa.mjs` + `npm run qa:phase34`
+
+**Files added/changed:** `src/lib/traceability/types.ts`, `src/lib/traceability/service.ts`, `src/lib/traceability/impact.ts`, `src/lib/server/traceability.ts`, `src/components/traceability/TraceabilityWorkspace.tsx`, `src/app/(workspace)/traceability/page.tsx`, `src/lib/server/operations.ts`, `src/lib/server/reports.ts`, `src/lib/mock/navigation.ts`, `src/lib/ux/domain-links.ts`, `prisma/verify-phase34.ts`, `prisma/verify.ts`, `scripts/phase34-browser-qa.mjs`, `package.json`, `docs/pharmora/PROGRESS.md`
+
+**Limitations:**
+
+- No batch-to-order allocation in schema — customer exposure is product-matched only and always labelled partial
+- Lot consumption depends on Phase 33 `ProductionBatchInputLot` records — shows consumption not recorded when absent; recorded `quantityUsed` is summed onto the path, and a row with no inventory lot stays `NOT_RECORDED` even when another lot on the same batch is linked
+- Not a validated recall-management or QMS system — no quarantine, notifications, or automated recall execution
+- No dedicated sales-order or customer detail pages — traceability links into existing workspaces where available
+
+**Zero OpenAI calls. Zero schema changes. Zero new infrastructure. Database was not reset.**
+
+## Phase 35
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 35 — Quality Management & Exceptions: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 35 browser QA (`npm run qa:phase35`) passes 77/77 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844 (includes Phase 31/32/33/34 workspace regression on each viewport).
+
+Implemented: operational quality-exception layer connected to Production → Batch → Traceability → Management Attention (not a full validated QMS).
+
+- **Quality exception model** — `QualityException`, `QualityCorrectiveAction`, `QualityExceptionEvent` with tenant-scoped nullable FKs to `ProductionBatch`, `ProductionOrder`, `InventoryLot`, `Product`, `Order`, `Customer`, and `User` (owner)
+- **Lifecycle** — `OPEN → INVESTIGATING → ACTION_REQUIRED → RESOLVED → CLOSED` with controlled shortcuts (`OPEN → RESOLVED`, `INVESTIGATING → RESOLVED`); invalid transitions rejected; closed exceptions cannot reopen
+- **Ownership & due dates** — owner assignment, deterministic due-state (`ON_TRACK` / `DUE_SOON` / `OVERDUE` / `NO_DUE_DATE`), age calculation; unassigned surfaced in metrics and Management Attention
+- **Investigation** — description, investigation notes, findings, resolution notes on the exception record
+- **Corrective actions** — lightweight CAPA rows (`OPEN` / `IN_PROGRESS` / `COMPLETED`) with owner and due date
+- **Batch / traceability context** — batch-linked exceptions load Phase 34 impact analysis in the inspection sheet only (no duplicate genealogy engine); material-lot linkage uses existing traceability services
+- **Phase 33 hold integration** — ON_HOLD batch context shown when linked; no automatic hold/release on exception create/resolve
+- **Management Attention** — critical/high severity, overdue, and unassigned exceptions merged into Operations and Reports attention feeds
+- **`/quality` workspace** — metrics strip, filters, exception table, inspection sheet (identity, ownership, affected entity, investigation, traceability, corrective actions, timeline, status transitions)
+- **Tests** — `prisma/verify-phase35.ts` hooked into `npm run db:verify` (create, tenant isolation, lifecycle, ownership, due dates, investigation, corrective actions, batch/lot linkage, traceability integration, Phase 31/32/33/34 regression)
+- **Browser QA** — `scripts/phase35-browser-qa.mjs` + `npm run qa:phase35`
+- **Seed** — `prisma/seed-quality.ts` (3 demo exceptions for lab-allied; idempotent)
+
+**Schema changes:** migration `20260911193000_quality_exceptions` — enums `QualityExceptionType`, `QualityExceptionSeverity`, `QualityExceptionStatus`, `QualityCorrectiveActionStatus`; models above with indexes on tenant + status/severity.
+
+**Files added/changed:** `src/lib/quality/types.ts`, `src/lib/quality/service.ts`, `src/lib/server/quality.ts`, `src/components/quality/QualityWorkspace.tsx`, `src/app/(workspace)/quality/page.tsx`, `src/app/api/quality/**`, `src/lib/server/operations.ts`, `src/lib/server/reports.ts`, `src/lib/mock/navigation.ts`, `src/lib/ux/domain-links.ts`, `prisma/schema.prisma`, `prisma/migrations/20260911193000_quality_exceptions/migration.sql`, `prisma/seed-quality.ts`, `prisma/seed.ts`, `prisma/verify-phase35.ts`, `prisma/verify.ts`, `scripts/phase35-browser-qa.mjs`, `package.json`, `docs/pharmora/PROGRESS.md`
+
+**Limitations:**
+
+- Operational exception tracking only — not a validated QMS, CAPA system, or regulatory certification
+- No automated batch hold/release, quarantine, recall execution, or customer/supplier notifications
+- Corrective actions are lightweight records — no Phase 36 governance, permissions granularity, or audit trail beyond exception events
+- Traceability impact loaded for selected exception in sheet only — list view does not N+1 query impact per row
+- Batch-to-order allocation remains partial (Phase 34 honesty carries through)
+
+**Zero OpenAI calls. One additive migration. Zero new infrastructure. Database was not reset.**
+
+## Phase 36
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 36 — Enterprise Governance & Permissions: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 36 browser QA (`npm run qa:phase36`) passes 32/32 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844 (includes workspace regression at 1440×900).
+
+Implemented: operational governance layer — not enterprise IAM, SSO, or regulatory certification.
+
+- **Role model** — extended `UserRole` with `OPERATIONS`, `PROCUREMENT`, `QUALITY`, `SALES`; legacy `OPERATOR` maps to `OPERATIONS` permissions
+- **Central permission map** — `src/lib/auth/permissions.ts` with explicit role → permission matrix; `src/lib/auth/authorization.ts` with `hasPermission()`, `requirePermission()`, `canApprove()`, `canProcurementApprove()`
+- **Protected mutations** — server-enforced permissions on production scheduling, procurement create/approve, receiving, batch hold/release/reject, quality exception lifecycle, action approve/reject
+- **Approval authority** — explicit separation: `actions.approve` (Manager/Admin) vs `procurement.approve` (Manager/Admin) vs `quality.manage` / `batches.quality_action` (Quality + Manager/Admin)
+- **Audit trail** — append-only `AuditLog` model with actor, action, entity, old/new values, reason; recorded for role changes, batch quality actions, quality transitions, PO approval/rejection, action approval
+- **Tenant isolation** — all reads/mutations remain scoped via `getAuthenticatedTenantContext()`; cross-tenant mutations fail safely
+- **`/governance` workspace** — access summary, permission list, approval authority, tenant users (role change for Admin), audit table with search
+- **UI authorization** — nav filtered by permission; batch/quality mutation controls hidden when unauthorized (server remains authoritative)
+- **Tests** — `prisma/verify-phase36.ts` hooked into `npm run db:verify` (roles, permissions, unauthorized mutations, tenant isolation, audit creation, Phase 35 regression)
+- **Browser QA** — `scripts/phase36-browser-qa.mjs` + `npm run qa:phase36`
+
+**Schema changes:** migration `20260914220000_governance_audit` — extended `UserRole` enum; new `audit_logs` table.
+
+**Files added/changed:** `src/lib/auth/permissions.ts`, `src/lib/auth/authorization.ts`, `src/lib/server/audit.ts`, `src/lib/server/governance.ts`, `src/lib/governance/types.ts`, `src/components/governance/GovernanceWorkspace.tsx`, `src/app/(workspace)/governance/page.tsx`, `src/app/api/governance/users/[id]/route.ts`, `src/lib/server/batches.ts`, `src/lib/server/quality.ts`, `src/lib/server/operations.ts`, `src/lib/server/procurement.ts`, `src/lib/server/procurement-rfqs.ts`, `src/lib/server/purchase-orders.ts`, `src/lib/server/receiving.ts`, `src/lib/server/actions.ts`, `src/lib/auth/identity.ts`, `src/auth.ts`, `src/components/layout/SidebarNav.tsx`, `src/lib/mock/navigation.ts`, `src/proxy.ts`, `prisma/schema.prisma`, `prisma/verify-phase36.ts`, `prisma/verify.ts`, `scripts/phase36-browser-qa.mjs`, `package.json`, `docs/pharmora/PROGRESS.md`
+
+**Limitations:**
+
+- Operational governance only — not SSO, SCIM, MFA, external IAM, or regulatory validation
+- No automated approvals, permission inheritance trees, or approval monetary thresholds
+- Audit trail is append-only application records — not a validated electronic records system
+- Admin role changes require `users.manage`; demo seed user remains Manager unless promoted
+- Viewer role is read-only for workspace data — no governance/audit/user admin access
+
+**Zero OpenAI calls. One additive migration. Zero new infrastructure. Database was not reset.**
+
+## Phase 37
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 37 — Operational Intelligence 2.0: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 37 browser QA (`npm run qa:phase37`) passes 51/51 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844 (includes workspace regression at 1440×900).
+
+Implemented: deterministic operational intelligence as the source of truth, with OpenAI used only when a user explicitly clicks Explain.
+
+- **Architecture** — Database facts → existing domain services (Phases 30–36) → compact `OperationalFact` / `OperationalInsight` / `OperationalPriority` → optional one-shot AI explanation → human decision. AI never ranks, never invents KPIs, and never mutates records.
+- **Deterministic layer** — `src/lib/intelligence/` (`types.ts`, `facts.ts`, `insights.ts`, `priorities.ts`) plus `src/lib/server/intelligence.ts`. Reuses operations planner, MRP/materials, procurement counts, supplier performance, batches, quality exceptions, and traceability attention. No second MRP, traceability, or scoring engine.
+- **Cross-domain facts** — production risk, material shortage/at-risk, procurement/delivery risk, supplier risk, quality exception/impact, batch hold, capacity, traceability/customer impact. Evidence and related-domain chains are attached to every fact.
+- **Priority engine** — transparent score from severity, production/quality/material impact, overdue state, and partial customer exposure. Bands: CRITICAL / HIGH / MEDIUM / LOW (`Watch` groups medium+low on Daily Review). Score reasons are exposed.
+- **Confidence** — KNOWN / PARTIAL / INSUFFICIENT_DATA. MRP shortages are KNOWN. Customer/order impact is PARTIAL (product-matched; batch-level allocation is not recorded). Empty audit trail returns “Change history is insufficient.”
+- **Command Center** — Operational Intelligence surface after Management Attention. View + Explain. Existing visual hierarchy retained. Command Center reuses Daily Review’s intelligence snapshot (no second intelligence load).
+- **Daily Review** — “Today’s operational priorities” grouped Critical / High / Watch.
+- **Reports** — executive view exposes “Cross-domain operational risk”. Other report views do not run the intelligence snapshot.
+- **AI explanation pathway** — `POST /api/intelligence/explain` only. Compact permission-aware context (`toCompactIntelligenceContext`). One OpenAI `chat.completions.create` call when `OPENAI_API_KEY` is set; otherwise deterministic fallback. Response contract: summary, reasons, impacts, reviewItems, limitations. No executable actions. Failure falls back to ranked facts — nothing is fabricated.
+- **Permissions** — domain loaders gated by Phase 36 `production.read`, `materials.read`, `procurement.read`, `suppliers.read`, `batches.read`, `quality.read`, `traceability.read`, `sales.read`. Excluded domains are omitted from AI context. Tenant from `getAuthenticatedTenantContext()` only.
+- **Zero AI on load** — Command Center, Daily Review, and Reports perform zero OpenAI calls during SSR and navigation. QA recorded zero `/api/intelligence/explain` and zero `/api/ai` until Explain; exactly one explain POST after the button.
+- **Phase 17/19 explain** — Daily Review / Command Center no longer call the mutating `/api/ai` orchestrator. Explicit explain is the dedicated intelligence route.
+
+**Files added/changed:** `src/lib/intelligence/types.ts`, `src/lib/intelligence/facts.ts`, `src/lib/intelligence/insights.ts`, `src/lib/intelligence/priorities.ts`, `src/lib/server/intelligence.ts`, `src/lib/ai/intelligence-explain.ts`, `src/app/api/intelligence/explain/route.ts`, `src/components/intelligence/IntelligenceSurface.tsx`, `src/lib/server/command-center.ts`, `src/lib/command-center/types.ts`, `src/components/command-center/CommandCenterWorkspace.tsx`, `src/lib/server/daily-review.ts`, `src/lib/daily-review/types.ts`, `src/components/daily-review/DailyReviewWorkspace.tsx`, `src/lib/server/reports.ts`, `src/lib/reports/types.ts`, `src/components/reports/ReportingWorkspace.tsx`, `src/lib/auth/permissions.ts`, `prisma/verify-phase37.ts`, `prisma/verify.ts`, `prisma/verify-phase17.ts`, `prisma/verify-phase19.ts`, `scripts/phase37-browser-qa.mjs`, `package.json`, `docs/pharmora/PROGRESS.md`
+
+**Schema changes:** none. No AI explanation storage. Database was not reset.
+
+**Infrastructure / dependencies:** none added (no Redis, queues, workers, cron, new AI framework, or new chart library). Reuses existing `openai` package.
+
+**Tests:** `prisma/verify-phase37.ts` hooked into `npm run db:verify` (facts, insights, ranking, insufficient data, tenant isolation, permission-aware context sanitization, AI schema/fallback, zero OpenAI on page-load sources, Phases 31–36 regressions). `npx tsc --noEmit` passed. `npm run db:verify` passed through Phase 37.
+
+**Browser QA:** `scripts/phase37-browser-qa.mjs` + `npm run qa:phase37`.
+
+**Limitations:**
+
+- Customer/order impact is product-matched, not confirmed batch genealogy
+- Change detection uses existing `AuditLog` rows only — no manufactured historical deltas
+- Intelligence composition is request-time (no background jobs); Command Center / Daily Review / executive Reports are heavier because they reuse live domain snapshots
+- OpenAI explains ranked facts; it cannot approve, schedule, release, purchase, or communicate
+- Manager permission chips previously listed `audit.read` / `governance.read` twice (already granted via read permissions); deduped for unique React keys
+
+**Zero OpenAI calls on page load. At most one OpenAI call per explicit Explain. Zero schema changes. Zero new infrastructure. Database was not reset.**
+
+## Phase 38
+
+Status: **COMPLETE + VERIFIED**
+
+**Phase 38 — Executive Planning, Simulation & Decision Workspaces: COMPLETE + VERIFIED**
+
+Implementation, TypeScript, database verification, and Playwright browser QA completed successfully. Phase 38 browser QA (`npm run qa:phase38`) passes 59/59 at 1440×900, 1280×800, 1024×768, 768×1024, and 390×844 (includes Phase 31–37 workspace regression at 1440×900).
+
+Implemented: flagship planning & simulation workspace — Sugar-inspired enterprise UX clarity with PharmaFlow operational depth (not a Power BI clone or literal Sugar copy).
+
+- **Scenario architecture** — reuses Phase 21 deterministic engine (`src/lib/scenarios/engine.ts`) + enriched snapshot in `src/lib/server/scenarios.ts`. Baseline facts from operations planner, MRP, procurement, batches, quality, traceability, and commercial signals. No second MRP/scheduler. Scenarios are in-memory projections only — nothing persisted, nothing mutates live data.
+- **Operational journey** — `src/lib/scenarios/journey.ts` builds a reusable dependency map (Demand → Materials → Production → Batches → Quality → Delivery → Customer) with status, metric, reason, baseline/scenario/delta, confidence, and workspace links. Not decorative — each stage is inspectable.
+- **Impact chain** — deterministic consequence links from assumption change through material shortage, production exposure, batch/quality risk, and delivery/customer impact where data supports it.
+- **Baseline vs scenario** — comparison table (Current | Scenario | Variance) with FACT / PROJECTED / VARIANCE labelling; assumption rows show Current / Scenario / Change for every supported control.
+- **Decision workspace** — `src/lib/scenarios/decision.ts` produces headline, why, trade-offs, data limitations, and review links. No “Execute scenario” — human decision only.
+- **`/scenarios` flagship UI** — three-column decision canvas (assumptions | comparison + journey + impact chain | decision panel). Header: PLANNING & SIMULATION. Full-width workspace surface. Responsive: stacked surfaces on tablet/mobile; decision-first on 390×844.
+- **Role behavior** — Phase 36 permissions filter journey/comparison/impact domains via `permittedScenarioDomains()`; one engine, permission-aware presentation (Executive/Manager cross-domain; Operations production/materials; Procurement supplier/material exposure; Quality batch/quality; Viewer read-only).
+- **Command Center integration** — compact **Planning outlook** section (current state, top risk, scenario opportunity, projected impact, link to `/scenarios`).
+- **Reports integration** — executive view exposes **Scenario Planning** comparison slice (+20% demand vs baseline) via shared `getScenarioPlanningSlice` — no duplicate engine.
+- **AI explanation** — dedicated `POST /api/scenarios/explain` + `src/lib/ai/scenario-explain.ts`. Zero OpenAI on load/run/presets. Explicit **Explain** uses at most ONE OpenAI call with compact sanitized context; deterministic fallback on failure. AI cannot modify scenario data, approve, or execute decisions.
+
+**Schema changes:** none. Scenarios computed in memory from existing domain snapshots. Database was not reset.
+
+**Infrastructure / dependencies:** none added (no Redis, queues, workers, cron, new chart library, or simulation framework). Reuses existing `openai` package.
+
+**Tests:** `prisma/verify-phase38.ts` hooked into `npm run db:verify` (baseline scenario, demand/capacity/inventory/supplier assumptions, projected production/material/capacity impact, impact chain, variance, unsupported assumptions, insufficient data, scenario isolation, tenant isolation, permission filtering, zero AI on calculation, one AI max on Explain, Phases 31–37 regressions). `npx tsc --noEmit` passed. Isolated Phase 38 verify passed.
+
+**Browser QA:** `scripts/phase38-browser-qa.mjs` + `npm run qa:phase38`.
+
+**Limitations:**
+
+- Workforce availability adjustment not supported — surfaced in data limitations when absent
+- Customer/order impact remains product-matched (Phase 34 honesty) — not confirmed batch genealogy
+- Planning outlook and Reports slice use a fixed +20% demand comparison for executive context (full controls remain on `/scenarios`)
+- Scenario composition is request-time (no background jobs); heavy pages may load two snapshots for outlook/comparison
+- No Scenario B comparison or persistent scenario storage (by design for this phase)
+
+**Zero OpenAI calls on scenario calculation and normal usage. At most one OpenAI call per explicit Explain. Zero schema changes. Zero new infrastructure. Database was not reset.**
+
+## Phase 28
+
+Status: **COMPLETE**
+
+### Production Execution & Shop-Floor Intelligence
+
+`/execution/production` is the shop-floor control surface on existing `ProductionOrder` / `ProductionBatch` / `AuditLog`. Phase 18 `/execution` remains the approvals/action queue.
+
+**Lifecycle (planning status preserved):**
+
+- DB `ProductionOrderStatus` unchanged: `UNSCHEDULED | SCHEDULED | AT_RISK | IN_PROGRESS | COMPLETED`
+- Execution overlay: `WAITING → RELEASED → IN_PROGRESS ⇄ PAUSED → COMPLETED`
+- `RELEASED` / `PAUSED` are AuditLog-derived (no schema change)
+- `START` sets `IN_PROGRESS` + `batch.productionStartedAt` when a batch exists
+- `COMPLETE` sets `COMPLETED` + produced quantity / `productionCompletedAt` when a batch exists
+- Release locks the order (`isLocked`) so planning cannot corrupt execution
+
+**Actions:** Release, Start, Pause, Resume, Complete — human-controlled; no inventory consumption, lot creation, quality release, or notifications.
+
+**Intelligence:** Deterministic progress (`produced/planned`), planned-vs-actual duration/quantity, risk with evidence, Management Attention reuse.
+
+**Permissions:** `production.read` (view), `production.execute` (mutations). Unauthorized → 403. Audit via existing `AuditLog`.
+
+**Integrations:** Command Center signals, Reports KPIs, Operations / Execution cross-links. 0 OpenAI. 0 schema. 0 infrastructure.
+
+**Tests:** `prisma/verify-phase28.ts` in `npm run db:verify`. Browser QA: `npm run qa:phase28`.
 
 ## Current
 
-- Phase 31 complete and verified. Stop after Production Planning 2.0. Do not start Phase 32.
-- `/` redirects to `/login` (signed out) or `/dashboard` (signed in). `/app-preview` redirects to `/dashboard`.
+- Phase 28 complete (Production Execution). Phases 29–38 remain as previously verified.
+- Shop-floor path: Operations (plan) → `/execution/production` (execute) → Reports / Batches.
 
 ## Next
 
-- Phase 32 — Advanced Materials & MRP (when explicitly requested; builds on existing MRP/material-readiness foundation).
+- Phase 39 — Integrations (when explicitly requested).
 
 ## Stack
 
@@ -931,8 +1249,16 @@ npm run db:migrate
 npm run db:seed
 npm run db:verify
 npm run db:studio
+npm run qa:phase28
 npm run qa:phase31
+npm run qa:phase32
+npm run qa:phase33
+npm run qa:phase34
+npm run qa:phase35
+npm run qa:phase36
+npm run qa:phase37
+npm run qa:phase38
 ```
 
-Inspect: [http://localhost:3000/login](http://localhost:3000/login) → [http://localhost:3000/dashboard](http://localhost:3000/dashboard)  
+Inspect: [http://localhost:3000](http://localhost:3000) → [http://localhost:3000/login](http://localhost:3000/login) → [http://localhost:3000/dashboard](http://localhost:3000/dashboard)  
 DB health (after migrate + seed): [http://localhost:3000/api/health/db](http://localhost:3000/api/health/db)

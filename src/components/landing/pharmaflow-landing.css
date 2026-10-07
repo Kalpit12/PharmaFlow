@@ -65,6 +65,50 @@
   animation: pf-aurora 14s ease-in-out infinite alternate;
 }
 
+/* Homepage CTA — drifting aurora blobs (brand blue / teal) */
+.pf-cta-aurora {
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 100%, rgba(91, 140, 255, 0.12), transparent 55%),
+    radial-gradient(ellipse 60% 50% at 50% 0%, rgba(94, 234, 212, 0.08), transparent 50%);
+}
+
+.pf-cta-aurora__layer {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(52px);
+  opacity: 0.65;
+  mix-blend-mode: screen;
+  will-change: transform, opacity;
+}
+
+.pf-cta-aurora__layer--a {
+  width: min(62%, 28rem);
+  aspect-ratio: 1;
+  left: -8%;
+  top: -28%;
+  background: radial-gradient(circle at 40% 40%, rgba(91, 140, 255, 0.75), transparent 68%);
+  animation: pf-cta-aurora-a 16s ease-in-out infinite alternate;
+}
+
+.pf-cta-aurora__layer--b {
+  width: min(48%, 22rem);
+  aspect-ratio: 1;
+  right: -6%;
+  top: 8%;
+  background: radial-gradient(circle at 55% 45%, rgba(94, 234, 212, 0.55), transparent 70%);
+  animation: pf-cta-aurora-b 20s ease-in-out infinite alternate;
+}
+
+.pf-cta-aurora__layer--c {
+  width: min(70%, 32rem);
+  aspect-ratio: 1.2;
+  left: 18%;
+  bottom: -42%;
+  background: radial-gradient(circle at 50% 50%, rgba(125, 211, 252, 0.45), rgba(91, 140, 255, 0.2) 45%, transparent 72%);
+  animation: pf-cta-aurora-c 22s ease-in-out infinite alternate;
+}
+
 .pf-dots {
   background-image: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1.2px);
   background-size: 28px 28px;
@@ -958,6 +1002,39 @@ select.pf-field {
   }
 }
 
+@keyframes pf-cta-aurora-a {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.55;
+  }
+  to {
+    transform: translate(12%, 8%) scale(1.12);
+    opacity: 0.78;
+  }
+}
+
+@keyframes pf-cta-aurora-b {
+  from {
+    transform: translate(0, 0) scale(1.05);
+    opacity: 0.45;
+  }
+  to {
+    transform: translate(-14%, 10%) scale(0.92);
+    opacity: 0.7;
+  }
+}
+
+@keyframes pf-cta-aurora-c {
+  from {
+    transform: translate(0, 0) scale(1);
+    opacity: 0.4;
+  }
+  to {
+    transform: translate(6%, -12%) scale(1.08);
+    opacity: 0.62;
+  }
+}
+
 @keyframes pf-dot {
   0%,
   100% {
@@ -1008,6 +1085,7 @@ html.pf-paused .pf-marquee-track,
 html.pf-paused .pf-hero-device,
 html.pf-paused .pf-hero-wash,
 html.pf-paused .pf-aurora,
+html.pf-paused .pf-cta-aurora__layer,
 html.pf-paused .pf-orbit,
 html.pf-paused .pf-glow-ring::before,
 html.pf-paused .pf-live-pill::before,
@@ -1033,6 +1111,7 @@ html.pf-paused .pf-float-chip {
   .pf-hero-device,
   .pf-hero-wash,
   .pf-aurora,
+  .pf-cta-aurora__layer,
   .pf-orbit,
   .pf-glow-ring::before,
   .pf-live-pill::before,

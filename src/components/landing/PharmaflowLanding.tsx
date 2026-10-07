@@ -613,9 +613,13 @@ export function PharmaflowLanding({ signedIn = false }: { signedIn?: boolean }) 
         {/* ------------------------------------------------------------ */}
         <section className="relative overflow-hidden">
           <Reveal className="mx-auto w-[min(1240px,calc(100%-1.5rem))] py-10">
-            <div className="pf-glow-ring relative overflow-hidden rounded-3xl border border-white/10 px-6 py-16 text-center md:py-20">
-              <div className="pf-aurora pointer-events-none absolute inset-0 opacity-70" aria-hidden="true" />
-              <div className="pf-dots pointer-events-none absolute inset-0" aria-hidden="true" />
+            <div className="pf-glow-ring relative overflow-hidden rounded-3xl border border-white/10 bg-[#0A0D11] px-6 py-16 text-center md:py-20">
+              <div className="pf-cta-aurora pointer-events-none absolute inset-0" aria-hidden="true">
+                <span className="pf-cta-aurora__layer pf-cta-aurora__layer--a" />
+                <span className="pf-cta-aurora__layer pf-cta-aurora__layer--b" />
+                <span className="pf-cta-aurora__layer pf-cta-aurora__layer--c" />
+              </div>
+              <div className="pf-dots pointer-events-none absolute inset-0 opacity-80" aria-hidden="true" />
               <div className="relative">
                 <p className="pf-kicker">Ready when you are</p>
                 <h2 className="pf-display mt-4 text-3xl font-semibold md:text-5xl">

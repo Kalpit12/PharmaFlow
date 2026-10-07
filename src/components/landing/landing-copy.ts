@@ -68,6 +68,10 @@ export const FAQ = [
     a: "Book a call, walk the plant with us, then we scope a tenant workspace. List prices are on the pricing page; implementation is scoped after that walkthrough.",
   },
   {
+    q: "How does pricing compare to SkyPlanner or Power BI?",
+    a: "SkyPlanner publishes APS from about €199 per month (five workstations). Power BI Pro is about $14 per user per month for shared reports. Pharmaflow list prices sit below buying APS and BI separately for the same team — because planning, inventory, materials, and governance ship in one tenant workspace.",
+  },
+  {
     q: "Is this medical advice?",
     a: "No. Pharmaflow analyzes business and operational data. It does not provide clinical or medical advice.",
   },
@@ -82,32 +86,47 @@ export const OPS_EVENTS = [
   { t: "06:31", domain: "Traceability", tone: "info", text: "Partial downstream allocation on lot" },
 ] as const;
 
+/** Public competitor list prices used for illustration only (VAT excl., Oct 2026). */
+export const PRICING_BENCHMARK = {
+  footnote:
+    "Compared to published SkyPlanner APS (€199/mo incl. 5 workstations) and Microsoft Power BI Pro ($14/user/mo, paid yearly). FX rounded for Kenya; your stack and headcount may differ.",
+  rows: [
+    { label: "SkyPlanner APS (5 workstations)", amount: "~KSh 29,000 / mo" },
+    { label: "Power BI Pro (25 report users)", amount: "~KSh 46,000 / mo" },
+    { label: "Typical APS + BI stack", amount: "~KSh 75,000+ / mo" },
+    { label: "Pharmaflow Plant (operations + planning)", amount: "KSh 24,500 / mo", highlight: true },
+  ],
+} as const;
+
 export const PLANS = [
   {
     id: "plant",
     name: "Plant",
-    price: "KSh 145,000",
+    price: "KSh 24,500",
     period: " / mo",
-    body: "One manufacturing site. Command Center, Daily Review, inventory, materials, operations, explain-on-request AI.",
+    body: "One manufacturing site. Command Center, Daily Review, inventory, materials, finite-capacity operations, explain-on-request AI.",
     items: ["Up to 25 operators", "Tenant-scoped workspace", "Human approval on every write"],
+    savings: "List price below SkyPlanner APS alone — full pharma workspace, not scheduling-only.",
     featured: false,
   },
   {
     id: "network",
     name: "Network",
-    price: "KSh 385,000",
+    price: "KSh 52,000",
     period: " / mo",
     body: "The buy desk on the same picture: RFQs, POs, receiving, suppliers, forecast, scenarios.",
     items: ["Everything in Plant", "Up to 80 operators", "Execution queue and supplier scorecards"],
+    savings: "Typically ~30% less than APS + Power BI Pro for 25 seats — one licence, not per-user BI tax.",
     featured: true,
   },
   {
     id: "group",
     name: "Group",
-    price: "From KSh 720,000",
+    price: "From KSh 94,000",
     period: " / mo",
     body: "Several sites, board reporting, path to a distributor portal. Scoped to how the group actually runs.",
     items: ["Everything in Network", "Multi-site isolation review", "Executive reporting in KSh"],
+    savings: "Multi-site command without stacking APS, BI, and integration quotes per plant.",
     featured: false,
   },
 ] as const;

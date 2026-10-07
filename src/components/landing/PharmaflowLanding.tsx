@@ -575,7 +575,7 @@ export function PharmaflowLanding({ signedIn = false }: { signedIn?: boolean }) 
                 Transparent list prices. <span className="font-serif font-normal italic pf-gradient-word">In Kenyan shillings.</span>
               </h2>
               <p className="mt-4 max-w-xl text-lg text-[#9AA4B2]">
-                Plant, Network, and Group — monthly, VAT exclusive. Every plan ends in a call, not a checkout.
+                Plant, Network, and Group — monthly, VAT exclusive, below typical APS + BI stack spend. Every plan ends in a call, not a checkout.
               </p>
             </div>
             <LandingPricingPlans contactHref="#contact" />

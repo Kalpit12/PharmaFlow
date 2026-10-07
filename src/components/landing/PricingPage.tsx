@@ -9,7 +9,7 @@ import { LandingPricingPlans } from "./LandingPricingPlans";
 import { Reveal } from "./Reveal";
 
 const PRICING_FAQ = FAQ.filter((item) =>
-  /ERP|implementation|medical advice|AI run/i.test(item.q),
+  /ERP|implementation|medical advice|AI run|SkyPlanner|Power BI/i.test(item.q),
 );
 
 export function PricingPage({ signedIn = false }: { signedIn?: boolean }) {
@@ -23,9 +23,10 @@ export function PricingPage({ signedIn = false }: { signedIn?: boolean }) {
             <h1 className="mt-3 max-w-3xl text-4xl font-semibold tracking-tight md:text-6xl">
               Transparent list prices. In Kenyan shillings.
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-[#A7AFB8]">
-              Monthly, VAT exclusive. Implementation is scoped after a plant walkthrough. Every plan ends in a call —
-              not a self-serve checkout.
+            <p className="mt-5 max-w-2xl text-lg text-[#A7AFB8]">
+              Monthly, VAT exclusive. List prices sit below typical SkyPlanner APS and Power BI Pro spend for the same
+              headcount — one pharma workspace instead of a patchwork of licences. Implementation is scoped after a plant
+              walkthrough; every plan ends in a call, not a self-serve checkout.
             </p>
             <LandingPricingPlans />
           </div>

@@ -51,7 +51,7 @@ export async function runPhase35Verify(prisma: PrismaClient) {
   assert(computeDueState(new Date(Date.now() - 86400000).toISOString(), "OPEN") === "OVERDUE", "Overdue calculation");
   assert(computeDueState(null, "OPEN") === "NO_DUE_DATE", "No due date state");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenants and user exist");

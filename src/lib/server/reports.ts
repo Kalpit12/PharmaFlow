@@ -374,7 +374,7 @@ async function loadReportingDepth(tenantId: string): Promise<DepthRecord> {
         FROM "InventoryReceipt" r
         INNER JOIN "Product" p ON p.id = r."productId"
         LEFT JOIN "Supplier" s ON s.id = r."supplierId"
-        LEFT JOIN "PurchaseOrder" po ON po.id = r."purchaseOrderId"
+        LEFT JOIN "purchase_orders" po ON po.id = r."purchaseOrderId"
         WHERE r."tenantId" = ${tenantId} AND r.status = 'OPEN'
         ORDER BY r."expectedAt" ASC
       `),

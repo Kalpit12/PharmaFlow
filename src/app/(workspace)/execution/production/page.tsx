@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 export default async function ProductionExecutionPage({
   searchParams,
 }: {
-  searchParams: Promise<{ view?: string; order?: string; q?: string }>;
+  searchParams: Promise<{ view?: string; order?: string; q?: string; workstation?: string }>;
 }) {
   const params = await searchParams;
   let data;

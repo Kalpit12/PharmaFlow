@@ -2,8 +2,20 @@ import type { ProductionOrderStatus } from "@prisma/client";
 
 import type { MaterialsSnapshot } from "@/lib/materials/types";
 import {
-  addWorkingMinutes,
-  alignToWork,
+  addWorkingMinutesOnCalendar,
+  alignToCalendar,
+  availableWorkingMinutes,
+  createStandardWorkCalendar,
+} from "@/lib/operations/calendar";
+import {
+  getActiveProposal,
+  getOrCreatePlanningPolicy,
+  instantiateOperationsForOrder,
+  loadWorkstationCalendars,
+  type PlanningPolicyView,
+  type ScheduleProposalView,
+} from "@/lib/server/aps-plan";
+import {
   buildSchedule,
   utilizationPercent,
   type PlannerOrder,
@@ -11,6 +23,12 @@ import {
   type ScheduleConflict,
   type ScheduledOrder,
 } from "@/lib/operations/schedule";
+import { buildOperationSchedule } from "@/lib/operations/routing";
+import {
+  buildOrderMaterialConstraints,
+  type MaterialScheduleState,
+  type OrderMaterialConstraint,
+} from "@/lib/operations/material-constraints";
 import {
   buildPlanningAttention,
   capacityStateFromUtilization,
@@ -20,6 +38,7 @@ import {
   type PlanningAttentionItem,
 } from "@/lib/operations/planning";
 import { getBatchesSnapshot } from "@/lib/server/batches";
+import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
 import { getTraceabilityAttention } from "@/lib/server/traceability";
 import { getQualityAttention } from "@/lib/server/quality";
 import { requirePermission, can } from "@/lib/auth/authorization";
@@ -59,10 +78,34 @@ export type OperationsOrder = {
   plannedEnd: string | null;
   dueDate: string;
   materialReadiness: MaterialReadinessState;
+  materialScheduleState: MaterialScheduleState;
+  materialReadyAt: string | null;
   materialShortageCount: number;
   materialAffected: string[];
   capacityState: "OK" | "WARNING" | "DANGER" | "UNKNOWN";
   conflictCount: number;
+  routing: {
+    name: string | null;
+    version: number | null;
+    issueCount: number;
+    changeoverMinutes: number;
+    operations: Array<{
+      id: string;
+      code: string;
+      name: string;
+      sequence: number;
+      status: string;
+      workstationId: string | null;
+      workstationName: string | null;
+      qualifiedWorkstationIds: string[];
+      durationMinutes: number;
+      setupMinutes: number;
+      teardownMinutes: number;
+      changeoverMinutes: number;
+      plannedStart: string | null;
+      plannedEnd: string | null;
+    }>;
+  };
 };
 
 export type OperationsView = {
@@ -87,6 +130,9 @@ export type OperationsView = {
     canSchedule: boolean;
     canExecute: boolean;
   };
+  products: Array<{ id: string; name: string; sku: string }>;
+  policy: PlanningPolicyView;
+  proposal: ScheduleProposalView | null;
 };
 
 function startOfUtcDay(date: Date): Date {
@@ -113,7 +159,8 @@ export async function getOperationsPlanner(
 ): Promise<OperationsView> {
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { name: true, status: true } });
-  const [workstationRows, inactiveWorkstations, orderRows] = await Promise.all([
+  const [workstationRows, inactiveWorkstations, orderRows, dependencyRows, changeoverRows, policy, proposal] =
+    await Promise.all([
     prisma.workstation.findMany({
       where: { tenantId: ctx.tenantId, active: true },
       orderBy: { code: "asc" },
@@ -128,18 +175,40 @@ export async function getOperationsPlanner(
         product: { select: { name: true, id: true } },
         workstation: { select: { name: true } },
         batch: { select: { producedQuantity: true } },
+        operations: {
+          include: {
+            routingOperation: {
+              include: {
+                resources: true,
+                routing: { select: { name: true, version: true } },
+              },
+            },
+          },
+          orderBy: { sequence: "asc" },
+        },
       },
       orderBy: [{ plannedStart: "asc" }, { createdAt: "asc" }],
     }),
+    prisma.routingDependency.findMany({ where: { tenantId: ctx.tenantId } }),
+    prisma.changeoverRule.findMany({ where: { tenantId: ctx.tenantId } }),
+    getOrCreatePlanningPolicy(ctx),
+    getActiveProposal(ctx),
   ]);
+  const calendars = await loadWorkstationCalendars(ctx.tenantId, workstationRows);
 
   const workstations: PlannerWorkstation[] = workstationRows.map((row) => ({
     id: row.id,
     name: row.name,
     code: row.code,
     capacityHoursPerDay: row.capacityHoursPerDay,
+    calendar: calendars.get(row.id) ?? createStandardWorkCalendar(row.capacityHoursPerDay),
   }));
 
+  const materialConstraints = buildOrderMaterialConstraints(
+    materials?.materials ?? [],
+    orderRows.map((order) => order.id),
+    materials?.generatedAt ? new Date(materials.generatedAt) : new Date()
+  );
   const plannerOrders: PlannerOrder[] = orderRows.map((row) => ({
     id: row.id,
     orderNumber: row.orderNumber,
@@ -152,18 +221,96 @@ export async function getOperationsPlanner(
     isLocked: row.isLocked,
     plannedStart: row.plannedStart,
     plannedEnd: row.plannedEnd,
+    materialReadyAt: materialConstraints.get(row.id)?.readyAt ?? null,
+    materialBlocked: materialConstraints.get(row.id)?.state === "BLOCKED",
   }));
 
   const inactiveIds = new Set(inactiveWorkstations.map((row) => row.id));
   const planned = buildSchedule(plannerOrders, workstations, window, { inactiveWorkstationIds: inactiveIds });
   const conflicts = planned.conflicts;
 
-  const days = Math.max(1, Math.round((window.end.getTime() - window.start.getTime()) / (24 * 60 * 60 * 1000)));
+  const concreteDependencies = orderRows.flatMap((order) => {
+    const byRoutingOperation = new Map(
+      order.operations
+        .filter((operation) => operation.routingOperationId)
+        .map((operation) => [operation.routingOperationId!, operation.id])
+    );
+    return dependencyRows.flatMap((dependency) => {
+      const fromOperationId = byRoutingOperation.get(dependency.fromOperationId);
+      const toOperationId = byRoutingOperation.get(dependency.toOperationId);
+      if (!fromOperationId || !toOperationId) return [];
+      return [{ fromOperationId, toOperationId, minimumLagMinutes: dependency.minimumLagMinutes }];
+    });
+  });
+  const operationPlan = buildOperationSchedule({
+    orders: orderRows
+      .filter((order) => order.operations.length > 0)
+      .map((order) => ({
+        id: order.id,
+        orderNumber: order.orderNumber,
+        priority: order.priority,
+        dueDate: order.dueDate,
+        createdAt: order.createdAt,
+        materialReadyAt: materialConstraints.get(order.id)?.readyAt ?? null,
+        materialBlocked: materialConstraints.get(order.id)?.state === "BLOCKED",
+        operations: order.operations.map((operation) => ({
+          id: operation.id,
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          sequence: operation.sequence,
+          durationMinutes: operation.durationMinutes,
+          setupMinutes: operation.setupMinutes,
+          teardownMinutes: operation.teardownMinutes,
+          changeoverFamily: operation.changeoverFamily,
+          resources:
+            operation.routingOperation?.resources.map((resource) => ({
+              workstationId: resource.workstationId,
+              efficiencyPercent: resource.efficiencyPercent,
+              preferred: resource.preferred,
+            })) ?? [],
+          locked:
+            operation.isLocked ||
+            (operation.plannedStart != null &&
+              operation.plannedStart.getTime() < new Date(policy.freezeUntil).getTime()),
+          workstationId: operation.workstationId,
+          plannedStart: operation.plannedStart,
+          plannedEnd: operation.plannedEnd,
+        })),
+      })),
+    dependencies: concreteDependencies,
+    workstations,
+    changeovers: changeoverRows,
+    windowStart: window.start,
+    freezeUntil: new Date(policy.freezeUntil),
+    weights: {
+      priorityWeight: policy.priorityWeight,
+      dueDateWeight: policy.dueDateWeight,
+      changeoverWeight: policy.changeoverWeight,
+      utilizationWeight: policy.utilizationWeight,
+    },
+  });
+  const plannedOperationsByOrder = new Map<string, typeof operationPlan.operations>();
+  for (const operation of operationPlan.operations) {
+    const group = plannedOperationsByOrder.get(operation.orderId) ?? [];
+    group.push(operation);
+    plannedOperationsByOrder.set(operation.orderId, group);
+  }
+  const routingIssuesByOrderNumber = new Map<string, number>();
+  for (const issue of operationPlan.issues) {
+    routingIssuesByOrderNumber.set(
+      issue.orderNumber,
+      (routingIssuesByOrderNumber.get(issue.orderNumber) ?? 0) + 1
+    );
+  }
+
   const names = new Map(workstationRows.map((row) => [row.id, row.name]));
   const quantities = new Map(orderRows.map((row) => [row.id, row.quantity]));
   const produced = new Map(orderRows.map((row) => [row.id, row.batch?.producedQuantity ?? null]));
   const statuses = new Map(orderRows.map((row) => [row.id, row.status]));
   const productIds = new Map(orderRows.map((row) => [row.id, row.product.id]));
+  const operationRowsById = new Map(
+    orderRows.flatMap((order) => order.operations.map((operation) => [operation.id, operation] as const))
+  );
 
   const workstationViews = workstations.map((ws) => {
     const scheduledMinutes = planned.orders
@@ -173,12 +320,13 @@ export async function getOperationsPlanner(
         const end = Math.min(order.plannedEnd!.getTime(), window.end.getTime());
         return sum + Math.max(0, (end - start) / 60000);
       }, 0);
-    const availableMinutes = days * ws.capacityHoursPerDay * 60;
+    const calendar = ws.calendar ?? createStandardWorkCalendar(ws.capacityHoursPerDay);
+    const availableMinutes = availableWorkingMinutes(window.start, window.end, calendar);
     const utilization = utilizationPercent(scheduledMinutes, availableMinutes);
     return {
       ...ws,
       scheduledHours: Math.round(scheduledMinutes / 60),
-      availableHours: days * ws.capacityHoursPerDay,
+      availableHours: Math.round((availableMinutes / 60) * 10) / 10,
       utilization,
       capacityState: capacityStateFromUtilization(utilization),
     };
@@ -192,8 +340,14 @@ export async function getOperationsPlanner(
       row.id,
       orderHasBomDemand(productIds.get(row.id) ?? "", materials)
     );
+    const materialConstraint = materialConstraints.get(row.id);
     const orderConflicts = conflicts.filter((item) => item.orderNumber === row.orderNumber || item.orderNumber === "");
     const utilization = row.workstationId ? wsUtilById.get(row.workstationId) ?? 0 : 0;
+    const sourceOrder = orderRows.find((order) => order.id === row.id);
+    const routeOperations = (plannedOperationsByOrder.get(row.id) ?? []).sort(
+      (a, b) => a.sequence - b.sequence
+    );
+    const route = sourceOrder?.operations[0]?.routingOperation?.routing;
     return {
       id: row.id,
       orderNumber: row.orderNumber,
@@ -212,10 +366,41 @@ export async function getOperationsPlanner(
       plannedEnd: row.plannedEnd?.toISOString() ?? null,
       dueDate: row.dueDate.toISOString(),
       materialReadiness: readiness.state,
+      materialScheduleState: materialConstraint?.state ?? "UNKNOWN",
+      materialReadyAt: materialConstraint?.readyAt?.toISOString() ?? null,
       materialShortageCount: readiness.shortageCount,
       materialAffected: readiness.affectedMaterials,
       capacityState: row.workstationId ? capacityStateFromUtilization(utilization) : "UNKNOWN",
       conflictCount: orderConflicts.filter((item) => item.orderNumber === row.orderNumber).length,
+      routing: {
+        name: route?.name ?? null,
+        version: route?.version ?? null,
+        issueCount: routingIssuesByOrderNumber.get(row.orderNumber) ?? 0,
+        changeoverMinutes: routeOperations.reduce(
+          (sum, operation) => sum + operation.changeoverMinutes,
+          0
+        ),
+        operations: routeOperations.map((operation) => {
+          const source = operationRowsById.get(operation.id);
+          return {
+            id: operation.id,
+            code: source?.operationCode ?? "",
+            name: source?.operationName ?? "",
+            sequence: operation.sequence,
+            status: source?.status ?? "UNSCHEDULED",
+            workstationId: operation.workstationId,
+            workstationName: operation.workstationId ? names.get(operation.workstationId) ?? null : null,
+            qualifiedWorkstationIds:
+              source?.routingOperation?.resources.map((resource) => resource.workstationId) ?? [],
+            durationMinutes: operation.durationMinutes,
+            setupMinutes: operation.setupMinutes,
+            teardownMinutes: operation.teardownMinutes,
+            changeoverMinutes: operation.changeoverMinutes,
+            plannedStart: operation.plannedStart?.toISOString() ?? null,
+            plannedEnd: operation.plannedEnd?.toISOString() ?? null,
+          };
+        }),
+      },
     };
   });
 
@@ -282,6 +467,12 @@ export async function getOperationsPlanner(
   }));
   const planningAttention = [...planningAttentionBase, ...batchAttention, ...traceabilityAttention, ...qualityAttention];
 
+  const productRows = await prisma.product.findMany({
+    where: { tenantId: ctx.tenantId, status: "ACTIVE", dosageForm: { not: null } },
+    orderBy: { name: "asc" },
+    select: { id: true, name: true, sku: true },
+  });
+
   return {
     brand: tenant?.name ?? "Workspace",
     disclaimer: tenant?.status === "DEMO" ? "Demo workspace data" : "Workspace data",
@@ -306,7 +497,73 @@ export async function getOperationsPlanner(
       canSchedule: can(ctx.role, "production.schedule"),
       canExecute: can(ctx.role, "production.execute"),
     },
+    products: productRows.filter((row) => !row.sku.includes("API") && !row.sku.startsWith("BLISTER") && !row.sku.startsWith("LABEL")),
+    policy,
+    proposal,
   };
+}
+
+export type CreateProductionOrderInput = {
+  productId: string;
+  quantity: number;
+  priority?: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
+  dueDate: string;
+  durationMinutes?: number;
+};
+
+export async function createProductionOrder(ctx: TenantContext, input: CreateProductionOrderInput) {
+  requirePermission(ctx, "production.schedule");
+  const prisma = getPrisma();
+  const product = await prisma.product.findFirst({
+    where: { id: input.productId, tenantId: ctx.tenantId, status: "ACTIVE" },
+  });
+  if (!product) throw new ServerError("Product not found.", "NOT_FOUND");
+  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
+    throw new ServerError("Quantity must be a positive whole number.", "INTERNAL");
+  }
+  const dueDate = parseScheduleDate(input.dueDate, "Due date");
+  const durationMinutes = input.durationMinutes ?? 480;
+  const year = new Date().getUTCFullYear();
+  const orderCount = await prisma.productionOrder.count({ where: { tenantId: ctx.tenantId } });
+  const orderNumber = `PRO-${year}-${String(orderCount + 1).padStart(3, "0")}`;
+  const batchCount = await prisma.productionBatch.count({ where: { tenantId: ctx.tenantId } });
+  const batchNumber = `LAB-${year}-${String(batchCount + 1).padStart(3, "0")}`;
+
+  const order = await prisma.$transaction(async (tx) => {
+    const created = await tx.productionOrder.create({
+      data: {
+        tenantId: ctx.tenantId,
+        orderNumber,
+        productId: product.id,
+        quantity: input.quantity,
+        priority: input.priority ?? "NORMAL",
+        status: "UNSCHEDULED",
+        dueDate,
+        durationMinutes,
+        isLocked: false,
+      },
+    });
+    await tx.productionBatch.create({
+      data: {
+        tenantId: ctx.tenantId,
+        productionOrderId: created.id,
+        batchNumber,
+        plannedQuantity: created.quantity,
+        qualityStatus: "PENDING_REVIEW",
+      },
+    });
+    await instantiateOperationsForOrder(tx, ctx.tenantId, created);
+    return created;
+  });
+
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_ORDER_CREATED",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: orderNumber,
+  });
+
+  return { id: order.id, orderNumber, batchNumber };
 }
 
 export type ScheduleUpdateInput = {
@@ -342,6 +599,39 @@ function parseScheduleDate(value: string, label: string): Date {
   return date;
 }
 
+async function loadMaterialConstraints(ctx: TenantContext, orderIds: string[]) {
+  const materials = await getMaterialsSnapshot(ctx, resolveMaterialsFilters({}));
+  return buildOrderMaterialConstraints(
+    materials.materials,
+    orderIds,
+    new Date(materials.generatedAt)
+  );
+}
+
+function assertMaterialFeasible(
+  orderNumber: string,
+  plannedStart: Date | null,
+  constraint: OrderMaterialConstraint
+) {
+  if (!plannedStart) return;
+  if (constraint.state === "BLOCKED") {
+    throw new ServerError(
+      `Cannot schedule ${orderNumber}: dated material supply is insufficient.`,
+      "INTERNAL"
+    );
+  }
+  if (
+    constraint.state === "DELAYED" &&
+    constraint.readyAt &&
+    plannedStart.getTime() < constraint.readyAt.getTime()
+  ) {
+    throw new ServerError(
+      `Cannot schedule ${orderNumber} before materials are available on ${constraint.readyAt.toISOString()}.`,
+      "INTERNAL"
+    );
+  }
+}
+
 export async function updateProductionOrderSchedule(ctx: TenantContext, orderId: string, input: ScheduleUpdateInput) {
   requirePermission(ctx, "production.schedule");
   const order = await loadMutableOrder(ctx, orderId);
@@ -354,6 +644,8 @@ export async function updateProductionOrderSchedule(ctx: TenantContext, orderId:
   if (plannedStart && plannedEnd && plannedStart.getTime() >= plannedEnd.getTime()) {
     throw new ServerError("Planned start must be before planned end.", "INTERNAL");
   }
+  const materialConstraint = (await loadMaterialConstraints(ctx, [order.id])).get(order.id);
+  if (materialConstraint) assertMaterialFeasible(order.orderNumber, plannedStart, materialConstraint);
 
   if (workstationId) {
     const workstation = await prisma.workstation.findFirst({
@@ -420,6 +712,23 @@ export async function resequenceProductionOrder(ctx: TenantContext, orderId: str
   const current = lineOrders[index];
   const neighbor = lineOrders[neighborIndex];
   if (neighbor.isLocked) throw new ServerError("Cannot swap with a locked order.", "FORBIDDEN");
+  const constraints = await loadMaterialConstraints(ctx, [current.id, neighbor.id]);
+  const currentConstraint = constraints.get(current.id);
+  const neighborConstraint = constraints.get(neighbor.id);
+  if (currentConstraint) {
+    assertMaterialFeasible(order.orderNumber, neighbor.plannedStart, currentConstraint);
+  }
+  if (neighborConstraint) {
+    const neighborOrder = await prisma.productionOrder.findUnique({
+      where: { id: neighbor.id },
+      select: { orderNumber: true },
+    });
+    assertMaterialFeasible(
+      neighborOrder?.orderNumber ?? "Production order",
+      current.plannedStart,
+      neighborConstraint
+    );
+  }
 
   await prisma.$transaction([
     prisma.productionOrder.update({
@@ -446,6 +755,144 @@ export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: s
   requirePermission(ctx, "production.schedule");
   const order = await loadMutableOrder(ctx, orderId);
   const prisma = getPrisma();
+  const windowStart = parseScheduleDate(windowStartIso, "Window start");
+  await instantiateOperationsForOrder(prisma, ctx.tenantId, order);
+  const operations = await prisma.productionOperation.findMany({
+    where: { productionOrderId: order.id },
+    include: { routingOperation: { include: { resources: true } } },
+    orderBy: { sequence: "asc" },
+  });
+  const materialConstraint = (await loadMaterialConstraints(ctx, [order.id])).get(order.id);
+  if (materialConstraint?.state === "BLOCKED") {
+    assertMaterialFeasible(order.orderNumber, windowStart, materialConstraint);
+  }
+
+  if (operations.length > 0) {
+    const policy = await getOrCreatePlanningPolicy(ctx);
+    const freezeUntil = new Date(policy.freezeUntil);
+    const [workstationRows, occupancy, dependencyRows, changeoverRows] = await Promise.all([
+      prisma.workstation.findMany({ where: { tenantId: ctx.tenantId, active: true } }),
+      prisma.productionOrder.findMany({
+        where: { tenantId: ctx.tenantId, status: { not: "COMPLETED" }, id: { not: order.id } },
+        include: { operations: { include: { routingOperation: { include: { resources: true } } } } },
+      }),
+      prisma.routingDependency.findMany({ where: { tenantId: ctx.tenantId } }),
+      prisma.changeoverRule.findMany({ where: { tenantId: ctx.tenantId } }),
+    ]);
+    const calendars = await loadWorkstationCalendars(ctx.tenantId, workstationRows);
+    const toRouting = (
+      row: typeof occupancy[number] | (typeof order & { operations: typeof operations }),
+      ops: typeof operations,
+      locked: boolean
+    ) => ({
+      id: row.id,
+      orderNumber: row.orderNumber,
+      priority: row.priority,
+      dueDate: row.dueDate,
+      createdAt: row.createdAt,
+      materialReadyAt: row.id === order.id ? materialConstraint?.readyAt ?? null : null,
+      materialBlocked: row.id === order.id ? materialConstraint?.state === "BLOCKED" : false,
+      operations: ops.map((operation) => ({
+        id: operation.id,
+        orderId: row.id,
+        orderNumber: row.orderNumber,
+        sequence: operation.sequence,
+        durationMinutes: operation.durationMinutes,
+        setupMinutes: operation.setupMinutes,
+        teardownMinutes: operation.teardownMinutes,
+        changeoverFamily: operation.changeoverFamily,
+        resources:
+          operation.routingOperation?.resources.map((resource) => ({
+            workstationId: resource.workstationId,
+            efficiencyPercent: resource.efficiencyPercent,
+            preferred: resource.preferred,
+          })) ?? [],
+        locked,
+        workstationId: operation.workstationId,
+        plannedStart: operation.plannedStart,
+        plannedEnd: operation.plannedEnd,
+      })),
+    });
+    const dependencies = [...occupancy, { ...order, operations }].flatMap((row) => {
+      const map = new Map(
+        row.operations
+          .filter((operation) => operation.routingOperationId)
+          .map((operation) => [operation.routingOperationId!, operation.id])
+      );
+      return dependencyRows.flatMap((dependency) => {
+        const fromOperationId = map.get(dependency.fromOperationId);
+        const toOperationId = map.get(dependency.toOperationId);
+        if (!fromOperationId || !toOperationId) return [];
+        return [{ fromOperationId, toOperationId, minimumLagMinutes: dependency.minimumLagMinutes }];
+      });
+    });
+    const result = buildOperationSchedule({
+      orders: [
+        ...occupancy
+          .filter((row) => row.operations.length > 0)
+          .map((row) => toRouting(row, row.operations, true)),
+        toRouting({ ...order, operations }, operations, false),
+      ],
+      dependencies,
+      workstations: workstationRows.map((row) => ({
+        id: row.id,
+        code: row.code,
+        capacityHoursPerDay: row.capacityHoursPerDay,
+        calendar: calendars.get(row.id),
+      })),
+      changeovers: changeoverRows,
+      windowStart,
+      freezeUntil,
+      weights: {
+        priorityWeight: policy.priorityWeight,
+        dueDateWeight: policy.dueDateWeight,
+        changeoverWeight: policy.changeoverWeight,
+        utilizationWeight: policy.utilizationWeight,
+      },
+    });
+    const scheduled = result.operations.filter((operation) => operation.orderId === order.id);
+    const rolledStart = scheduled.reduce<Date | null>(
+      (earliest, operation) =>
+        operation.plannedStart && (!earliest || operation.plannedStart.getTime() < earliest.getTime())
+          ? operation.plannedStart
+          : earliest,
+      null
+    );
+    const rolledEnd = scheduled.reduce<Date | null>(
+      (latest, operation) =>
+        operation.plannedEnd && (!latest || operation.plannedEnd.getTime() > latest.getTime())
+          ? operation.plannedEnd
+          : latest,
+      null
+    );
+    const workstationId =
+      [...scheduled].sort((a, b) => a.sequence - b.sequence)[0]?.workstationId ?? order.workstationId;
+    await prisma.$transaction(
+      scheduled.map((operation) =>
+        prisma.productionOperation.update({
+          where: { id: operation.id },
+          data: {
+            workstationId: operation.workstationId,
+            plannedStart: operation.plannedStart,
+            plannedEnd: operation.plannedEnd,
+            status: operation.plannedStart ? "SCHEDULED" : "UNSCHEDULED",
+          },
+        })
+      )
+    );
+    if (!rolledStart || !rolledEnd || !workstationId) {
+      throw new ServerError(
+        result.issues.find((issue) => issue.orderNumber === order.orderNumber)?.detail ??
+          "Unable to auto-schedule this order against qualified resources.",
+        "INTERNAL"
+      );
+    }
+    return updateProductionOrderSchedule(ctx, orderId, {
+      workstationId,
+      plannedStart: rolledStart.toISOString(),
+      plannedEnd: rolledEnd.toISOString(),
+    });
+  }
 
   const workstations = await prisma.workstation.findMany({
     where: { tenantId: ctx.tenantId, active: true },
@@ -453,7 +900,6 @@ export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: s
   });
   if (workstations.length === 0) throw new ServerError("No active workstations available.", "INTERNAL");
 
-  const windowStart = parseScheduleDate(windowStartIso, "Window start");
   const preferred =
     order.workstationId && workstations.some((row) => row.id === order.workstationId)
       ? workstations.find((row) => row.id === order.workstationId)!
@@ -471,10 +917,15 @@ export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: s
     select: { plannedEnd: true },
   });
 
-  const hoursPerDay = preferred.capacityHoursPerDay;
-  const cursor = lineOrders[0]?.plannedEnd ?? alignToWork(windowStart, hoursPerDay);
-  const start = alignToWork(cursor, hoursPerDay);
-  const end = addWorkingMinutes(start, order.durationMinutes, hoursPerDay);
+  const calendars = await loadWorkstationCalendars(ctx.tenantId, workstations);
+  const calendar = calendars.get(preferred.id) ?? createStandardWorkCalendar(preferred.capacityHoursPerDay);
+  const lineCursor = lineOrders[0]?.plannedEnd ?? alignToCalendar(windowStart, calendar);
+  const cursor =
+    materialConstraint?.readyAt && materialConstraint.readyAt.getTime() > lineCursor.getTime()
+      ? materialConstraint.readyAt
+      : lineCursor;
+  const start = alignToCalendar(cursor, calendar);
+  const end = addWorkingMinutesOnCalendar(start, order.durationMinutes, calendar);
 
   return updateProductionOrderSchedule(ctx, orderId, {
     workstationId: preferred.id,

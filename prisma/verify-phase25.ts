@@ -58,7 +58,7 @@ export async function runPhase25Verify(prisma: PrismaClient) {
   assert(strong.band === "EXCELLENT" || strong.band === "STRONG", "Stable performance band");
   assert(strong.score !== null && strong.score >= 70, "Deterministic scoring");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Tenants and manager required");

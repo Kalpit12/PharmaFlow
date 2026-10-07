@@ -35,7 +35,7 @@ export async function runPhase12_6Verify(prisma: PrismaClient) {
   assert(sharePercent(1, 0) === 0, "Zero total share");
 
   await ensureReportingDemoData(prisma);
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
@@ -50,7 +50,7 @@ export async function runPhase12_6Verify(prisma: PrismaClient) {
   const emptyReport = await getReportingSnapshot(vacant, resolveReportFilters({ view: "overview" }));
 
   assert(!overview.lots.some((lot) => lot.batchCode === "ISO-LOT-1"), "Tenant isolation");
-  assert(!overviewB.lots.some((lot) => lot.batchCode === "FG-AMOX-EXP"), "Isolation tenant does not see Lab Allied lots");
+  assert(!overviewB.lots.some((lot) => lot.batchCode === "FG-AMOX-EXP"), "Isolation tenant does not see MediCrest lots");
   assert(overviewB.lots.some((lot) => lot.batchCode === "ISO-LOT-1"), "Isolation tenant sees its own lot");
   assert(emptyReport.lots.length === 0, "Empty dataset");
   assert(emptyReport.kpis.every((kpi) => kpi.value === "0" || kpi.value.startsWith("KSh 0") || kpi.value === "—"), "Zero values for empty tenant");
@@ -59,7 +59,7 @@ export async function runPhase12_6Verify(prisma: PrismaClient) {
   assert(overview.historyNote !== "Historical trend unavailable", "History uses stored snapshots");
   assert(emptyReport.historyNote === "Historical trend unavailable", "Empty tenant has no snapshots");
   assert(overview.suppliers.length > 0, "Demo suppliers");
-  assert(overviewB.suppliers.length === 0, "Isolation tenant has no Lab Allied suppliers");
+  assert(overviewB.suppliers.length === 0, "Isolation tenant has no MediCrest suppliers");
   assert(overview.production.statuses.some((row) => row.id === "AT_RISK"), "Production status distribution");
   assert(overview.expiryBuckets.some((row) => row.id === "expired" && row.quantity > 0), "Expiry buckets");
   assert(overview.ageingBuckets.some((row) => row.quantity > 0), "Ageing buckets");

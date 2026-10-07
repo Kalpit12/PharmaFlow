@@ -6,7 +6,7 @@
 import { PrismaClient } from "@prisma/client";
 
 const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
-const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@laballied.demo";
+const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@medicrest.demo";
 const PASSWORD = process.env.AUTH_DEV_PASSWORD ?? "pharmora-demo-local";
 
 const results = [];
@@ -78,8 +78,8 @@ async function postJson(context, path, body) {
 async function loadFixtures() {
   const prisma = new PrismaClient();
   try {
-    const tenant = await prisma.tenant.findFirst({ where: { slug: "lab-allied" } });
-    if (!tenant) throw new Error("Demo tenant lab-allied not found — run db:seed");
+    const tenant = await prisma.tenant.findFirst({ where: { slug: "medicrest" } });
+    if (!tenant) throw new Error("Demo tenant medicrest not found — run db:seed");
 
     const revenueAgg = await prisma.order.aggregate({
       where: { tenantId: tenant.id, status: { in: ["CONFIRMED", "FULFILLED"] } },

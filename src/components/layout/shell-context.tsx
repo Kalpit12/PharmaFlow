@@ -2,11 +2,13 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
+import type { AuthenticatedUser } from "@/lib/auth/identity";
 import { demoTenant, getWorkspaceById, type TenantConfig } from "@/lib/tenant";
 
 export type PaletteMode = "search" | "commands";
 
 type ShellContextValue = {
+  user: AuthenticatedUser;
   workspace: TenantConfig;
   setWorkspaceId: (id: string) => void;
   paletteOpen: boolean;
@@ -20,7 +22,7 @@ type ShellContextValue = {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-export function ShellProvider({ children }: { children: ReactNode }) {
+export function ShellProvider({ children, user }: { children: ReactNode; user: AuthenticatedUser }) {
   const [workspaceId, setWorkspaceId] = useState(demoTenant.id);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMode, setPaletteMode] = useState<PaletteMode>("commands");
@@ -51,6 +53,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({
+      user,
       workspace,
       setWorkspaceId,
       paletteOpen,
@@ -61,7 +64,7 @@ export function ShellProvider({ children }: { children: ReactNode }) {
       mobileNavOpen,
       setMobileNavOpen,
     }),
-    [workspace, paletteOpen, paletteMode, openPalette, mobileNavOpen]
+    [user, workspace, paletteOpen, paletteMode, openPalette, mobileNavOpen]
   );
 
   return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;

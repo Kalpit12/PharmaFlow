@@ -40,7 +40,7 @@ export async function runPhase36Verify(prisma: PrismaClient) {
   assert(canApprove("MANAGER") && canApprove("ADMIN") && !canApprove("VIEWER") && !canApprove("OPERATOR"), "Action approval roles");
   assert(canProcurementApprove("MANAGER") && !canProcurementApprove("PROCUREMENT"), "Procurement approval limited");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Demo tenants and manager exist");

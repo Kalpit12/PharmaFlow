@@ -39,7 +39,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
     "Medical claims are rejected by validation"
   );
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenant and user required");
@@ -56,7 +56,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
         type: "CUSTOMER_FOLLOW_UP",
         targetName: "ABC Pharmaceuticals",
         subject: "Follow-up",
-        body: "Hello from Laboratory & Allied.",
+        body: "Hello from MediCrest Pharmaceuticals.",
         reason: "Commercial follow-up.",
       });
       throw new Error("Unauthenticated user must not create a draft");
@@ -68,7 +68,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
       type: "CUSTOMER_FOLLOW_UP",
       targetName: "No Such Customer 999",
       subject: "Follow-up",
-      body: "Hello from Laboratory & Allied.",
+      body: "Hello from MediCrest Pharmaceuticals.",
       reason: "Commercial follow-up.",
     });
     assert(missing.status === "clarification", "Missing target does not guess");
@@ -77,7 +77,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
       type: "CUSTOMER_FOLLOW_UP",
       targetName: "Isolation Pharmacy B",
       subject: "Follow-up",
-      body: "Hello from Laboratory & Allied.",
+      body: "Hello from MediCrest Pharmaceuticals.",
       reason: "Commercial follow-up.",
     });
     assert(foreign.status === "clarification", "Customer must belong to tenant");
@@ -86,7 +86,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
       type: "WHATSAPP",
       targetName: "ABC Pharmaceuticals",
       subject: "Follow-up",
-      body: "Hello from Laboratory & Allied.",
+      body: "Hello from MediCrest Pharmaceuticals.",
       reason: "Commercial follow-up.",
     });
     assert(skipped.status === "skipped", "Unsupported type is skipped");
@@ -95,7 +95,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
       type: "RFQ_FOLLOW_UP",
       targetName: "ABC Pharmaceuticals",
       subject: "Follow-up on your recent RFQ",
-      body: "Hello,\n\nWe are following up on your recent RFQ with Laboratory & Allied.\n\nKind regards",
+      body: "Hello,\n\nWe are following up on your recent RFQ with MediCrest Pharmaceuticals.\n\nKind regards",
       reason: "Recent RFQ activity requires follow-up.",
     });
     assert(created.status === "created", "Authenticated user can create a draft");
@@ -106,7 +106,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
       type: "RFQ_FOLLOW_UP",
       targetName: "ABC Pharmaceuticals",
       subject: "Follow-up on your recent RFQ",
-      body: "Hello,\n\nWe are following up on your recent RFQ with Laboratory & Allied.\n\nKind regards",
+      body: "Hello,\n\nWe are following up on your recent RFQ with MediCrest Pharmaceuticals.\n\nKind regards",
       reason: "Recent RFQ activity requires follow-up.",
     });
     assert(duplicate.status === "created" && duplicate.draft.id === created.draft.id, "Duplicate draft is reused");

@@ -40,7 +40,7 @@ Feature folders (`dashboard`, `ai`, `products`, …) are created when that phase
 
 ## Design tokens
 
-All color and radius live in `src/app/globals.css`. Components consume Tailwind theme mappings / CSS variables. Demo tenant lives in `src/lib/tenant.ts`. UI reads `getTenant()` — do not hard-code Laboratory & Allied in components.
+All color and radius live in `src/app/globals.css`. Components consume Tailwind theme mappings / CSS variables. Demo tenant lives in `src/lib/demo-tenant.ts` and `src/lib/tenant.ts`. UI reads `getTenant()` — do not hard-code the demo company in components.
 
 ## Data
 
@@ -52,7 +52,7 @@ Mock user/session object only when needed for chrome (name, role). Must not look
 
 ## Multi-tenancy (frontend)
 
-`src/lib/tenant.ts` will hold demo tenant config (name, tagline, country, accent if any). UI reads tenant config. Do not hard-code Laboratory & Allied across the app.
+`src/lib/demo-tenant.ts` and `src/lib/tenant.ts` hold demo tenant config (name, tagline, country). UI reads tenant config. Do not hard-code the demo company across the app.
 
 ## Constraints
 
@@ -152,7 +152,7 @@ PostgreSQL via Prisma. Connection string: `DATABASE_URL` only (see `.env.example
 
 ### Tenant model
 
-`Tenant` is the isolation root. Demo tenant slug `lab-allied` (Laboratory & Allied Limited), `status = DEMO`. Frontend `src/lib/tenant.ts` remains the UI demo config until a later integration phase.
+`Tenant` is the isolation root. Demo tenant slug `medicrest` (MediCrest Pharmaceuticals Limited), `status = DEMO`. Frontend `src/lib/tenant.ts` mirrors the UI demo config.
 
 Every business row that belongs to a company has `tenantId` and a foreign key to `Tenant`.
 
@@ -194,7 +194,7 @@ Request validation: none installed. Validate at the route boundary in a later ph
 
 `prisma/seed.ts` — small DEMO dataset. Dashboard uses live aggregations (Phase 7B). `/ai` uses the production orchestrator (Phase 8) against the same tenant data.
 
-Re-seed deletes the `lab-allied` tenant (cascade) only — do not run against an unknown production database.
+Re-seed deletes the demo tenant (`medicrest`, and legacy `lab-allied` if present) by cascade — do not run against an unknown production database.
 
 ```bash
 cp .env.example .env   # Unix
@@ -221,7 +221,7 @@ Flow: `/login` → session cookie → `auth()` → `getAuthenticatedUser()` / `g
 
 Protected routes (via `src/proxy.ts`): `/dashboard`, `/ai`, `/app-preview`, `/approvals`, `/communications`, `/operations`, `/reports`, `/inventory`, `/materials`, and later workspace routes. `POST /api/ai` and `/api/actions*` authenticate in the route handler. Public: `/login`, `/api/health/db`. `/` redirects to `/login` or `/dashboard` based on session. `/app-preview` redirects to `/dashboard`.
 
-Development seed user: email from `AUTH_DEV_EMAIL` (default `alex@laballied.demo`), password from `AUTH_DEV_PASSWORD`. Role `MANAGER` displayed as Operations Manager. Tenant comes from the User → Tenant relation, not a hardcoded id.
+Development seed user: email from `AUTH_DEV_EMAIL` (default `alex@medicrest.demo`), password from `AUTH_DEV_PASSWORD`. Role `MANAGER` displayed as Operations Manager. Tenant comes from the User → Tenant relation, not a hardcoded id.
 
 `AUTH_SECRET` is required. Do not commit `.env`.
 

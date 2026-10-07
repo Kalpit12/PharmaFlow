@@ -34,7 +34,7 @@ export async function runPhase34Verify(prisma: PrismaClient) {
   assert(computeImpactScope({ batchCount: 0, orderCount: 0, customerCount: 0, hasKnownLinks: false }) === "UNKNOWN", "Unknown scope when no links");
   assert(computeImpactScope({ batchCount: 2, orderCount: 2, customerCount: 2, hasKnownLinks: true }) === "SIGNIFICANT_IMPACT", "Significant scope");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   assert(tenant && tenantB, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: "MANAGER" };

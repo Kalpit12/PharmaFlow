@@ -29,6 +29,7 @@ export type ProductionExecutionFilters = {
   view: ExecutionViewId;
   orderId?: string;
   query?: string;
+  workstationId?: string;
 };
 
 function parseView(value?: string): ExecutionViewId {
@@ -39,11 +40,13 @@ export function resolveProductionExecutionFilters(input: {
   view?: string;
   order?: string;
   q?: string;
+  workstation?: string;
 }): ProductionExecutionFilters {
   return {
     view: parseView(input.view),
     orderId: input.order?.trim() || undefined,
     query: input.q?.trim() || undefined,
+    workstationId: input.workstation?.trim() || undefined,
   };
 }
 
@@ -218,6 +221,7 @@ export async function getProductionExecutionSnapshot(
   const filtered = allOrders.filter((row) => {
     if (!matchesView(row, filters.view)) return false;
     if (filters.orderId && row.id !== filters.orderId) return false;
+    if (filters.workstationId && row.workstationId !== filters.workstationId) return false;
     if (!query) return true;
     return (
       row.orderNumber.toLowerCase().includes(query) ||
@@ -227,6 +231,22 @@ export async function getProductionExecutionSnapshot(
       (row.batchNumber?.toLowerCase().includes(query) ?? false)
     );
   });
+  const workstations = [
+    ...new Map(
+      allOrders
+        .filter((row) => row.workstationId && row.workstationName)
+        .map((row) => [row.workstationId!, { id: row.workstationId!, name: row.workstationName!, code: row.workstationName! }])
+    ).values(),
+  ].sort((a, b) => a.name.localeCompare(b.name));
+  const queue = filtered
+    .filter(
+      (row) =>
+        row.executionState === "IN_PROGRESS" ||
+        row.executionState === "RELEASED" ||
+        row.executionState === "WAITING"
+    )
+    .sort((a, b) => (a.plannedStart ?? "").localeCompare(b.plannedStart ?? ""));
+  const nextTask = queue[0] ?? null;
 
   const active = allOrders.filter((row) => row.executionState === "IN_PROGRESS").length;
   const paused = allOrders.filter((row) => row.executionState === "PAUSED").length;
@@ -272,6 +292,9 @@ export async function getProductionExecutionSnapshot(
     ],
     orders: filtered,
     attention: buildExecutionAttention(allOrders),
+    workstations,
+    workstationId: filters.workstationId ?? null,
+    nextTask,
     performance: [
       {
         id: "duration",

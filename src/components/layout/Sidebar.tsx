@@ -1,14 +1,9 @@
 "use client";
 
-import Link from "next/link";
-
-import { useSession } from "next-auth/react";
-
 import { SidebarNav } from "@/components/layout/SidebarNav";
 import { useShell } from "@/components/layout/shell-context";
 import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 import { initialsFromName, ROLE_LABEL } from "@/lib/auth/identity";
-import { getMockUser } from "@/lib/mock/session";
 import { cn } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
@@ -29,7 +24,7 @@ export function Sidebar({ compact = false, className }: { compact?: boolean; cla
         <WorkspaceSwitcher compact={compact} />
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+      <div className="scrollbar-themed scrollbar-sidebar min-h-0 flex-1 overflow-y-auto pb-4">
         <SidebarNav compact={compact} />
       </div>
 
@@ -39,11 +34,9 @@ export function Sidebar({ compact = false, className }: { compact?: boolean; cla
 }
 
 export function SidebarAccount({ compact = false }: { compact?: boolean }) {
-  const { workspace } = useShell();
-  const { data } = useSession();
-  const fallback = getMockUser();
-  const name = data?.user?.name ?? fallback.name;
-  const role = data?.user?.role ? ROLE_LABEL[data.user.role] : fallback.role;
+  const { workspace, user } = useShell();
+  const name = user.name;
+  const role = ROLE_LABEL[user.role];
   const initials = initialsFromName(name);
 
   return (

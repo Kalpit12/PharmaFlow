@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { WORKFLOW } from "./landing-copy";
+import { LandingButton } from "./LandingFormControls";
 
 export function LandingWorkflow() {
   const [active, setActive] = useState(0);
@@ -67,14 +68,14 @@ export function LandingWorkflow() {
           const isDone = index < active;
           return (
             <li key={step.id} className="relative z-[1] flex flex-col items-center text-center">
-              <button
+              <LandingButton
                 type="button"
                 className={`pf-node pf-node-${step.tone} ${isActive ? "is-active" : ""} ${isDone ? "is-done" : ""}`}
                 onClick={() => setActive(index)}
                 aria-pressed={isActive}
               >
                 <span className="font-mono text-[10px] tracking-widest">{String(index + 1).padStart(2, "0")}</span>
-              </button>
+              </LandingButton>
               <p className="mt-3 text-sm font-semibold">{step.label}</p>
               <p className="mt-1 text-[12px] text-[#A7AFB8]">{step.detail}</p>
             </li>

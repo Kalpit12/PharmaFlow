@@ -2,6 +2,7 @@
 
 import { type ReactNode } from "react";
 
+import type { AuthenticatedUser } from "@/lib/auth/identity";
 import { Sidebar, SidebarAccount } from "@/components/layout/Sidebar";
 import { SidebarNav } from "@/components/layout/SidebarNav";
 import { Topbar } from "@/components/layout/Topbar";
@@ -13,9 +14,9 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTi
 import { X } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({ children, user }: { children: ReactNode; user: AuthenticatedUser }) {
   return (
-    <ShellProvider>
+    <ShellProvider user={user}>
       <ShellFrame>{children}</ShellFrame>
     </ShellProvider>
   );
@@ -23,13 +24,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
 function ShellFrame({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-svh overflow-hidden bg-background">
+    <div className="fixed inset-0 z-0 flex overflow-hidden bg-background">
       <Sidebar compact className="hidden md:flex lg:hidden" />
       <Sidebar className="hidden lg:flex" />
       <MobileNav />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
-        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
+        <main className="scrollbar-themed min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
       </div>
       <CommandPalette />
     </div>
@@ -69,7 +70,7 @@ function MobileNav() {
           <div className="px-2 pb-3">
             <WorkspaceSwitcher />
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto pb-4">
+          <div className="scrollbar-themed scrollbar-sidebar min-h-0 flex-1 overflow-y-auto pb-4">
             <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
           </div>
           <SidebarAccount />

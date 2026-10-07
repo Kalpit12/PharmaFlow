@@ -136,7 +136,7 @@ export function AIAssistant() {
 
       <div className="grid min-h-0 flex-1 gap-6 xl:grid-cols-[minmax(0,40rem)_16rem] xl:justify-center">
         <div className="flex min-h-0 min-w-0 flex-col">
-          <div ref={threadRef} className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-0.5">
+          <div ref={threadRef} className="scrollbar-themed min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-0.5">
             {turns.length === 0 && !pending ? <AIWelcome onSelect={ask} /> : null}
             {turns.length > 0 || pending ? (
               <AIThread>

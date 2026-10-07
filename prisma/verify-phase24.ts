@@ -51,7 +51,7 @@ export async function runPhase24Verify(prisma: PrismaClient) {
   ].join("\n");
   assert(!/openai/i.test(sources), "Phase 24 receiving performs ZERO OpenAI calls");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Tenants and manager required");

@@ -4,7 +4,7 @@
 import { chromium } from "playwright";
 
 const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
-const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@laballied.demo";
+const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@medicrest.demo";
 const PASSWORD = process.env.AUTH_DEV_PASSWORD ?? "pharmora-demo-local";
 
 const VIEWPORTS = [

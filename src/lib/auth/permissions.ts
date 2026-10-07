@@ -184,6 +184,7 @@ export function permissionsForRole(role: string | null): Permission[] {
 
 export function navPermissionForHref(href: string): Permission | null {
   if (href === "/governance") return "governance.read";
+  if (href === "/administration") return "users.read";
   if (href === "/command-center") return "command_center.read";
   if (href === "/execution/production" || href.startsWith("/execution/production")) return "production.read";
   if (href === "/dashboard" || href === "/daily-review" || href === "/execution") return "dashboard.read";

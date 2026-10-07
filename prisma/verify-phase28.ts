@@ -96,7 +96,7 @@ export async function runPhase28Verify(prisma: PrismaClient) {
   });
   assert(late.risk === "LATE", "Past planned end is LATE");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   assert(tenant && tenantB, "Demo tenants exist");
 

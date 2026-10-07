@@ -23,7 +23,7 @@ export async function runPhase13Verify(prisma: PrismaClient) {
   assert(batchExpiryStatus(90) === "HEALTHY", "Dated beyond 30 days is healthy");
   assert(batchExpiryStatus(null) === null, "Undated batches have no expiry status");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
@@ -40,7 +40,7 @@ export async function runPhase13Verify(prisma: PrismaClient) {
 
   assert(!overview.items.some((item) => item.batches.some((batch) => batch.batchCode === "ISO-LOT-1")), "Tenant isolation");
   assert(overviewB.items.some((item) => item.batches.some((batch) => batch.batchCode === "ISO-LOT-1")), "Isolation tenant sees own batch");
-  assert(!overviewB.items.some((item) => item.sku === "AMOX-500-CAP"), "Isolation tenant does not see Lab Allied SKUs");
+  assert(!overviewB.items.some((item) => item.sku === "AMOX-500-CAP"), "Isolation tenant does not see MediCrest SKUs");
   assert(emptyInv.items.length === 0, "Empty tenant inventory");
   assert(overview.items.length === again.items.length, "Deterministic inventory totals");
   assert(overview.items.some((item) => item.classId === "FINISHED_GOOD"), "Finished goods");

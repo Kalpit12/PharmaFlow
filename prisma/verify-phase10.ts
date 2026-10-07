@@ -37,7 +37,7 @@ export async function runPhase10Verify(prisma: PrismaClient) {
   assert(WORKFLOW_REGISTRY.SALES_OPPORTUNITY_FOLLOW_UP.steps.length === 1, "SALES_OPPORTUNITY_FOLLOW_UP has one step");
   assert(canApprove("MANAGER") && canApprove("ADMIN") && !canApprove("VIEWER") && !canApprove("OPERATOR"), "Approval roles match Phase 9");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenant, isolation tenant, and user required");

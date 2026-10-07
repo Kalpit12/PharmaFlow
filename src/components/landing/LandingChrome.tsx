@@ -4,17 +4,22 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
-import { useSession } from "next-auth/react";
 import { motion, useScroll } from "motion/react";
 
 import "./pharmaflow-landing.css";
 
-export function LandingChrome({ children }: { children: ReactNode }) {
+export function LandingChrome({ children, signedIn = false }: { children: ReactNode; signedIn?: boolean }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const signedIn = Boolean(session?.user);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
   const { scrollYProgress } = useScroll();
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 24);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
   const atHome = pathname === "/";
   const contactHref = atHome ? "#contact" : "/#contact";
   const homeHref = atHome ? "#top" : "/";
@@ -38,11 +43,15 @@ export function LandingChrome({ children }: { children: ReactNode }) {
   ] as const;
 
   return (
-    <div className="pf-landing selection:bg-[#5B8CFF]/30">
+    <div className="pf-landing scrollbar-themed h-full min-h-0 overflow-x-hidden overflow-y-auto selection:bg-[#5B8CFF]/30">
       <motion.div className="pf-progress" style={{ scaleX: scrollYProgress }} />
 
-      <header className="fixed inset-x-0 top-0 z-50 border-b border-white/5 bg-[#0B0D0F]/94">
-        <div className="mx-auto flex h-16 w-[min(1180px,calc(100%-1.5rem))] items-center justify-between gap-4">
+      <header
+        className={`pf-header fixed inset-x-0 top-0 z-50 border-b ${
+          scrolled || menuOpen || !atHome ? "is-scrolled" : "border-transparent"
+        }`}
+      >
+        <div className="mx-auto flex h-16 w-[min(1240px,calc(100%-1.5rem))] items-center justify-between gap-4">
           <Link href={homeHref} className="flex min-w-0 items-center gap-2.5">
             <Image src="/brand/logo-mark-clear.png" alt="" width={32} height={32} className="h-8 w-8 object-contain" />
             <span className="text-[15px] font-semibold tracking-tight">pharmaflow</span>
@@ -60,11 +69,11 @@ export function LandingChrome({ children }: { children: ReactNode }) {
           </nav>
           <div className="flex items-center gap-3">
             {signedIn ? (
-              <Link href="/dashboard" className="hidden text-[13px] font-medium text-[#A7AFB8] hover:text-[#F5F7FA] md:inline">
+              <Link href="/dashboard" prefetch={false} className="hidden text-[13px] font-medium text-[#A7AFB8] hover:text-[#F5F7FA] md:inline">
                 Open workspace
               </Link>
             ) : (
-              <Link href="/login" className="hidden text-[13px] font-medium text-[#A7AFB8] hover:text-[#F5F7FA] md:inline">
+              <Link href="/login" prefetch={false} className="hidden text-[13px] font-medium text-[#A7AFB8] hover:text-[#F5F7FA] md:inline">
                 Sign in
               </Link>
             )}
@@ -89,19 +98,19 @@ export function LandingChrome({ children }: { children: ReactNode }) {
           </div>
         </div>
         {menuOpen ? (
-          <div className="border-t border-white/5 bg-[#0B0D0F] px-4 py-4 text-[14px] lg:hidden">
-            <div className="mx-auto flex w-[min(1180px,100%)] flex-col gap-3 text-[#A7AFB8]">
+          <div className="border-t border-white/5 bg-[#06080B]/95 px-4 py-4 text-[14px] backdrop-blur-xl lg:hidden">
+            <div className="mx-auto flex w-[min(1240px,100%)] flex-col gap-3 text-[#A7AFB8]">
               {nav.map((item) => (
                 <Link key={item.id} href={item.href} onClick={() => setMenuOpen(false)}>
                   {item.label}
                 </Link>
               ))}
               {signedIn ? (
-                <Link href="/dashboard" onClick={() => setMenuOpen(false)}>
+                <Link href="/dashboard" prefetch={false} onClick={() => setMenuOpen(false)}>
                   Open workspace
                 </Link>
               ) : (
-                <Link href="/login" onClick={() => setMenuOpen(false)}>
+                <Link href="/login" prefetch={false} onClick={() => setMenuOpen(false)}>
                   Sign in
                 </Link>
               )}

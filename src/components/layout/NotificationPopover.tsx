@@ -4,6 +4,7 @@ import { Bell, FileText, Inbox } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
+import { usePreferences } from "@/components/providers/preferences-provider";
 import { getNotifications, type NotificationType } from "@/lib/mock/notifications";
 import { cn } from "@/lib/utils";
 
@@ -16,13 +17,14 @@ const typeIcon: Record<NotificationType, typeof Inbox> = {
 export function NotificationPopover() {
   const notifications = getNotifications();
   const unread = notifications.some((item) => item.unread);
+  const { showNotificationBadge } = usePreferences();
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button variant="ghost" size="icon" aria-label="Notifications" className="relative">
           <Bell className="size-4" />
-          {unread ? (
+          {unread && showNotificationBadge ? (
             <span className="absolute top-1.5 right-1.5 size-1.5 rounded-full bg-primary" aria-hidden />
           ) : null}
         </Button>
@@ -31,7 +33,7 @@ export function NotificationPopover() {
         <PopoverHeader className="border-b border-border px-3 py-2.5">
           <PopoverTitle className="text-sm">Notifications</PopoverTitle>
         </PopoverHeader>
-        <ul className="max-h-80 overflow-y-auto p-1">
+        <ul className="scrollbar-themed max-h-80 overflow-y-auto p-1">
           {notifications.map((item) => {
             const Icon = typeIcon[item.type];
             return (

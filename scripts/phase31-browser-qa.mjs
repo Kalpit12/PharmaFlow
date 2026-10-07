@@ -5,7 +5,7 @@
 import { chromium } from "playwright";
 
 const BASE = process.env.QA_BASE_URL ?? "http://localhost:3000";
-const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@laballied.demo";
+const EMAIL = process.env.AUTH_DEV_EMAIL ?? "alex@medicrest.demo";
 const PASSWORD = process.env.AUTH_DEV_PASSWORD ?? "pharmora-demo-local";
 
 const VIEWPORTS = [
@@ -63,6 +63,9 @@ async function qaOperations(page, viewport) {
   const metrics = await page.locator('[aria-label="Planning metrics"]').count();
   record(viewport, "Planning metrics strip", metrics === 1);
 
+  const calendarLegend = await page.getByText("Non-working", { exact: true }).count();
+  record(viewport, "Work-calendar legend", calendarLegend === 1);
+
   const attentionSummary = await page.locator('[aria-label="Planning attention summary"]').count();
   record(
     viewport,
@@ -118,7 +121,7 @@ async function qaOperations(page, viewport) {
   record(viewport, "Attention inbox", attentionPanel >= 1);
 
   // Back to schedule
-  await page.getByRole("tab", { name: "Schedule" }).click();
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await page.waitForTimeout(400);
 }
 
@@ -153,11 +156,30 @@ async function qaInspectionSheet(page, viewport) {
   const visible = await sheet.isVisible();
   record(viewport, "Inspection sheet opens", visible);
 
-  const sections = ["Identity", "Schedule", "Capacity", "Materials"];
+  const sections = [
+    "Identity",
+    "Schedule",
+    "Operation routing",
+    "Capacity",
+    "Materials",
+    "Recorded schedule impact",
+  ];
   for (const label of sections) {
     const found = (await sheet.getByText(label, { exact: false }).count()) > 0;
     record(viewport, `Sheet section: ${label}`, found);
   }
+  record(
+    viewport,
+    "Routing constraint preview is disclosed",
+    (await sheet.getByText("Constraint preview only", { exact: false }).count()) > 0
+  );
+  record(
+    viewport,
+    "Dated material availability is a routing constraint",
+    (await sheet.getByText("dated material availability", { exact: false }).count()) > 0
+  );
+  const calendarSummary = (await sheet.getByText("Mon–Fri", { exact: false }).count()) > 0;
+  record(viewport, "Sheet work-calendar summary", calendarSummary);
 }
 
 async function qaScheduleMutation(page, viewport) {

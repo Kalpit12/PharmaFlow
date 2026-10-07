@@ -204,7 +204,7 @@ export async function runPhase32Verify(prisma: PrismaClient) {
   assert(readiness.affectedMaterials.length >= 1, "Phase 31 blocking materials preserved");
 
   // Tenant isolation via server snapshot
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   assert(tenant && tenantB, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: null };

@@ -105,7 +105,7 @@ export async function runPhase33Verify(prisma: PrismaClient) {
   });
   assert(multiLot[0]?.lotCode === "L1, L2" && multiLot[0]?.quantityUsed === 15, "Multiple input lots are retained");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   assert(tenant && tenantB, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: "MANAGER" };

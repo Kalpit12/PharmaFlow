@@ -2,9 +2,12 @@
   "name": "pharmora",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "postinstall": "prisma generate",
@@ -12,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
+    "db:seed-aps": "tsx prisma/seed-aps-demo.ts",
     "db:studio": "prisma studio",
     "db:verify": "tsx prisma/verify.ts",
     "verify:phase28": "tsx scripts/run-phase28-verify.ts",
@@ -23,7 +27,18 @@
     "qa:phase35": "node scripts/phase35-browser-qa.mjs",
     "qa:phase36": "node scripts/phase36-browser-qa.mjs",
     "qa:phase37": "node scripts/phase37-browser-qa.mjs",
-    "qa:phase38": "node scripts/phase38-browser-qa.mjs"
+    "qa:phase38": "node scripts/phase38-browser-qa.mjs",
+    "verify:operations-calendar": "tsx scripts/verify-operations-calendar.ts",
+    "verify:operations-impact": "tsx scripts/verify-operations-impact.ts",
+    "verify:operations-materials": "tsx scripts/verify-operations-materials.ts",
+    "verify:operations-routing": "tsx scripts/verify-operations-routing.ts",
+    "verify:operations-plan": "tsx scripts/verify-operations-plan.ts",
+    "verify:operations-delivery": "tsx scripts/verify-operations-delivery.ts",
+    "verify:aps-control": "tsx scripts/verify-aps-control.ts",
+    "demo:medicrest-day": "dotenv-cli -e .env -- node scripts/lab-allied-day-simulation.mjs",
+    "demo:medicrest-ui": "dotenv-cli -e .env -- node scripts/lab-allied-day-walkthrough.mjs",
+    "demo:lab-allied-day": "npm run demo:medicrest-day",
+    "demo:lab-allied-ui": "npm run demo:medicrest-ui"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

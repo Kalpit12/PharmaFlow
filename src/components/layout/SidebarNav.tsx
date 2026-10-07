@@ -3,9 +3,9 @@
 import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSession } from "next-auth/react";
 
 import { navIcons } from "@/components/layout/nav-icons";
+import { useShell } from "@/components/layout/shell-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { hasPermission, navPermissionForHref } from "@/lib/auth/permissions";
 import { getNavSections, type NavItem } from "@/lib/mock/navigation";
@@ -25,8 +25,8 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
-  const { data: session } = useSession();
-  const role = session?.user?.role ?? null;
+  const { user } = useShell();
+  const role = user.role;
   const sections = getNavSections()
     .map((section) => ({
       ...section,

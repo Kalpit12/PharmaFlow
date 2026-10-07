@@ -6,7 +6,7 @@ function utcDaysAgo(days: number, hour = 8): Date {
 }
 
 export async function ensureBatchDemoData(prisma: PrismaClient) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
 
   const tenantId = tenant.id;
@@ -179,5 +179,5 @@ export async function ensureBatchDemoData(prisma: PrismaClient) {
     });
   }
 
-  console.log("Seeded production batches for lab-allied.", { batch116: batch116.batchNumber, batch104: batch104.batchNumber });
+  console.log("Seeded production batches for medicrest.", { batch116: batch116.batchNumber, batch104: batch104.batchNumber });
 }

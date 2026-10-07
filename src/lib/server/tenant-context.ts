@@ -1,4 +1,5 @@
 import { auth } from "@/auth";
+import { DEMO_DEV_EMAIL_DEFAULT, DEMO_TENANT_SLUG } from "@/lib/demo-tenant";
 import { isTenantAccessible, type AuthenticatedUser } from "@/lib/auth/identity";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
@@ -8,7 +9,7 @@ import { ServerError, type TenantContext } from "@/lib/server/errors";
  * Never trust a client-supplied tenantId as ownership proof.
  */
 export async function resolveDevTenantContext(): Promise<TenantContext> {
-  const slug = process.env.DEMO_TENANT_SLUG ?? "lab-allied";
+  const slug = process.env.DEMO_TENANT_SLUG ?? DEMO_TENANT_SLUG;
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { slug } });
   if (!tenant) {
@@ -16,7 +17,7 @@ export async function resolveDevTenantContext(): Promise<TenantContext> {
   }
 
   const user = await prisma.user.findFirst({
-    where: { tenantId: tenant.id, email: process.env.AUTH_DEV_EMAIL ?? "alex@laballied.demo" },
+    where: { tenantId: tenant.id, email: process.env.AUTH_DEV_EMAIL ?? DEMO_DEV_EMAIL_DEFAULT },
   });
 
   return {

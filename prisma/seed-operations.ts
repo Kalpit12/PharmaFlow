@@ -7,7 +7,7 @@ function utcDay(offset: number, hour = 8): Date {
 }
 
 export async function ensureOperationsDemoData(prisma: PrismaClient) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
 
   const existing = await prisma.workstation.count({ where: { tenantId: tenant.id } });
@@ -23,7 +23,7 @@ export async function ensureOperationsDemoData(prisma: PrismaClient) {
           description: "DEMO planner product — not a clinical claim.",
           dosageForm: "Syrup",
           unit: "bottle",
-          manufacturer: "Laboratory & Allied",
+          manufacturer: "MediCrest Pharmaceuticals",
           status: "ACTIVE",
         },
       });

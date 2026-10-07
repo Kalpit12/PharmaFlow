@@ -17,13 +17,13 @@ const serif = Instrument_Serif({
 });
 
 export function LandingFonts({ children }: { children: ReactNode }) {
-  return <div className={`${sans.variable} ${serif.variable}`}>{children}</div>;
+  return <div className={`${sans.variable} ${serif.variable} scrollbar-themed h-full min-h-0 overflow-x-hidden overflow-y-auto`}>{children}</div>;
 }
 
-export function LandingShell() {
+export function LandingShell({ signedIn = false }: { signedIn?: boolean }) {
   return (
     <LandingFonts>
-      <PharmaflowLanding />
+      <PharmaflowLanding signedIn={signedIn} />
     </LandingFonts>
   );
 }

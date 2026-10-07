@@ -22,7 +22,7 @@ export async function runPhase18Verify(prisma: PrismaClient) {
   assert(!/fetch\(\s*[\"']\/api\/ai/i.test(uiSource), "Execution UI must not invoke /api/ai");
   assert(/\/api\/actions/.test(uiSource) && /\/api\/workflows/.test(uiSource), "Reuses existing action/workflow APIs");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const managerUser = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && managerUser, "Tenants required");

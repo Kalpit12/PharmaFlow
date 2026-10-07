@@ -117,7 +117,7 @@ export async function runPhase12_5Verify(prisma: PrismaClient) {
   assert(JSON.stringify(a) === JSON.stringify(b), "Deterministic scheduling is stable");
 
   await ensureOperationsDemoData(prisma);
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

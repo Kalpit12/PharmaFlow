@@ -6,7 +6,7 @@ function utcDaysAgo(days: number): Date {
 }
 
 export async function ensureQualityDemoData(prisma: PrismaClient) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
 
   const existing = await prisma.qualityException.count({ where: { tenantId: tenant.id } });
@@ -125,5 +125,5 @@ export async function ensureQualityDemoData(prisma: PrismaClient) {
     },
   });
 
-  console.log("Seeded quality exceptions for lab-allied.");
+  console.log("Seeded quality exceptions for medicrest.");
 }

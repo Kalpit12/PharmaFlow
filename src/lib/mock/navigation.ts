@@ -102,8 +102,8 @@ export const navSections: NavSection[] = [
     label: "System",
     items: [
       { id: "governance", label: "Governance", href: "/governance", icon: "shield-check", phase: "Phase 36" },
-      { id: "admin", label: "Administration", href: "/administration", icon: "users", comingSoon: true, phase: "Later" },
-      { id: "settings", label: "Settings", href: "/settings", icon: "settings", comingSoon: true, phase: "Later" },
+      { id: "admin", label: "Administration", href: "/administration", icon: "users", phase: "Phase 38.1" },
+      { id: "settings", label: "Settings", href: "/settings", icon: "settings", phase: "Phase 38.2" },
     ],
   },
 ];

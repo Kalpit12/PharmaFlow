@@ -1,10 +1,8 @@
-import type { UserRole } from "@prisma/client";
 import NextAuth, { CredentialsSignin } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
-import type { NextAuthConfig } from "next-auth";
 
+import { authConfig } from "@/auth.config";
 import { isTenantAccessible } from "@/lib/auth/identity";
-import { resolveRoleForPermissions } from "@/lib/auth/permissions";
 import { getPrisma } from "@/lib/server/db";
 import { verifyPassword } from "@/lib/server/password";
 
@@ -16,10 +14,8 @@ class InactiveTenantError extends CredentialsSignin {
   code = "inactive_tenant";
 }
 
-export const authConfig = {
-  trustHost: true,
-  pages: { signIn: "/login" },
-  session: { strategy: "jwt" },
+export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -54,31 +50,4 @@ export const authConfig = {
       },
     }),
   ],
-  callbacks: {
-    jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
-        token.tenantId = user.tenantId;
-        token.role = user.role;
-      }
-      return token;
-    },
-    session({ session, token }) {
-      const role = token.role;
-      if (
-        session.user &&
-        typeof token.id === "string" &&
-        typeof token.tenantId === "string" &&
-        typeof role === "string" &&
-        resolveRoleForPermissions(role)
-      ) {
-        session.user.id = token.id;
-        session.user.tenantId = token.tenantId;
-        session.user.role = role as UserRole;
-      }
-      return session;
-    },
-  },
-} satisfies NextAuthConfig;
-
-export const { handlers, auth, signIn, signOut } = NextAuth(authConfig);
+});

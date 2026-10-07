@@ -30,6 +30,61 @@ export type PlanningAttentionItem = {
   focus?: "all" | "risk" | "critical" | "unscheduled" | "locked" | "material" | "conflict";
 };
 
+export type ScheduleImpactOrder = {
+  id: string;
+  orderNumber: string;
+  workstationId: string | null;
+  plannedStart: string | null;
+  plannedEnd: string | null;
+  dueDate: string;
+  quantity: number;
+  displayStatus: "UNSCHEDULED" | "SCHEDULED" | "AT_RISK";
+};
+
+export type ScheduleImpact = {
+  downstreamCount: number;
+  downstreamQuantity: number;
+  downstreamAtRiskCount: number;
+  downstreamOrderNumbers: string[];
+  nextOrderNumber: string | null;
+};
+
+/**
+ * Describes the recorded downstream line sequence only. This is deliberately
+ * not a what-if projection: no dates are moved and no impact is invented.
+ */
+export function buildScheduleImpact(orders: ScheduleImpactOrder[], selectedId: string): ScheduleImpact {
+  const selected = orders.find((order) => order.id === selectedId);
+  if (!selected?.workstationId || !selected.plannedStart) {
+    return {
+      downstreamCount: 0,
+      downstreamQuantity: 0,
+      downstreamAtRiskCount: 0,
+      downstreamOrderNumbers: [],
+      nextOrderNumber: null,
+    };
+  }
+
+  const selectedStart = new Date(selected.plannedStart).getTime();
+  const downstream = orders
+    .filter(
+      (order) =>
+        order.id !== selected.id &&
+        order.workstationId === selected.workstationId &&
+        order.plannedStart &&
+        new Date(order.plannedStart).getTime() > selectedStart
+    )
+    .sort((a, b) => new Date(a.plannedStart!).getTime() - new Date(b.plannedStart!).getTime());
+
+  return {
+    downstreamCount: downstream.length,
+    downstreamQuantity: downstream.reduce((sum, order) => sum + order.quantity, 0),
+    downstreamAtRiskCount: downstream.filter((order) => order.displayStatus === "AT_RISK").length,
+    downstreamOrderNumbers: downstream.map((order) => order.orderNumber).slice(0, 5),
+    nextOrderNumber: downstream[0]?.orderNumber ?? null,
+  };
+}
+
 export function isPlanningMutableStatus(status: string): status is PlanningMutableStatus {
   return (PLANNING_MUTABLE_STATUSES as readonly string[]).includes(status);
 }

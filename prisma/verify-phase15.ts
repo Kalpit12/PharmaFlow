@@ -37,7 +37,7 @@ export async function runPhase15Verify(prisma: PrismaClient) {
   assert(!/openai/i.test(engineSource + serverSource + pageSource), "Phase 15 performs ZERO OpenAI calls");
   assert(!engineSource.includes("fetch("), "Procurement engine is deterministic in-memory");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });

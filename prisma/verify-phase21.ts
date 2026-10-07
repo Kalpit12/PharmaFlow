@@ -168,7 +168,7 @@ export async function runPhase21Verify(prisma: PrismaClient) {
   assert(changeLabel(0, 10, "percent") === "—", "Zero baselines do not produce misleading percentages");
   assert(changeLabel(null, 10, "percent") === "—", "Insufficient data is handled honestly");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

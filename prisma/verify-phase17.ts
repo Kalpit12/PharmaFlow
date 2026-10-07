@@ -30,7 +30,7 @@ export async function runPhase17Verify(prisma: PrismaClient) {
   assert(/IntelligenceSurface/.test(workspaceSource), "Daily Review includes explicit operational intelligence explain");
   assert(!/\/api\/ai/.test(workspaceSource), "Daily Review explain does not use the mutating /api/ai orchestrator");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

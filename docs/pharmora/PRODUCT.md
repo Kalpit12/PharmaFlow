@@ -7,7 +7,7 @@
 
 Pharmora is a multi-tenant SaaS platform that unifies customers, distributors, sales teams, management, product data, documents, orders, quotations, business intelligence, and AI into one pharmaceutical commercial workspace.
 
-The first demonstration tenant is **Laboratory & Allied Limited (Kenya)**. The product is not LabAllied-specific: tenant branding, catalogue, and copy come from configuration.
+The first demonstration tenant is **MediCrest Pharmaceuticals Limited (Kenya)**. The product is not customer-specific: tenant branding, catalogue, and copy come from configuration.
 
 ## Positioning
 
@@ -53,8 +53,8 @@ Premium enterprise SaaS for pharmaceutical manufacturers, distributors, medical 
 ## Tenant model
 
 - **Product:** Pharmora (reusable SaaS)  
-- **Demo tenant:** Laboratory & Allied Limited  
-- **Brand (tenant):** Laboratory & Allied  
+- **Demo tenant:** MediCrest Pharmaceuticals Limited  
+- **Brand (tenant):** MediCrest Pharmaceuticals  
 - **Tenant tagline:** Better Medicine Better Life  
 - **Country:** Kenya  
 

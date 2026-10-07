@@ -6,9 +6,9 @@ import { NEXORA, NEXORA_CAPABILITIES, NEXORA_WORK } from "./landing-copy";
 import { LandingChrome } from "./LandingChrome";
 import { Reveal } from "./Reveal";
 
-export function AboutPage() {
+export function AboutPage({ signedIn = false }: { signedIn?: boolean }) {
   return (
-    <LandingChrome>
+    <LandingChrome signedIn={signedIn}>
       <main className="overflow-x-hidden pt-16">
         <section className="relative">
           <div className="pf-hero-wash pointer-events-none absolute inset-x-0 top-0 h-[48%]" />

@@ -30,7 +30,7 @@ export async function runPhase19Verify(prisma: PrismaClient) {
   assert(!/fetch\(\s*[\"']\/api\/ai/i.test(uiSource), "Command Center explain does not use the mutating /api/ai orchestrator");
   assert(!/decideAction|decideWorkflow|createRequisitionDraft/i.test(uiSource), "Command Center is read-only");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

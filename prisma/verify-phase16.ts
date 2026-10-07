@@ -23,7 +23,7 @@ export async function runPhase16Verify(prisma: PrismaClient) {
   const uiSource = readFileSync(join(process.cwd(), "src/components/suppliers/SupplierWorkspace.tsx"), "utf8");
   assert(!/openai/i.test(serverSource + uiSource), "Phase 16 performs ZERO OpenAI calls");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

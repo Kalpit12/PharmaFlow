@@ -115,6 +115,9 @@ export type ProductionExecutionSnapshot = {
   orders: ExecutionOrderRow[];
   attention: ExecutionAttentionItem[];
   performance: ExecutionPerformanceRow[];
+  workstations: Array<{ id: string; name: string; code: string }>;
+  workstationId: string | null;
+  nextTask: ExecutionOrderRow | null;
   capabilities: {
     canExecute: boolean;
     canRead: boolean;

@@ -33,6 +33,7 @@ import { runPhase35Verify } from "./verify-phase35";
 import { runPhase36Verify } from "./verify-phase36";
 import { runPhase37Verify } from "./verify-phase37";
 import { runPhase38Verify } from "./verify-phase38";
+import { runPhase39Verify } from "./verify-phase39";
 
 const prisma = getPrisma();
 
@@ -41,8 +42,8 @@ function ctx(tenantId: string): TenantContext {
 }
 
 async function main() {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
-  if (!tenant) throw new Error("Missing demo tenant lab-allied");
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
+  if (!tenant) throw new Error("Missing demo tenant medicrest");
   if (tenant.status !== "DEMO") throw new Error("Demo tenant must be status DEMO");
 
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
@@ -184,6 +185,7 @@ async function main() {
   await runPhase36Verify(prisma);
   await runPhase37Verify(prisma);
   await runPhase38Verify(prisma);
+  await runPhase39Verify(prisma);
 }
 
 main()

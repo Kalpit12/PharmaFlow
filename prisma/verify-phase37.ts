@@ -186,7 +186,7 @@ export async function runPhase37Verify(prisma: PrismaClient) {
   assert(hasPermission("VIEWER", "quality.read") && !hasPermission("VIEWER", "quality.manage"), "Phase 36 viewer regression");
   assert(canApprove("MANAGER") && !can("VIEWER", "batches.quality_action"), "Phase 36 authorization regression");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenants exist");

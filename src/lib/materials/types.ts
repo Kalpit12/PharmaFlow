@@ -54,6 +54,7 @@ export type MaterialLotInput = {
 export type MaterialReceiptInput = {
   productId: string;
   quantity: number;
+  expectedAt?: string | null;
 };
 
 export type AffectedProductionOrder = {
@@ -125,6 +126,7 @@ export type MaterialRequirement = {
   /** On hand minus allocated — uncommitted physical stock. */
   freeAvailable: number;
   incoming: number;
+  incomingReceipts?: Array<{ quantity: number; expectedAt: string | null }>;
   projectedAvailable: number;
   netRequirement: number;
   shortage: boolean;

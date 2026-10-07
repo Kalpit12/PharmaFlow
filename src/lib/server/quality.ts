@@ -247,10 +247,20 @@ function filterRows(rows: QualityExceptionRow[], filters: QualityFilters): Quali
 export async function getQualitySnapshot(ctx: TenantContext, filters: QualityFilters): Promise<QualitySnapshot> {
   requirePermission(ctx, "quality.read");
   const prisma = getPrisma();
-  const [tenant, rawRows, users] = await Promise.all([
+  const [tenant, rawRows, users, batchRows] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { name: true, status: true } }),
     fetchExceptionRows(ctx),
     prisma.user.findMany({ where: { tenantId: ctx.tenantId, status: "ACTIVE" }, select: { id: true, name: true }, orderBy: { name: "asc" } }),
+    prisma.productionBatch.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { updatedAt: "desc" },
+      take: 40,
+      select: {
+        id: true,
+        batchNumber: true,
+        productionOrder: { select: { product: { select: { name: true } } } },
+      },
+    }),
   ]);
 
   const allRows = await Promise.all(
@@ -301,6 +311,11 @@ export async function getQualitySnapshot(ctx: TenantContext, filters: QualityFil
     capabilities: {
       canManage: can(ctx.role, "quality.manage"),
     },
+    batchOptions: batchRows.map((row) => ({
+      id: row.id,
+      batchNumber: row.batchNumber,
+      productName: row.productionOrder.product.name,
+    })),
   };
 }
 

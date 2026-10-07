@@ -350,7 +350,7 @@ function toStructured(
                 : "CUSTOMER_FOLLOW_UP",
         targetName,
         subject: `Follow-up with ${targetName}`,
-        body: `Hello,\n\nI am writing from Laboratory & Allied regarding a commercial follow-up with ${targetName}. Please let us know a convenient time to continue the discussion.\n\nKind regards`,
+        body: `Hello,\n\nI am writing from MediCrest Pharmaceuticals regarding a commercial follow-up with ${targetName}. Please let us know a convenient time to continue the discussion.\n\nKind regards`,
         reason: "Workspace data indicates this account may need a concise commercial follow-up.",
       }
     : undefined;

@@ -11,6 +11,15 @@ import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { Button } from "@/components/ui/button";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -20,10 +29,13 @@ import {
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { dueStateLabel, statusLabel, typeLabel } from "@/lib/quality/service";
 import {
+  QUALITY_EXCEPTION_TYPES,
+  QUALITY_EXCEPTION_SEVERITIES,
   QUALITY_VIEWS,
   type QualityExceptionRow,
   type QualityExceptionSeverity,
   type QualityExceptionStatus,
+  type QualityExceptionType,
   type QualitySnapshot,
   type QualityViewId,
 } from "@/lib/quality/types";
@@ -69,6 +81,12 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
   const [pending, startTransition] = useTransition();
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("exception"));
   const [error, setError] = useState<string | null>(null);
+  const [logOpen, setLogOpen] = useState(false);
+  const [logTitle, setLogTitle] = useState("");
+  const [logDescription, setLogDescription] = useState("");
+  const [logType, setLogType] = useState<QualityExceptionType>("BATCH_ISSUE");
+  const [logSeverity, setLogSeverity] = useState<QualityExceptionSeverity>("HIGH");
+  const [logBatchId, setLogBatchId] = useState(data.batchOptions[0]?.id ?? "");
   const selected =
     data.exceptions.find((row) => row.id === selectedId) ??
     data.exceptions.find((row) => row.id === searchParams.get("exception")) ??
@@ -89,6 +107,25 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
       (a, b) => rank[b.severity] - rank[a.severity] || b.updatedAt.localeCompare(a.updatedAt)
     );
   }, [data.exceptions]);
+
+  async function submitException() {
+    if (logTitle.trim().length < 3 || logDescription.trim().length < 3) {
+      setError("Title and description are required.");
+      return;
+    }
+    const ok = await mutate("/api/quality/exceptions", "POST", {
+      title: logTitle.trim(),
+      description: logDescription.trim(),
+      type: logType,
+      severity: logSeverity,
+      productionBatchId: logBatchId || null,
+    });
+    if (ok) {
+      setLogOpen(false);
+      setLogTitle("");
+      setLogDescription("");
+    }
+  }
 
   async function mutate(url: string, method: string, body?: object) {
     setError(null);
@@ -127,19 +164,102 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
             </Button>
           ))}
         </nav>
-        <SearchInput
-          defaultValue={searchParams.get("q") ?? ""}
-          placeholder="Reference, batch, product, owner"
-          aria-label="Search quality exceptions"
-          className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              router.push(href({ q: event.currentTarget.value || undefined }));
-            }
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {data.capabilities.canManage ? (
+            <Button type="button" size="sm" className="min-h-11 sm:min-h-7" onClick={() => setLogOpen(true)}>
+              Log exception
+            </Button>
+          ) : null}
+          <SearchInput
+            defaultValue={searchParams.get("q") ?? ""}
+            placeholder="Reference, batch, product, owner"
+            aria-label="Search quality exceptions"
+            className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                router.push(href({ q: event.currentTarget.value || undefined }));
+              }
+            }}
+          />
+        </div>
       </div>
+
+      <Dialog open={logOpen} onOpenChange={setLogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log quality exception</DialogTitle>
+            <DialogDescription>Operational exception record — not a validated QMS submission.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Title</span>
+              <Input value={logTitle} onChange={(event) => setLogTitle(event.target.value)} maxLength={160} />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Description</span>
+              <textarea
+                className="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+                value={logDescription}
+                onChange={(event) => setLogDescription(event.target.value)}
+              />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Type</span>
+              <select
+                className="h-9 rounded-md border border-border bg-background px-2"
+                value={logType}
+                onChange={(event) => setLogType(event.target.value as QualityExceptionType)}
+              >
+                {QUALITY_EXCEPTION_TYPES.map((type) => (
+                  <option key={type} value={type}>
+                    {typeLabel(type)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Severity</span>
+              <select
+                className="h-9 rounded-md border border-border bg-background px-2"
+                value={logSeverity}
+                onChange={(event) => setLogSeverity(event.target.value as QualityExceptionSeverity)}
+              >
+                {QUALITY_EXCEPTION_SEVERITIES.map((severity) => (
+                  <option key={severity} value={severity}>
+                    {severity}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {data.batchOptions.length > 0 ? (
+              <label className="grid gap-1.5 text-sm">
+                <span className="text-muted-foreground">Linked batch (optional)</span>
+                <select
+                  className="h-9 rounded-md border border-border bg-background px-2"
+                  value={logBatchId}
+                  onChange={(event) => setLogBatchId(event.target.value)}
+                >
+                  <option value="">None</option>
+                  {data.batchOptions.map((batch) => (
+                    <option key={batch.id} value={batch.id}>
+                      {batch.batchNumber} · {batch.productName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLogOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" disabled={pending} onClick={() => void submitException()}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Log exception"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <section aria-label="Quality metrics" className="flex gap-2 overflow-x-auto pb-1 xl:grid xl:grid-cols-5 xl:overflow-visible">
         {data.kpis.map((kpi) => (

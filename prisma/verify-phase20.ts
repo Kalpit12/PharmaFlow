@@ -39,7 +39,7 @@ export async function runPhase20Verify(prisma: PrismaClient) {
   const b = projectRunRate(100, 80, "MEDIUM");
   assert(a === b, "Deterministic output");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");

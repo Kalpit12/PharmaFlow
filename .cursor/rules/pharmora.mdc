@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Pharmora
 
-Premium multi-tenant pharmaceutical SaaS. Demo tenant is Laboratory & Allied (Kenya) via config — never hard-code the whole app around LabAllied.
+Premium multi-tenant pharmaceutical SaaS. Demo tenant is MediCrest Pharmaceuticals (Kenya) via config — never hard-code the whole app around one customer.
 
 ## Source of truth
 

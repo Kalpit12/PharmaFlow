@@ -26,7 +26,7 @@ async function ensureProduct(
       category: data.category,
       description: data.description,
       unit: data.unit,
-      manufacturer: "Laboratory & Allied",
+      manufacturer: "MediCrest Pharmaceuticals",
       status: "ACTIVE",
       safetyStock: data.safetyStock,
     },
@@ -34,7 +34,7 @@ async function ensureProduct(
 }
 
 export async function ensureReportingDemoData(prisma: PrismaClient) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
 
   const warehouseCount = await prisma.warehouse.count({ where: { tenantId: tenant.id } });
@@ -162,7 +162,7 @@ async function ensureSupplier(prisma: PrismaClient, tenantId: string, code: stri
 }
 
 async function ensureReportingDepth(prisma: PrismaClient) {
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
   const tenantId = tenant.id;
 

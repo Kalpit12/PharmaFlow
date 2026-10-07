@@ -251,7 +251,7 @@ Implemented:
 
 Revenue rule: `SUM(Order.totalAmount)` for `CONFIRMED` and `FULFILLED` only. `CANCELLED` and `DRAFT` are excluded. Arithmetic uses `Prisma.Decimal` until display. Chart series convert to KSh millions only at the UI boundary. Aggregation windows are UTC (`src/lib/server/dates.ts`).
 
-Demo tenant (`lab-allied`, status `DEMO`) shows **Demo workspace data**, not production figures.
+Demo tenant (`medicrest`, MediCrest Pharmaceuticals, status `DEMO`) shows **Demo workspace data**, not production figures.
 
 Not implemented:
 
@@ -1174,7 +1174,8 @@ Implemented: flagship planning & simulation workspace — Sugar-inspired enterpr
 - **Operational journey** — `src/lib/scenarios/journey.ts` builds a reusable dependency map (Demand → Materials → Production → Batches → Quality → Delivery → Customer) with status, metric, reason, baseline/scenario/delta, confidence, and workspace links. Not decorative — each stage is inspectable.
 - **Impact chain** — deterministic consequence links from assumption change through material shortage, production exposure, batch/quality risk, and delivery/customer impact where data supports it.
 - **Baseline vs scenario** — comparison table (Current | Scenario | Variance) with FACT / PROJECTED / VARIANCE labelling; assumption rows show Current / Scenario / Change for every supported control.
-- **Decision workspace** — `src/lib/scenarios/decision.ts` produces headline, why, trade-offs, data limitations, and review links. No “Execute scenario” — human decision only.
+- **Decision workspace** — `src/lib/scenarios/decision.ts` produces headline, why, trade-offs, data limitations, and review links to Operations, Materials, Procurement, Inventory, Quality, and Traceability when that domain is permitted. No “Execute scenario” — human decision only.
+- **Applied assumptions** — `/scenarios` shows each control as Current / Scenario / Change. Workforce stays “Not recorded”.
 - **`/scenarios` flagship UI** — three-column decision canvas (assumptions | comparison + journey + impact chain | decision panel). Header: PLANNING & SIMULATION. Full-width workspace surface. Responsive: stacked surfaces on tablet/mobile; decision-first on 390×844.
 - **Role behavior** — Phase 36 permissions filter journey/comparison/impact domains via `permittedScenarioDomains()`; one engine, permission-aware presentation (Executive/Manager cross-domain; Operations production/materials; Procurement supplier/material exposure; Quality batch/quality; Viewer read-only).
 - **Command Center integration** — compact **Planning outlook** section (current state, top risk, scenario opportunity, projected impact, link to `/scenarios`).
@@ -1226,6 +1227,12 @@ Status: **COMPLETE**
 
 **Tests:** `prisma/verify-phase28.ts` in `npm run db:verify`. Browser QA: `npm run qa:phase28`.
 
+## Public landing redesign
+
+`/` rebuilt as a dark "control room" landing (`src/components/landing/`): pointer-reactive aurora + grain + dot-grid backdrop, editorial split hero (Plus Jakarta Sans + Instrument Serif accent, rotating word hydration-safe), layered glass stage (Command Center mock, float chips, orbit rings, compact traceability card), module ticker, "Monday morning, two ways" versus strip, hover-reveal bento of pharma-native mocks (expiry heat grid, MRP netting bars, procurement trail, batch dispositions, lot→batch→order genealogy, audit trail), workflow trail, live ops stream, "Agents prepare. People decide." control section, proof stats, steps, KSh pricing, FAQ, CTA, and the unchanged intake form. Header is transparent over the hero and becomes frosted glass on scroll. Reduced-motion and `pf-paused` handling preserved. No model calls, no clinical claims. `node scripts/landing-browser-qa.mjs` passes 22/22 (1440 + 390, no overflow, no page errors).
+
+`/login` restyled on the same system: left stage (aurora, eyebrow, serif headline, floating compact Command Center + approvals card, orbit) and a right glass sign-in card with `pf-field` inputs, show/hide password, inline error alert, assurances list, and links back to `/` and `/#contact`. `LoginForm` now treats an Auth.js `ok: true` response that carries an `error` (e.g. database unreachable → `Configuration`) as "temporarily unavailable" instead of redirecting into a bounce loop.
+
 ## Current
 
 - Phase 28 complete (Production Execution). Phases 29–38 remain as previously verified.
@@ -1238,6 +1245,49 @@ Status: **COMPLETE**
 ## Stack
 
 Unchanged from Phase 2, plus `cmdk`, Prisma 6, and `@prisma/client`. PostgreSQL for persistence.
+
+## October 2026 — Finite-capacity APS control plane
+
+Status: **COMPLETE + VERIFIED**
+
+Closed the remaining SkyPlanner-class operations gaps without copying Autopilot branding or treating an LLM as a scheduler.
+
+- **Persisted calendars** — workstation shifts and dated exceptions (`WorkstationShift`, `WorkstationCalendarException`) drive finite capacity. Lab & Allied seed is Mon–Fri 08:00–16:00 UTC with a Mashujaa Day shutdown.
+- **Routings are the schedule source** — new production orders instantiate `ProductionOperation`s from the active product routing. Auto-schedule and Reschedule all use qualified resources, precedence, changeovers, and dated material constraints.
+- **Planner control** — `POST /api/schedule-plans` proposes a versioned plan; accept/reject are explicit. Frozen work (horizon + locks + in-progress) is not moved.
+- **Weighted policy** — `PlanningPolicy` stores priority / due-date / changeover / utilization weights and freeze minutes. Autopilot is `OFF`, `PROPOSE_ONLY`, or `AUTO_ACCEPT_UNLOCKED` only.
+- **Shop floor** — `/execution/production` has a station filter and a next-task card for the earliest waiting/released/active job.
+- **Delivery simulation** — New order dialog can simulate a feasible finish in memory. Canonical ERP JSON is `GET /api/integrations/production-schedule` and `POST /api/integrations/production-orders`.
+- Engine tests: `verify:operations-calendar`, `routing`, `plan`, `delivery`. Persistence: `scripts/run-phase39-verify.ts`. Control plane: `scripts/verify-aps-control.ts`.
+
+## October 2026 — Operations planner refinement
+
+- `/operations` Gantt hierarchy refined using finite-capacity APS patterns: in-lane capacity bands, restrained job bars, workstation utilization rails, compact plan controls, shared legend, and a dominant scrollable timeline.
+- Planning controls remain explicit API actions (auto-schedule, resequence, workstation assignment); no fake drag-and-drop behavior was introduced.
+- Workspace authentication moved from `proxy.ts` to the database-backed `(workspace)` server layout. This removes stale-JWT login loops after demo reseeds and avoids compiling Prisma/bcrypt into a route proxy.
+- Login now redirects only after the session user is confirmed in the database. Development access permits both `localhost` and `127.0.0.1`.
+
+## Phase 38.1 — Administration workspace
+
+Status: **COMPLETE + VERIFIED**
+
+- `/administration` is now the tenant control plane for organization identity, authenticated people, production resources, warehouse network, commercial regions, and master-data coverage.
+- Live tenant-scoped counts and readiness checks come from Prisma; unknown or absent configuration is shown as `REVIEW`, not inferred.
+- Sensitive controls remain separated: roles, permissions, approval authority, and audit mutations stay in `/governance`.
+- Administration requires `users.read`; role changes continue to require `users.manage` in Governance.
+- No invitation, password-reset, SSO, or fake editable tenant settings were added. Local demo credentials remain environment-controlled.
+- TypeScript and IDE lint checks pass; browser verification completed against the seeded `medicrest` demo tenant.
+
+## Phase 38.2 — Personal settings workspace
+
+Status: **COMPLETE + VERIFIED**
+
+- `/settings` now provides browser-persisted personal display preferences: dark/light/system appearance, UTC/East Africa/device-local time, reduced motion, and the notification unread indicator.
+- The selected time zone updates the shared application header; reduced motion and notification preferences are applied across the workspace.
+- Account identity, authentication/session posture, and tenant context are read-only and tenant-scoped. Governance and Administration remain the authoritative workspaces for access control and tenant configuration.
+- MFA, SSO, profile editing, password changes, and outbound notification delivery are explicitly shown as unavailable rather than represented by fake controls.
+- User-menu Profile and Preferences links now land in Settings; Settings is no longer marked as coming soon in navigation.
+- TypeScript and IDE lint checks pass; browser verification covered appearance, time zone, reduced motion, unread indicator, reset behavior, and live Lab & Allied context.
 
 ## Commands
 

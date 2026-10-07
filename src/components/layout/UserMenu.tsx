@@ -1,6 +1,7 @@
 "use client";
 
-import { signOut, useSession } from "next-auth/react";
+import { signOut } from "next-auth/react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useTheme } from "@/components/providers/theme-provider";
 
@@ -17,15 +18,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { initialsFromName, ROLE_LABEL } from "@/lib/auth/identity";
-import { getMockUser } from "@/lib/mock/session";
 
 export function UserMenu() {
-  const { data } = useSession();
-  const fallback = getMockUser();
-  const name = data?.user?.name ?? fallback.name;
-  const role = data?.user?.role ? ROLE_LABEL[data.user.role] : fallback.role;
+  const router = useRouter();
+  const { user, openPalette } = useShell();
+  const name = user.name;
+  const role = ROLE_LABEL[user.role];
   const initials = initialsFromName(name);
-  const { openPalette } = useShell();
   const { setTheme, resolvedTheme } = useTheme();
 
   return (
@@ -46,10 +45,8 @@ export function UserMenu() {
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={() => toast("Profile is coming with Settings.")}>Profile</DropdownMenuItem>
-          <DropdownMenuItem onClick={() => toast("Preferences are coming with Settings.")}>
-            Preferences
-          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/settings#account")}>Profile</DropdownMenuItem>
+          <DropdownMenuItem onClick={() => router.push("/settings#preferences")}>Preferences</DropdownMenuItem>
           <DropdownMenuItem onClick={() => openPalette("commands")}>Keyboard Shortcuts</DropdownMenuItem>
           <DropdownMenuItem onClick={() => setTheme((resolvedTheme ?? "dark") === "dark" ? "light" : "dark")}>
             Toggle appearance

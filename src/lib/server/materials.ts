@@ -113,11 +113,11 @@ export async function getMaterialsSnapshot(ctx: TenantContext, filters: Material
       INNER JOIN "Warehouse" w ON w.id = l."warehouseId"
       WHERE l."tenantId" = ${ctx.tenantId}
     `),
-    prisma.$queryRaw<Array<{ productId: string; quantity: number }>>(Prisma.sql`
-      SELECT r."productId", r.quantity
+    prisma.$queryRaw<Array<{ productId: string; quantity: number; expectedAt: Date | null }>>(Prisma.sql`
+      SELECT r."productId", r.quantity, r."expectedAt"
       FROM "InventoryReceipt" r
       WHERE r."tenantId" = ${ctx.tenantId} AND r.status = 'OPEN'
-    `).catch(() => [] as Array<{ productId: string; quantity: number }>),
+    `).catch(() => [] as Array<{ productId: string; quantity: number; expectedAt: Date | null }>),
     prisma.$queryRaw<Array<{ productId: string; componentId: string; quantityPer: Prisma.Decimal }>>(Prisma.sql`
       SELECT "productId", "componentId", "quantityPer" FROM "BillOfMaterial" WHERE "tenantId" = ${ctx.tenantId}
     `).catch(() => [] as Array<{ productId: string; componentId: string; quantityPer: Prisma.Decimal }>),
@@ -167,7 +167,7 @@ export async function getMaterialsSnapshot(ctx: TenantContext, filters: Material
     prisma.$queryRaw<Array<{ productId: string; count: number }>>(Prisma.sql`
       SELECT i."productId", COUNT(DISTINCT p.id)::int AS count
       FROM purchase_order_items i
-      INNER JOIN "PurchaseOrder" p ON p.id = i."purchaseOrderId"
+      INNER JOIN "purchase_orders" p ON p.id = i."purchaseOrderId"
       WHERE p."tenantId" = ${ctx.tenantId}
         AND p.status IN ('DRAFT', 'PENDING_APPROVAL', 'APPROVED')
       GROUP BY i."productId"
@@ -212,14 +212,18 @@ export async function getMaterialsSnapshot(ctx: TenantContext, filters: Material
       expiryDate: asIso(lot.expiryDate),
       warehouseName: lot.warehouseName,
     })),
-    receipts: receipts.map((row) => ({ productId: row.productId, quantity: row.quantity })),
+    receipts: receipts.map((row) => ({
+      productId: row.productId,
+      quantity: row.quantity,
+      expectedAt: asIso(row.expectedAt),
+    })),
     procurementByProduct,
     now,
     bomCycles,
   });
 
   const query = filters.query?.toLowerCase();
-  let materials = allRows.filter((row) => {
+  const materials = allRows.filter((row) => {
     if (filters.risk && row.risk !== filters.risk) return false;
     if (filters.orderId && !row.affectedOrders.some((order) => order.id === filters.orderId)) return false;
     if (query && !row.sku.toLowerCase().includes(query) && !row.name.toLowerCase().includes(query)) return false;

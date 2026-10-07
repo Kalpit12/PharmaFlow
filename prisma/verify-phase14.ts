@@ -179,7 +179,7 @@ export async function runPhase14Verify(prisma: PrismaClient) {
     "Incoming covering a current gap is MEDIUM"
   );
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
@@ -199,9 +199,9 @@ export async function runPhase14Verify(prisma: PrismaClient) {
   const vacantSnap = await getMaterialsSnapshot(vacant, resolveMaterialsFilters({ view: "requirements" }));
   const againSnap = await getMaterialsSnapshot(manager, resolveMaterialsFilters({ view: "requirements" }));
 
-  assert(!overview.materials.some((row) => row.lots.some((lot) => lot.batchCode === "ISO-LOT-1")), "Lab Allied cannot see isolation lots");
-  assert(!overview.materials.some((row) => row.sku.toLowerCase().includes("ibuprofen")), "Lab Allied cannot see isolation SKUs");
-  assert(!isolation.materials.some((row) => row.sku === "AMOX-500-CAP" || row.name.toLowerCase().includes("amoxicillin")), "Isolation tenant cannot see Lab Allied materials");
+  assert(!overview.materials.some((row) => row.lots.some((lot) => lot.batchCode === "ISO-LOT-1")), "MediCrest cannot see isolation lots");
+  assert(!overview.materials.some((row) => row.sku.toLowerCase().includes("ibuprofen")), "MediCrest cannot see isolation SKUs");
+  assert(!isolation.materials.some((row) => row.sku === "AMOX-500-CAP" || row.name.toLowerCase().includes("amoxicillin")), "Isolation tenant cannot see MediCrest materials");
   assert(vacantSnap.materials.length === 0, "Empty tenant has no material requirements");
   assert(JSON.stringify(overview.materials.map((row) => row.productId)) === JSON.stringify(againSnap.materials.map((row) => row.productId)), "Tenant snapshot is deterministic");
 

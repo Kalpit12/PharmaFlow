@@ -1,3 +1,12 @@
+import {
+  addWorkingMinutesOnCalendar,
+  alignToCalendar,
+  availableMinutesForDay,
+  createStandardWorkCalendar,
+  workingMinutesByDay,
+  type WorkCalendar,
+} from "@/lib/operations/calendar";
+
 export const PRIORITY_RANK = {
   CRITICAL: 0,
   HIGH: 1,
@@ -19,6 +28,8 @@ export type PlannerOrder = {
   isLocked: boolean;
   plannedStart: Date | null;
   plannedEnd: Date | null;
+  materialReadyAt?: Date | null;
+  materialBlocked?: boolean;
 };
 
 export type PlannerWorkstation = {
@@ -26,6 +37,7 @@ export type PlannerWorkstation = {
   name: string;
   code: string;
   capacityHoursPerDay: number;
+  calendar?: WorkCalendar;
 };
 
 export type ScheduledOrder = PlannerOrder & {
@@ -43,7 +55,8 @@ export type ScheduleConflict = {
     | "unscheduled"
     | "missing-info"
     | "invalid-duration"
-    | "inactive-workstation";
+    | "inactive-workstation"
+    | "material-unavailable";
   orderNumber: string;
   productName: string;
   workstationId?: string | null;
@@ -78,34 +91,11 @@ export function shiftEnd(day: Date, hoursPerDay: number): Date {
 }
 
 export function alignToWork(from: Date, hoursPerDay: number): Date {
-  const start = shiftStart(from);
-  const end = shiftEnd(from, hoursPerDay);
-  if (from.getTime() < start.getTime()) return start;
-  if (from.getTime() >= end.getTime()) {
-    const next = new Date(startOfUtcDay(from).getTime() + 24 * 60 * 60 * 1000);
-    return shiftStart(next);
-  }
-  return from;
+  return alignToCalendar(from, createStandardWorkCalendar(hoursPerDay));
 }
 
 export function addWorkingMinutes(from: Date, minutes: number, hoursPerDay: number): Date {
-  let remaining = minutes;
-  let cursor = alignToWork(from, hoursPerDay);
-  while (remaining > 0) {
-    const end = shiftEnd(cursor, hoursPerDay);
-    const available = Math.max(0, (end.getTime() - cursor.getTime()) / 60000);
-    if (available <= 0) {
-      cursor = shiftStart(new Date(startOfUtcDay(cursor).getTime() + 24 * 60 * 60 * 1000));
-      continue;
-    }
-    const take = Math.min(available, remaining);
-    cursor = new Date(cursor.getTime() + take * 60000);
-    remaining -= take;
-    if (remaining > 0) {
-      cursor = shiftStart(new Date(startOfUtcDay(cursor).getTime() + 24 * 60 * 60 * 1000));
-    }
-  }
-  return cursor;
+  return addWorkingMinutesOnCalendar(from, minutes, createStandardWorkCalendar(hoursPerDay));
 }
 
 function overlaps(aStart: Date, aEnd: Date, bStart: Date, bEnd: Date): boolean {
@@ -120,8 +110,11 @@ export function buildSchedule(
 ): { orders: ScheduledOrder[]; conflicts: ScheduleConflict[] } {
   const active = workstations.filter((row) => row.capacityHoursPerDay > 0);
   const hoursByWs = new Map(active.map((row) => [row.id, row.capacityHoursPerDay]));
+  const calendarByWs = new Map(
+    active.map((row) => [row.id, row.calendar ?? createStandardWorkCalendar(row.capacityHoursPerDay)])
+  );
   const cursor = new Map<string, Date>();
-  for (const ws of active) cursor.set(ws.id, alignToWork(window.start, ws.capacityHoursPerDay));
+  for (const ws of active) cursor.set(ws.id, alignToCalendar(window.start, calendarByWs.get(ws.id)!));
 
   const locked = orders.filter((row) => row.isLocked && row.plannedStart && row.plannedEnd);
   for (const row of locked) {
@@ -151,6 +144,7 @@ export function buildSchedule(
     .sort(comparePlannerOrders);
 
   for (const order of unscheduled) {
+    if (order.materialBlocked) continue;
     const preferred = order.workstationId && hoursByWs.has(order.workstationId) ? order.workstationId : null;
     const workstationId =
       preferred ??
@@ -158,8 +152,14 @@ export function buildSchedule(
       null;
     if (!workstationId) continue;
     const hours = hoursByWs.get(workstationId) ?? 8;
-    const start = alignToWork(cursor.get(workstationId) ?? window.start, hours);
-    const end = addWorkingMinutes(start, order.durationMinutes, hours);
+    const calendar = calendarByWs.get(workstationId) ?? createStandardWorkCalendar(hours);
+    const resourceReady = cursor.get(workstationId) ?? window.start;
+    const materialReady =
+      order.materialReadyAt && order.materialReadyAt.getTime() > resourceReady.getTime()
+        ? order.materialReadyAt
+        : resourceReady;
+    const start = alignToCalendar(materialReady, calendar);
+    const end = addWorkingMinutesOnCalendar(start, order.durationMinutes, calendar);
     cursor.set(workstationId, end);
     const atRisk = end.getTime() > order.dueDate.getTime();
     const index = result.findIndex((row) => row.id === order.id);
@@ -207,26 +207,24 @@ export function detectConflicts(
     }
   }
 
-  const hoursByWs = new Map(workstations.map((row) => [row.id, row.capacityHoursPerDay]));
+  const calendarByWs = new Map(
+    workstations.map((row) => [row.id, row.calendar ?? createStandardWorkCalendar(row.capacityHoursPerDay)])
+  );
   const byDay = new Map<string, number>();
   const capacityKeys = new Set<string>();
   for (const order of scheduled) {
-    const hours = hoursByWs.get(order.workstationId!) ?? 8;
-    let cursor = new Date(order.plannedStart!);
-    const end = order.plannedEnd!;
-    while (cursor.getTime() < end.getTime()) {
-      const dayEnd = shiftEnd(cursor, hours);
-      const sliceEnd = new Date(Math.min(dayEnd.getTime(), end.getTime()));
-      const minutes = Math.max(0, (sliceEnd.getTime() - cursor.getTime()) / 60000);
-      const key = `${order.workstationId}:${startOfUtcDay(cursor).toISOString()}`;
+    const calendar = calendarByWs.get(order.workstationId!) ?? createStandardWorkCalendar(8);
+    for (const [day, minutes] of workingMinutesByDay(order.plannedStart!, order.plannedEnd!, calendar)) {
+      const key = `${order.workstationId}:${day}`;
       byDay.set(key, (byDay.get(key) ?? 0) + minutes);
-      cursor = shiftStart(new Date(startOfUtcDay(cursor).getTime() + 24 * 60 * 60 * 1000));
     }
   }
   for (const [key, minutes] of byDay) {
     const workstationId = key.split(":")[0];
-    const hours = hoursByWs.get(workstationId) ?? 8;
-    if (minutes > hours * 60 + 0.5 && !capacityKeys.has(workstationId)) {
+    const day = key.slice(workstationId.length + 1);
+    const calendar = calendarByWs.get(workstationId) ?? createStandardWorkCalendar(8);
+    const availableMinutes = availableMinutesForDay(new Date(`${day}T00:00:00.000Z`), calendar);
+    if (minutes > availableMinutes + 0.5 && !capacityKeys.has(workstationId)) {
       capacityKeys.add(workstationId);
       const ws = workstations.find((row) => row.id === workstationId);
       conflicts.push({
@@ -236,7 +234,7 @@ export function detectConflicts(
         productName: ws?.name ?? "Workstation",
         workstationId,
         title: `${ws?.name ?? "Line"} exceeds daily capacity`,
-        detail: `${Math.round(minutes / 60)}h scheduled against ${hours}h available.`,
+        detail: `${Math.round(minutes / 60)}h scheduled against ${Math.round(availableMinutes / 60)}h available.`,
         impact: "Utilization above finite capacity for a day.",
         nextAction: "Reduce load or extend the horizon.",
       });
@@ -244,6 +242,36 @@ export function detectConflicts(
   }
 
   for (const order of orders) {
+    if (order.materialBlocked) {
+      conflicts.push({
+        severity: "CRITICAL",
+        kind: "material-unavailable",
+        orderNumber: order.orderNumber,
+        productName: order.productName,
+        workstationId: order.workstationId,
+        title: `${order.orderNumber} is blocked by material availability`,
+        detail: "Dated on-hand and incoming supply cannot cover this order.",
+        impact: "A new schedule cannot assign production until material supply is confirmed.",
+        nextAction: "Resolve the shortage or record a dated incoming receipt.",
+      });
+    } else if (
+      order.materialReadyAt &&
+      order.plannedStart &&
+      order.plannedStart.getTime() < order.materialReadyAt.getTime()
+    ) {
+      conflicts.push({
+        severity: "CRITICAL",
+        kind: "material-unavailable",
+        orderNumber: order.orderNumber,
+        productName: order.productName,
+        workstationId: order.workstationId,
+        title: `${order.orderNumber} starts before materials are available`,
+        detail: `Material-ready date is ${formatDay(order.materialReadyAt)}.`,
+        impact: "The recorded start is not feasible against dated supply.",
+        nextAction: "Move the order after material availability or expedite supply.",
+      });
+    }
+
     if (order.durationMinutes <= 0) {
       conflicts.push({
         severity: "WARNING",

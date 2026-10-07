@@ -28,6 +28,7 @@ import { getSupplierDataGapCount } from "@/lib/server/suppliers";
 import { countSupplierPerformanceAttention } from "@/lib/server/supplier-performance";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount, formatKes, percentChange, percentChangeCount, toChartMillions } from "@/lib/server/money";
+import { getOrderFormOptions, type OrderFormOptions } from "@/lib/server/commercial-orders";
 import { getTenant } from "@/lib/server/services/tenant";
 
 export type DashboardData = {
@@ -41,6 +42,7 @@ export type DashboardData = {
   attention: AttentionItem[];
   opportunities: Opportunity[];
   activity: ActivityItem[];
+  orderForm: OrderFormOptions;
 };
 
 function toSalesPoints(rows: { label: string; revenue: Prisma.Decimal; orders: number; rfqs: number }[]): SalesPoint[] {
@@ -297,6 +299,7 @@ export async function getDashboardData(ctx: TenantContext, now = new Date()): Pr
         title: item.title,
         detail: item.description,
       })),
+      orderForm: await getOrderFormOptions(ctx),
     };
   } catch (error) {
     if (error instanceof ServerError) throw error;

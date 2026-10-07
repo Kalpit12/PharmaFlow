@@ -1,3 +1,5 @@
+import { DEMO_DEV_EMAIL_DEFAULT } from "@/lib/demo-tenant";
+
 export type MockUser = {
   id: string;
   name: string;
@@ -10,7 +12,7 @@ export const mockUser: MockUser = {
   id: "user-alex-morgan",
   name: "Alex Morgan",
   role: "Operations Manager",
-  email: "alex@laballied.demo",
+  email: DEMO_DEV_EMAIL_DEFAULT,
   initials: "AM",
 };
 

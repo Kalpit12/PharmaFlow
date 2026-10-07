@@ -24,6 +24,7 @@ export default async function OperationsPage({
     data = await getOperationsPlanner(ctx, resolvePlanningWindow(params), materials);
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
+    console.error("Operations planner failed", error);
     return (
       <WorkspacePage width="full">
         <PageHeader

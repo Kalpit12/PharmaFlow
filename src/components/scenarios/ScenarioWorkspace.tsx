@@ -229,6 +229,29 @@ export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
               <ChoiceGroup label="Inbound cover" value={draft.procurementAvailabilityChangePct} options={PROCUREMENT_PCTS} format={pctLabel} onChange={(procurementAvailabilityChangePct) => setDraft({ ...draft, procurementAvailabilityChangePct })} />
               <ChoiceGroup label="Priority" value={draft.priorityMode} options={["current", "critical"] as const} format={(mode) => (mode === "current" ? "Current" : "Critical")} onChange={(priorityMode) => setDraft({ ...draft, priorityMode })} />
             </div>
+            <div className="mt-4 overflow-x-auto border-t border-border/70 pt-3">
+              <p className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">Applied assumptions</p>
+              <table className="mt-2 w-full min-w-[16rem] text-xs" aria-label="Applied scenario assumptions">
+                <thead>
+                  <tr className="text-left text-[10px] tracking-[0.14em] text-muted-foreground uppercase">
+                    <th className="py-1 pr-2 font-medium">Variable</th>
+                    <th className="py-1 pr-2 font-medium">Current</th>
+                    <th className="py-1 pr-2 font-medium">Scenario</th>
+                    <th className="py-1 font-medium">Change</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.assumptions.map((row) => (
+                    <tr key={row.id} className="border-t border-border/40">
+                      <td className="py-1.5 pr-2 font-medium">{row.label}</td>
+                      <td className="py-1.5 pr-2 tabular-nums text-muted-foreground">{row.current}</td>
+                      <td className="py-1.5 pr-2 tabular-nums">{row.supported ? row.scenario : "Not recorded"}</td>
+                      <td className="py-1.5 tabular-nums text-muted-foreground">{row.change}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
             <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <Button type="button" className="min-h-11 flex-1 sm:min-h-8" onClick={runScenario} disabled={!dirty}>
                 Run scenario

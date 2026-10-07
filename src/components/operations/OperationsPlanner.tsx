@@ -3,13 +3,24 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight, Loader2, Lock } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Loader2, Lock, SlidersHorizontal } from "lucide-react";
 
+import { DEMO_TENANT_BRAND } from "@/lib/demo-tenant";
+import { ScheduleControlPanel } from "@/components/operations/ScheduleControlPanel";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { GroupedBarChart } from "@/components/charts/GroupedBarChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import {
   Sheet,
   SheetContent,
@@ -22,8 +33,13 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { buildProductionPlannedVsActual } from "@/lib/analytics/production";
 import { utilizationTone } from "@/lib/charts/tokens";
+import { intervalsForDay, isWorkingAt } from "@/lib/operations/calendar";
 import type { OperationsView } from "@/lib/server/operations";
-import type { MaterialReadinessState } from "@/lib/operations/planning";
+import {
+  buildScheduleImpact,
+  type MaterialReadinessState,
+  type ScheduleImpact,
+} from "@/lib/operations/planning";
 import { cn } from "@/lib/utils";
 import type { StatusTone } from "@/types/status";
 
@@ -105,6 +121,10 @@ function clockLabel(iso: string): string {
   const hour = String(date.getUTCHours()).padStart(2, "0");
   const minute = String(date.getUTCMinutes()).padStart(2, "0");
   return `${hour}:${minute}`;
+}
+
+function utcStamp(iso: string): string {
+  return `${shortDay(iso)} ${clockLabel(iso)} UTC`;
 }
 
 function hourLabel(ms: number): string {
@@ -278,6 +298,13 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [zoom, setZoom] = useState<ZoomId>(zoomFromWeeks(data.window.weeks));
   const [viewStartMs, setViewStartMs] = useState(() => new Date(data.window.start).getTime());
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newProductId, setNewProductId] = useState(data.products[0]?.id ?? "");
+  const [newQuantity, setNewQuantity] = useState("15000");
+  const [newPriority, setNewPriority] = useState<Order["priority"]>("HIGH");
+  const dueDefault = addDays(isoDay(new Date().toISOString()), 5);
+  const [newDueDate, setNewDueDate] = useState(dueDefault);
+  const [simulation, setSimulation] = useState<string | null>(null);
 
   const start = isoDay(data.window.start);
   const weeks = data.window.weeks;
@@ -338,6 +365,7 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
 
   const rows = data.workstations.filter((row) => workstationId === "all" || row.id === workstationId);
   const selected = data.orders.find((order) => order.id === selectedId) ?? null;
+  const selectedImpact = selected ? buildScheduleImpact(data.orders, selected.id) : null;
   const metricStrip = data.kpis.filter((kpi) =>
     ["scheduled", "at-risk", "utilization", "material-shortage", "over-capacity", "planned-qty"].includes(kpi.id)
   );
@@ -361,6 +389,72 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
     return true;
   };
 
+  const createProductionOrder = () => {
+    const quantity = Number.parseInt(newQuantity, 10);
+    if (!newProductId || !Number.isFinite(quantity) || quantity <= 0) {
+      setActionError("Choose a product and enter a valid quantity.");
+      return;
+    }
+    startTransition(async () => {
+      setActionError(null);
+      const ok = await runPlannerAction("/api/production-orders", {
+        method: "POST",
+        body: JSON.stringify({
+          productId: newProductId,
+          quantity,
+          priority: newPriority,
+          dueDate: `${newDueDate}T16:00:00.000Z`,
+          durationMinutes: 480,
+        }),
+      });
+      if (ok) {
+        setCreateOpen(false);
+        setFocus("unscheduled");
+      }
+    });
+  };
+
+  const simulateDelivery = () => {
+    const quantity = Number.parseInt(newQuantity, 10);
+    if (!newProductId || !Number.isFinite(quantity) || quantity <= 0) {
+      setActionError("Choose a product and enter a valid quantity.");
+      return;
+    }
+    startTransition(async () => {
+      setActionError(null);
+      setSimulation(null);
+      const response = await fetch("/api/schedule-plans/simulate-delivery", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: newProductId,
+          quantity,
+          priority: newPriority,
+          dueDate: `${newDueDate}T16:00:00.000Z`,
+        }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as {
+        message?: string;
+        simulation?: { feasibleEnd: string | null; late: boolean; blocked: boolean; issues: string[] };
+      };
+      if (!response.ok) {
+        setActionError(payload.message ?? "Unable to simulate delivery.");
+        return;
+      }
+      const result = payload.simulation;
+      if (!result) {
+        setSimulation("No simulation result.");
+        return;
+      }
+      if (result.blocked) {
+        setSimulation(result.issues[0] ?? "Delivery cannot be scheduled with current constraints.");
+        return;
+      }
+      const when = result.feasibleEnd ? utcStamp(result.feasibleEnd) : "unknown";
+      setSimulation(result.late ? `Feasible finish ${when} — after the due date.` : `Feasible finish ${when}.`);
+    });
+  };
+
   const visible = (order: Order) => matchesFocus(order, focus) && matchesQuery(order, query);
   const unscheduledVisible = data.orders.filter(
     (order) => order.displayStatus === "UNSCHEDULED" && visible(order) && (workstationId === "all" || order.workstationId === workstationId)
@@ -372,6 +466,9 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
       visible(order) &&
       (workstationId === "all" || order.workstationId === workstationId)
   );
+  const scheduledCount = data.orders.filter((order) => order.plannedStart && order.plannedEnd).length;
+  const riskCount = data.orders.filter((order) => order.displayStatus === "AT_RISK").length;
+  const planHasAttention = data.planningAttention.length > 0 || data.conflicts.length > 0;
 
   const openOrder = (id: string) => setSelectedId(id);
   const handlePlanningAttention = (item: PlanningAttention) => {
@@ -421,17 +518,122 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
-        <p className="text-xs text-muted-foreground">
-          Planning schedules work. Execution releases and runs it on the shop floor.
-        </p>
-        <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
-          <Link href="/execution/production">Open production execution</Link>
-        </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border pb-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={cn("size-2 shrink-0 rounded-full", planHasAttention ? "bg-warning" : "bg-intel")} aria-hidden />
+          <div className="min-w-0">
+            <p className="text-sm font-medium">Live finite-capacity plan</p>
+            <p className="truncate text-xs text-muted-foreground">
+              {scheduledCount} scheduled · {unscheduledVisible.length} unscheduled · {riskCount} at risk
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {data.capabilities.canSchedule && data.products.length > 0 ? (
+            <Button type="button" size="sm" className="min-h-11 sm:min-h-8" onClick={() => setCreateOpen(true)}>
+              New production order
+            </Button>
+          ) : null}
+          <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+            <Link href="/execution/production">Open production execution</Link>
+          </Button>
+        </div>
       </div>
+      {actionError ? <p className="text-sm text-danger">{actionError}</p> : null}
+      <ScheduleControlPanel
+        data={data}
+        pending={pending}
+        onRescheduleAll={() => {
+          startTransition(async () => {
+            await runPlannerAction("/api/schedule-plans", {
+              method: "POST",
+              body: JSON.stringify({ windowStart: data.window.start }),
+            });
+          });
+        }}
+        onAccept={() => {
+          if (!data.proposal) return;
+          startTransition(async () => {
+            await runPlannerAction(`/api/schedule-plans/${data.proposal!.id}/accept`, { method: "POST" });
+          });
+        }}
+        onReject={() => {
+          if (!data.proposal) return;
+          startTransition(async () => {
+            await runPlannerAction(`/api/schedule-plans/${data.proposal!.id}/reject`, { method: "POST" });
+          });
+        }}
+        onSavePolicy={(patch) => {
+          startTransition(async () => {
+            await runPlannerAction("/api/planning-policy", {
+              method: "PATCH",
+              body: JSON.stringify(patch),
+            });
+          });
+        }}
+      />
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>New production order</DialogTitle>
+            <DialogDescription>
+              Creates an unscheduled order and batch record for {DEMO_TENANT_BRAND} planning.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3 py-2">
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Product</span>
+              <select
+                className="h-9 rounded-md border border-border bg-background px-2"
+                value={newProductId}
+                onChange={(event) => setNewProductId(event.target.value)}
+              >
+                {data.products.map((product) => (
+                  <option key={product.id} value={product.id}>
+                    {product.name} ({product.sku})
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Quantity (units)</span>
+              <Input value={newQuantity} onChange={(event) => setNewQuantity(event.target.value)} inputMode="numeric" />
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Priority</span>
+              <select
+                className="h-9 rounded-md border border-border bg-background px-2"
+                value={newPriority}
+                onChange={(event) => setNewPriority(event.target.value as Order["priority"])}
+              >
+                <option value="CRITICAL">Critical</option>
+                <option value="HIGH">High</option>
+                <option value="NORMAL">Normal</option>
+                <option value="LOW">Low</option>
+              </select>
+            </label>
+            <label className="grid gap-1.5 text-sm">
+              <span className="text-muted-foreground">Due date</span>
+              <Input type="date" value={newDueDate} onChange={(event) => setNewDueDate(event.target.value)} />
+            </label>
+            {simulation ? <p className="text-xs text-muted-foreground">{simulation}</p> : null}
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" variant="outline" disabled={pending} onClick={simulateDelivery}>
+              Simulate delivery
+            </Button>
+            <Button type="button" disabled={pending} onClick={createProductionOrder}>
+              {pending ? <Loader2 className="size-4 animate-spin" /> : "Create order"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <section
         aria-label="Planning metrics"
-        className="flex min-w-0 flex-wrap items-center gap-x-5 gap-y-2 text-sm"
+        className="grid min-w-0 grid-cols-2 divide-x divide-y divide-border border-y border-border sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0"
       >
         {metricStrip.map((kpi) => (
           <InlineStat
@@ -448,12 +650,12 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
         <PlanningAttentionStrip items={data.planningAttention} onAction={handlePlanningAttention} />
       ) : null}
 
-      <div className="flex min-w-0 flex-col gap-2.5 border-b border-border pb-3">
-        <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+      <div className="work-surface flex min-w-0 flex-col">
+        <div className="flex min-w-0 flex-col gap-2 border-b border-border bg-card px-3 py-2 lg:flex-row lg:items-center lg:justify-between">
           <Tabs value={view} onValueChange={(value) => setView(value as PlannerView)} className="min-w-0 gap-0">
-            <TabsList className="h-11 w-full max-w-md sm:h-8">
+            <TabsList className="h-11 w-full max-w-md bg-transparent p-0 sm:h-8">
               <TabsTrigger value="schedule" className="min-h-11 sm:min-h-7">
-                Schedule
+                Timeline
               </TabsTrigger>
               <TabsTrigger value="capacity" className="min-h-11 sm:min-h-7">
                 Capacity
@@ -465,6 +667,7 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
           </Tabs>
 
           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+            <CalendarDays className="hidden size-3.5 text-muted-foreground sm:block" aria-hidden />
             {clock || zoom === "1d" ? (
               <Button type="button" size="icon-sm" variant="outline" className="min-h-11 min-w-11 sm:min-h-7 sm:min-w-7" onClick={() => panClient(-1)} aria-label="Previous period">
                 <ChevronLeft />
@@ -491,7 +694,7 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
             <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-7">
               <Link href={href({ start: isoDay(new Date().toISOString()) })}>Today</Link>
             </Button>
-            <div className="flex min-w-0 max-w-full gap-1.5 overflow-x-auto pb-0.5">
+            <div className="ml-1 flex min-w-0 max-w-full gap-0.5 overflow-x-auto border-l border-border pl-2">
             {ZOOM_OPTIONS.map((option) =>
               option.weeks && weeks !== option.weeks ? (
                 <Button key={option.id} asChild size="sm" variant="outline" className="min-h-11 shrink-0 sm:min-h-7">
@@ -504,8 +707,8 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
                   key={option.id}
                   type="button"
                   size="sm"
-                  variant={zoom === option.id ? "default" : "outline"}
-                  className="min-h-11 shrink-0 sm:min-h-7"
+                  variant={zoom === option.id ? "secondary" : "ghost"}
+                  className="min-h-11 shrink-0 px-2 sm:min-h-7"
                   onClick={() => setClientZoom(option.id)}
                 >
                   {option.label}
@@ -516,7 +719,8 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
           </div>
         </div>
 
-        <div className="flex min-w-0 flex-col gap-2 md:flex-row md:items-center">
+        <div className="flex min-w-0 flex-col gap-2 px-3 py-2 md:flex-row md:items-center">
+          <SlidersHorizontal className="hidden size-3.5 shrink-0 text-muted-foreground md:block" aria-hidden />
           <label className="flex min-w-0 items-center gap-2 text-xs font-medium">
             <span className="shrink-0 text-muted-foreground">Workstations</span>
             <select
@@ -553,6 +757,15 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
             aria-label="Search production orders"
             className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
           />
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground md:justify-end">
+            <PlannerLegendSwatch className="bg-intel/35 ring-1 ring-inset ring-intel/50" label="Available capacity" />
+            <PlannerLegendSwatch className="bg-muted/30 ring-1 ring-inset ring-border/60" label="Non-working" />
+            <PlannerLegendSwatch className="border border-primary/60 bg-card" label="Scheduled job" />
+            <PlannerLegendSwatch className="border border-danger/70 bg-danger/20" label="At risk" />
+            <span className="inline-flex items-center gap-1.5">
+              <Lock className="size-3" aria-hidden /> Locked
+            </span>
+          </div>
         </div>
       </div>
 
@@ -635,7 +848,8 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
           {selected ? (
             <OrderDetail
               order={selected}
-              workstations={data.workstationsActive}
+              impact={selectedImpact!}
+              workstations={data.workstations}
               conflicts={data.conflicts.filter((item) => item.orderNumber === selected.orderNumber)}
               busy={pending}
               error={actionError}
@@ -672,7 +886,7 @@ function InlineStat({
   danger?: boolean;
 }) {
   return (
-    <p className="flex items-baseline gap-1.5">
+    <p className="flex min-w-0 flex-col px-3 py-2.5">
       <span
         className={cn(
           "text-lg font-semibold tabular-nums tracking-tight",
@@ -681,8 +895,17 @@ function InlineStat({
       >
         {value}
       </span>
-      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="truncate text-[10px] font-medium tracking-wide text-muted-foreground uppercase">{label}</span>
     </p>
+  );
+}
+
+function PlannerLegendSwatch({ className, label }: { className: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      <span className={cn("h-2.5 w-5 rounded-[2px]", className)} aria-hidden />
+      {label}
+    </span>
   );
 }
 
@@ -743,7 +966,7 @@ function Gantt({
   position: (iso: string) => number;
   onSelect: (id: string) => void;
 }) {
-  const labelWidth = compact ? undefined : "15.5rem";
+  const labelWidth = compact ? undefined : "14rem";
   const dayMin = clock ? 4.5 : detailedBars ? 14 : days.length > 14 ? 5.25 : 11;
   const columns = clock
     ? `${labelWidth ? `${labelWidth} ` : ""}repeat(${Math.max(hourMarks.length, 1)}, minmax(4.5rem, 1fr))`
@@ -754,7 +977,7 @@ function Gantt({
     : Math.max(720, days.length * dayMin * 16);
 
   return (
-    <div className="max-h-[min(72vh,46rem)] min-h-[min(58vh,34rem)] overflow-auto max-md:min-h-[18rem] max-md:max-h-[22rem]">
+    <div className="max-h-[min(76vh,50rem)] min-h-[min(64vh,38rem)] overflow-auto max-md:min-h-[18rem] max-md:max-h-[22rem]">
       <div style={{ minWidth }}>
         <div
           className="sticky top-0 z-30 grid border-b border-border bg-card text-[11px] text-muted-foreground"
@@ -794,11 +1017,12 @@ function Gantt({
             <div
               key={ws.id}
               className="grid border-b border-border last:border-b-0"
-              style={{ gridTemplateColumns: rowColumns, minHeight: detailedBars ? "4.75rem" : "4.25rem" }}
+              style={{ gridTemplateColumns: rowColumns, minHeight: detailedBars ? "5.25rem" : "4.75rem" }}
             >
               {labelWidth ? (
                 <WorkstationLabel
                   name={ws.name}
+                  code={ws.code}
                   utilization={ws.utilization}
                   scheduled={stats.scheduled}
                   atRisk={stats.atRisk}
@@ -806,7 +1030,7 @@ function Gantt({
                   stressed={stressed}
                 />
               ) : null}
-              <div className="relative min-h-[4.25rem] border-l border-border">
+              <div className="relative min-h-[4.75rem] border-l border-border bg-background/20">
                 <div
                   className="pointer-events-none absolute inset-0 grid"
                   style={{ gridTemplateColumns: clock ? `repeat(${Math.max(hourMarks.length, 1)}, minmax(0, 1fr))` : `repeat(${days.length}, minmax(0, 1fr))` }}
@@ -820,6 +1044,30 @@ function Gantt({
                         : null}
                     </div>
                   ))}
+                </div>
+                <div className="pointer-events-none absolute inset-x-0 top-2 z-[1] grid h-2 grid-flow-col" style={{ gridTemplateColumns: `repeat(${Math.max(clock ? hourMarks.length : days.length, 1)}, minmax(0, 1fr))` }}>
+                  {(clock ? hourMarks : days).map((item) => {
+                    const hasCapacity = !ws.calendar
+                      ? true
+                      : clock
+                        ? isWorkingAt(new Date(Number(item)), ws.calendar)
+                        : intervalsForDay(new Date(`${String(item)}T00:00:00.000Z`), ws.calendar).length > 0;
+                    return (
+                      <span
+                        key={`capacity-${String(item)}`}
+                        className={cn(
+                          "mx-px rounded-[2px] ring-1 ring-inset",
+                          !hasCapacity
+                            ? "bg-muted/30 ring-border/50"
+                            : ws.capacityState === "DANGER"
+                              ? "bg-danger/20 ring-danger/35"
+                              : ws.capacityState === "WARNING"
+                                ? "bg-warning/20 ring-warning/35"
+                                : "bg-intel/20 ring-intel/30"
+                        )}
+                      />
+                    );
+                  })}
                 </div>
                 {nowVisible ? (
                   <div className="pointer-events-none absolute inset-y-0 z-10 w-px bg-foreground/55" style={{ left: `${nowLeft}%` }}>
@@ -844,7 +1092,7 @@ function Gantt({
                       key={job.id}
                       className="absolute"
                       style={{
-                        top: detailedBars ? "0.7rem" : "0.85rem",
+                        top: detailedBars ? "1.35rem" : "1.45rem",
                         left: `${Math.max(0, left)}%`,
                         width: `${Math.min(100 - Math.max(0, left), width)}%`,
                       }}
@@ -856,14 +1104,18 @@ function Gantt({
                             onClick={() => onSelect(job.id)}
                             aria-label={`${job.productName}, ${job.orderNumber}, ${statusLabel(job.displayStatus)}${job.isLocked ? ", locked" : ""}${materialIssue ? `, material ${readinessLabel(job.materialReadiness).toLowerCase()}` : ""}${hasConflict ? ", planning conflict" : ""}`}
                             className={cn(
-                              "relative flex w-full flex-col justify-center overflow-hidden rounded-md px-2 text-left text-primary-foreground transition duration-150 before:absolute before:inset-y-0 before:left-0 before:w-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
+                              "relative flex w-full flex-col justify-center overflow-hidden rounded-sm border bg-card px-2 text-left text-foreground shadow-sm transition duration-150 before:absolute before:inset-y-0 before:left-0 before:w-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
                               detailedBars ? "h-11" : "h-8",
-                              job.displayStatus === "AT_RISK" ? "bg-danger/85 before:bg-danger" : "bg-primary/82 before:bg-primary-foreground/70",
+                              job.displayStatus === "AT_RISK"
+                                ? "border-danger/70 bg-danger/15 before:bg-danger"
+                                : job.status === "IN_PROGRESS"
+                                  ? "border-intel/60 bg-intel/15 before:bg-intel"
+                                  : "border-primary/55 before:bg-primary",
                               job.priority === "CRITICAL" && job.displayStatus !== "AT_RISK" ? "before:w-1 before:bg-material" : null,
                               materialIssue ? "ring-1 ring-inset ring-warning/60" : null,
                               hasConflict ? "ring-1 ring-inset ring-danger/50" : null,
                               job.isLocked ? "ring-1 ring-inset ring-primary-foreground/35" : null,
-                              selected ? "z-20 ring-2 ring-ring" : "hover:z-10 hover:brightness-110",
+                              selected ? "z-20 ring-2 ring-ring" : "hover:z-10 hover:border-primary hover:bg-card",
                               muted ? "opacity-25" : "opacity-100"
                             )}
                           >
@@ -873,7 +1125,7 @@ function Gantt({
                               {job.productName}
                             </span>
                             {detailedBars ? (
-                              <span className="truncate text-[10px] text-primary-foreground/80">
+                              <span className="truncate text-[10px] text-muted-foreground">
                                 {job.orderNumber} · {compactQty(job.quantity)}
                                 {materialIssue ? ` · ${readinessLabel(job.materialReadiness)}` : ""}
                               </span>
@@ -908,6 +1160,7 @@ function Gantt({
 
 function WorkstationLabel({
   name,
+  code,
   utilization,
   scheduled,
   atRisk,
@@ -915,6 +1168,7 @@ function WorkstationLabel({
   stressed,
 }: {
   name: string;
+  code: string;
   utilization: number;
   scheduled: number;
   atRisk: number;
@@ -922,8 +1176,11 @@ function WorkstationLabel({
   stressed: boolean;
 }) {
   return (
-    <div className="sticky left-0 z-20 flex flex-col justify-center gap-0.5 border-r border-border bg-card px-3 py-2">
-      <p className="text-xs font-semibold tracking-tight">{name}</p>
+    <div className="sticky left-0 z-20 flex flex-col justify-center gap-1 border-r border-border bg-card px-3 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="truncate text-xs font-semibold tracking-tight">{name}</p>
+        <span className="font-mono text-[9px] text-muted-foreground">{code}</span>
+      </div>
       <p className="flex items-center gap-1.5 text-[11px] tabular-nums text-muted-foreground">
         <span className={cn("size-1.5 rounded-full", stressed ? "bg-warning" : "bg-muted-foreground/50")} aria-hidden />
         {utilization}% utilized
@@ -934,6 +1191,12 @@ function WorkstationLabel({
         {atRisk > 0 ? ` · ${atRisk} at risk` : null}
         {conflictCount > 0 ? ` · ${conflictCount} conflict${conflictCount === 1 ? "" : "s"}` : null}
       </p>
+      <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full", utilization >= 95 ? "bg-danger" : utilization >= 85 ? "bg-warning" : "bg-primary")}
+          style={{ width: `${Math.min(100, utilization)}%` }}
+        />
+      </div>
     </div>
   );
 }
@@ -1057,6 +1320,12 @@ function CapacityView({ data }: { data: OperationsView }) {
             <p className="mt-1 text-xs">
               Next available: <span className="tabular-nums">{nextAvailable}</span>
             </p>
+            {ws.calendar ? (
+              <p className="mt-1 text-[11px] text-muted-foreground">
+                Calendar: {ws.calendar.label}
+                {ws.calendar.exceptions.length > 0 ? ` · ${ws.calendar.exceptions.length} exceptions` : ""}
+              </p>
+            ) : null}
           </li>
         );
       })}
@@ -1162,6 +1431,7 @@ function UnscheduledList({
 
 function OrderDetail({
   order,
+  impact,
   workstations,
   conflicts,
   busy,
@@ -1171,7 +1441,8 @@ function OrderDetail({
   onUpdateWorkstation,
 }: {
   order: Order;
-  workstations: OperationsView["workstationsActive"];
+  impact: ScheduleImpact;
+  workstations: OperationsView["workstations"];
   conflicts: AttentionItem[];
   busy: boolean;
   error: string | null;
@@ -1182,6 +1453,7 @@ function OrderDetail({
   const delay = delayDays(order);
   const durationHours = Math.round((order.durationMinutes / 60) * 10) / 10;
   const canPlan = !order.isLocked && order.status !== "IN_PROGRESS" && order.status !== "COMPLETED";
+  const workstation = workstations.find((row) => row.id === order.workstationId);
 
   return (
     <>
@@ -1234,9 +1506,92 @@ function OrderDetail({
           ) : null}
         </section>
 
+        <section aria-label="Operation routing" className="border-t border-border pt-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Operation routing</p>
+              <p className="mt-0.5 font-medium">
+                {order.routing.name
+                  ? `${order.routing.name}${order.routing.version ? ` · v${order.routing.version}` : ""}`
+                  : "No active routing"}
+              </p>
+            </div>
+            {order.routing.issueCount > 0 ? (
+              <StatusBadge tone="warning">
+                {order.routing.issueCount} {order.routing.issueCount === 1 ? "issue" : "issues"}
+              </StatusBadge>
+            ) : order.routing.operations.length > 0 ? (
+              <StatusBadge tone="success">Qualified</StatusBadge>
+            ) : null}
+          </div>
+          {order.routing.operations.length > 0 ? (
+            <>
+              <ol className="mt-3 space-y-2">
+                {order.routing.operations.map((operation, index) => {
+                  const qualifiedNames = operation.qualifiedWorkstationIds
+                    .map((id) => workstations.find((row) => row.id === id)?.name)
+                    .filter(Boolean);
+                  return (
+                    <li key={operation.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="font-medium">
+                          {index + 1}. {operation.name}
+                        </span>
+                        <span className="text-xs tabular-nums text-muted-foreground">
+                          {Math.round(
+                            ((operation.durationMinutes +
+                              operation.setupMinutes +
+                              operation.teardownMinutes +
+                              operation.changeoverMinutes) /
+                              60) *
+                              10
+                          ) / 10}
+                          h
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {operation.workstationName ?? "No qualified active resource"}
+                        {operation.plannedStart && operation.plannedEnd
+                          ? ` · ${shortDay(operation.plannedStart)} ${clockLabel(operation.plannedStart)}–${clockLabel(operation.plannedEnd)}`
+                          : ""}
+                      </p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Qualified: {qualifiedNames.length > 0 ? qualifiedNames.join(" · ") : "none"}
+                      </p>
+                      {operation.changeoverMinutes > 0 ? (
+                        <p className="mt-1 text-xs text-warning">
+                          Includes {operation.changeoverMinutes} min sequence-dependent changeover
+                        </p>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ol>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Live routing preview using persisted calendars, freeze horizon, and policy weights. Reschedule
+                all writes a versioned proposal; accepting it mutates unlocked operations on the accepted
+                schedule.
+              </p>
+            </>
+          ) : (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Create and activate a product routing before operation-level scheduling.
+            </p>
+          )}
+        </section>
+
         <section className="border-t border-border pt-3">
           <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Capacity</p>
           <p className="mt-0.5 capitalize">{order.capacityState === "UNKNOWN" ? "Unknown" : order.capacityState.toLowerCase()}</p>
+          {workstation?.calendar ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {workstation.calendar.label}
+              {" · "}
+              {workstation.calendar.exceptions.length === 0
+                ? "No calendar exceptions recorded"
+                : `${workstation.calendar.exceptions.length} calendar ${workstation.calendar.exceptions.length === 1 ? "exception" : "exceptions"}`}
+            </p>
+          ) : null}
           {conflicts.length > 0 ? (
             <ul className="mt-2 space-y-2">
               {conflicts.map((item, index) => (
@@ -1258,10 +1613,26 @@ function OrderDetail({
           <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Materials</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
             <StatusBadge tone={readinessTone(order.materialReadiness)}>{readinessLabel(order.materialReadiness)}</StatusBadge>
+            {order.materialScheduleState === "BLOCKED" ? (
+              <StatusBadge tone="danger">Schedule blocked</StatusBadge>
+            ) : order.materialScheduleState === "DELAYED" ? (
+              <StatusBadge tone="warning">Delayed to supply</StatusBadge>
+            ) : order.materialScheduleState === "READY" ? (
+              <StatusBadge tone="success">Available to schedule</StatusBadge>
+            ) : null}
             {order.materialShortageCount > 0 ? (
               <span className="text-xs text-muted-foreground">{order.materialShortageCount} shortage{order.materialShortageCount === 1 ? "" : "s"}</span>
             ) : null}
           </div>
+          {order.materialScheduleState === "BLOCKED" ? (
+            <p className="mt-2 text-xs text-danger">
+              New scheduling is blocked because dated supply cannot cover this order.
+            </p>
+          ) : order.materialScheduleState === "DELAYED" && order.materialReadyAt ? (
+            <p className="mt-2 text-xs text-warning">
+              Earliest material-feasible start: {shortDay(order.materialReadyAt)} at {clockLabel(order.materialReadyAt)}.
+            </p>
+          ) : null}
           {order.materialAffected.length > 0 ? (
             <p className="mt-2 text-xs text-muted-foreground">{order.materialAffected.join(" · ")}</p>
           ) : order.materialReadiness === "UNKNOWN" ? (
@@ -1288,6 +1659,35 @@ function OrderDetail({
           </p>
           {delay && delay > 0 ? <p className="mt-2 text-danger">{delay}-day delay</p> : null}
           <p className="mt-1 text-muted-foreground">{order.isLocked ? "Locked" : "Open for planning"}</p>
+        </section>
+
+        <section aria-label="Recorded schedule impact" className="border-t border-border pt-3">
+          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Recorded schedule impact</p>
+          {impact.downstreamCount > 0 ? (
+            <>
+              <p className="mt-1 text-sm">
+                {impact.downstreamCount} downstream {impact.downstreamCount === 1 ? "order shares" : "orders share"} this line
+                {" · "}
+                {impact.downstreamQuantity.toLocaleString("en-GB")} units
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Next: {impact.nextOrderNumber}. Sequence: {impact.downstreamOrderNumbers.join(" → ")}
+                {impact.downstreamCount > impact.downstreamOrderNumbers.length ? " → …" : ""}
+              </p>
+              {impact.downstreamAtRiskCount > 0 ? (
+                <p className="mt-2 text-xs text-warning">
+                  {impact.downstreamAtRiskCount} downstream {impact.downstreamAtRiskCount === 1 ? "order is" : "orders are"} already at delivery risk.
+                </p>
+              ) : null}
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">
+              No later scheduled orders are recorded on this workstation.
+            </p>
+          )}
+          <p className="mt-2 text-[11px] text-muted-foreground">
+            Current recorded sequence only. Dates are not moved and this is not a simulated replan.
+          </p>
         </section>
 
         {canPlan ? (

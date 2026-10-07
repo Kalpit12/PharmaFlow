@@ -12,9 +12,9 @@ const PRICING_FAQ = FAQ.filter((item) =>
   /ERP|implementation|medical advice|AI run/i.test(item.q),
 );
 
-export function PricingPage() {
+export function PricingPage({ signedIn = false }: { signedIn?: boolean }) {
   return (
-    <LandingChrome>
+    <LandingChrome signedIn={signedIn}>
       <main className="overflow-x-hidden pt-16">
         <section className="relative">
           <div className="pf-hero-wash pointer-events-none absolute inset-x-0 top-0 h-[42%]" />

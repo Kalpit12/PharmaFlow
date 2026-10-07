@@ -14,6 +14,7 @@ import { WorkspacePage } from "@/components/layout/WorkspacePage";
 import { getDashboardData } from "@/lib/server/dashboard";
 import { ServerError } from "@/lib/server/errors";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
+import { workspaceLoginPath } from "@/lib/auth/login-redirect";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +25,7 @@ export default async function DashboardPage() {
     data = await getDashboardData(ctx);
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") {
-      redirect("/login");
+      redirect(workspaceLoginPath("/dashboard"));
     }
     return (
       <WorkspacePage>
@@ -42,7 +43,7 @@ export default async function DashboardPage() {
         description="Executive operating surface — commercial movement and items that need follow-up."
         metadata={data.disclaimer}
         relatedPath="/dashboard"
-        actions={<DashboardHeaderActions />}
+        actions={<DashboardHeaderActions orderForm={data.orderForm} />}
       />
 
       <ExecutiveKpis metrics={data.metrics} />

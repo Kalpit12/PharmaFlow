@@ -121,7 +121,7 @@ export async function runPhase38Verify(prisma: PrismaClient) {
   const assumptions = buildAssumptionRows(DEFAULT_SCENARIO_INPUT);
   assert(assumptions.find((row) => row.id === "workforce")?.supported === false, "Unsupported workforce assumption disclosed");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenants exist");

@@ -63,7 +63,9 @@ export function buildScenarioDecision(input: {
     facts.hasOperations ? { label: "Review production", href: "/operations" } : null,
     facts.hasMaterials ? { label: "Review materials", href: "/materials?view=shortages" } : null,
     facts.hasProcurement ? { label: "Review procurement", href: "/procurement" } : null,
+    facts.hasInventory ? { label: "Review inventory", href: "/inventory" } : null,
     facts.hasQuality ? { label: "Review quality", href: "/quality?view=open" } : null,
+    facts.hasTraceability ? { label: "Review traceability", href: "/traceability" } : null,
   ].filter((row): row is { label: string; href: string } => Boolean(row));
 
   return { headline, why, tradeOffs, limitations, reviewLinks };

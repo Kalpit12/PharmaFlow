@@ -154,8 +154,15 @@ export function computeMaterialRequirements(input: {
   }
 
   const incomingByProduct = new Map<string, number>();
+  const incomingReceiptsByProduct = new Map<
+    string,
+    Array<{ quantity: number; expectedAt: string | null }>
+  >();
   for (const receipt of input.receipts) {
     incomingByProduct.set(receipt.productId, roundQty((incomingByProduct.get(receipt.productId) ?? 0) + receipt.quantity));
+    const receipts = incomingReceiptsByProduct.get(receipt.productId) ?? [];
+    receipts.push({ quantity: receipt.quantity, expectedAt: receipt.expectedAt ?? null });
+    incomingReceiptsByProduct.set(receipt.productId, receipts);
   }
 
   type Acc = {
@@ -282,6 +289,9 @@ export function computeMaterialRequirements(input: {
       allocated,
       freeAvailable,
       incoming: inbound,
+      incomingReceipts: (incomingReceiptsByProduct.get(productId) ?? []).sort((a, b) =>
+        (a.expectedAt ?? "").localeCompare(b.expectedAt ?? "")
+      ),
       projectedAvailable,
       netRequirement,
       shortage,

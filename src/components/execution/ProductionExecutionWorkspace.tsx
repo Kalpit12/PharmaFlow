@@ -158,6 +158,20 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
         }))}
       />
 
+      {data.nextTask ? (
+        <section aria-label="Next task" className="min-w-0 work-surface p-3">
+          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Next task</p>
+          <p className="mt-1 text-sm font-medium">{data.nextTask.productName}</p>
+          <p className="text-xs text-muted-foreground">
+            {data.nextTask.orderNumber} · {data.nextTask.workstationName ?? "Unassigned"} ·{" "}
+            {data.nextTask.plannedStart ? formatStamp(data.nextTask.plannedStart) : "Not scheduled"}
+          </p>
+          <Button type="button" size="sm" className="mt-3 min-h-11 sm:min-h-7" onClick={() => setSelectedId(data.nextTask!.id)}>
+            Open next task
+          </Button>
+        </section>
+      ) : null}
+
       <section aria-label="Planned vs actual" className="min-w-0 work-surface p-3">
         <p className="text-sm font-medium">Planned vs actual</p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -213,6 +227,23 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
             }
           }}
         />
+        {data.workstations.length > 0 ? (
+          <label className="flex min-w-0 items-center gap-2 text-xs font-medium">
+            <span className="shrink-0 text-muted-foreground">Station</span>
+            <select
+              value={data.workstationId ?? ""}
+              onChange={(event) => router.push(href({ workstation: event.target.value || undefined }))}
+              className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-sm md:h-8 md:max-w-56"
+            >
+              <option value="">All stations</option>
+              {data.workstations.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
       </div>
 
       {sorted.length === 0 ? (

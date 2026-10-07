@@ -132,6 +132,7 @@ export type QualitySnapshot = {
   capabilities: {
     canManage: boolean;
   };
+  batchOptions: Array<{ id: string; batchNumber: string; productName: string }>;
 };
 
 export type CreateQualityExceptionInput = {

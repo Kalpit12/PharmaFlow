@@ -26,7 +26,7 @@ export async function runPhase26Verify(prisma: PrismaClient) {
   assert(!/prisma migrate reset|db push --force-reset/i.test(sources), "No destructive database operations");
   assert(!/\bredis\b|bullmq|power.?bi|newrelic/i.test(sources), "No new infrastructure");
 
-  const tenant = await prisma.tenant.findUnique({ where: { slug: "lab-allied" } });
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });

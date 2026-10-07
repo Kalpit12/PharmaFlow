@@ -69,7 +69,7 @@ export const FAQ = [
   },
   {
     q: "How does pricing compare to SkyPlanner or Power BI?",
-    a: "SkyPlanner publishes APS from about €199 per month (five workstations). Power BI Pro is about $14 per user per month for shared reports. Pharmaflow list prices sit below buying APS and BI separately for the same team — because planning, inventory, materials, and governance ship in one tenant workspace.",
+    a: "SkyPlanner publishes APS from about €199 per month (five workstations), plus €20 per extra workstation. Power BI Pro is about $14 per user per month for shared reports. Use the stack calculator on our pricing page — Pharmaflow list prices are set below that combined software spend because planning, inventory, materials, procurement, and governance ship in one tenant licence (not per dashboard seat).",
   },
   {
     q: "Is this medical advice?",
@@ -97,6 +97,45 @@ export const PRICING_BENCHMARK = {
     { label: "Pharmaflow Plant (operations + planning)", amount: "KSh 24,500 / mo", highlight: true },
   ],
 } as const;
+
+export const PRICING_SCOPE_ROWS = [
+  {
+    capability: "Finite-capacity production planning",
+    sky: "Core product",
+    powerBi: "Custom build",
+    pharmaflow: "Included",
+  },
+  {
+    capability: "Material-aware scheduling",
+    sky: "Included",
+    powerBi: "Via ERP + reports",
+    pharmaflow: "Included",
+  },
+  {
+    capability: "Inventory & expiry visibility",
+    sky: "Warehouse balances",
+    powerBi: "Dashboards you build",
+    pharmaflow: "Included",
+  },
+  {
+    capability: "RFQs, POs, receiving",
+    sky: "Not included",
+    powerBi: "Not included",
+    pharmaflow: "Network plan",
+  },
+  {
+    capability: "Batches, quality, traceability",
+    sky: "Not included",
+    powerBi: "Not included",
+    pharmaflow: "Included",
+  },
+  {
+    capability: "Pricing model",
+    sky: "Per workstation",
+    powerBi: "Per report user",
+    pharmaflow: "Per site licence",
+  },
+] as const;
 
 export const PLANS = [
   {

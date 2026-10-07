@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import { PLANS, PRICING_BENCHMARK } from "./landing-copy";
+import { PricingScopeCompare } from "./PricingScopeCompare";
+import { PricingStackCalculator } from "./PricingStackCalculator";
 
 export function LandingPricingPlans({ contactHref = "/#contact" }: { contactHref?: string }) {
   return (
@@ -30,6 +32,9 @@ export function LandingPricingPlans({ contactHref = "/#contact" }: { contactHref
         </ul>
         <p className="mt-4 text-[11px] leading-relaxed text-[#7A8490]">{PRICING_BENCHMARK.footnote}</p>
       </div>
+
+      <PricingStackCalculator />
+      <PricingScopeCompare />
 
       <div className="grid items-stretch gap-4 lg:grid-cols-3">
       {PLANS.map((plan) => (

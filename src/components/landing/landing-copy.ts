@@ -91,9 +91,9 @@ export const PRICING_BENCHMARK = {
   footnote:
     "Compared to published SkyPlanner APS (€199/mo incl. 5 workstations) and Microsoft Power BI Pro ($14/user/mo, paid yearly). FX rounded for Kenya; your stack and headcount may differ.",
   rows: [
-    { label: "SkyPlanner APS (5 workstations)", amount: "~KSh 29,000 / mo" },
-    { label: "Power BI Pro (25 report users)", amount: "~KSh 46,000 / mo" },
-    { label: "Typical APS + BI stack", amount: "~KSh 75,000+ / mo" },
+    { label: "SkyPlanner APS (5 workstations)", amount: "~KSh 29,000 / mo", highlight: false },
+    { label: "Power BI Pro (25 report users)", amount: "~KSh 46,000 / mo", highlight: false },
+    { label: "Typical APS + BI stack", amount: "~KSh 75,000+ / mo", highlight: false },
     { label: "Pharmaflow Plant (operations + planning)", amount: "KSh 24,500 / mo", highlight: true },
   ],
 } as const;

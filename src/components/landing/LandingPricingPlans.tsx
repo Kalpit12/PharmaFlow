@@ -4,7 +4,14 @@ import { PLANS, PRICING_BENCHMARK } from "./landing-copy";
 import { PricingScopeCompare } from "./PricingScopeCompare";
 import { PricingStackCalculator } from "./PricingStackCalculator";
 
-export function LandingPricingPlans({ contactHref = "/#contact" }: { contactHref?: string }) {
+export function LandingPricingPlans({
+  contactHref = "/#contact",
+  showStackCompare = true,
+}: {
+  contactHref?: string;
+  /** Stack calculator + scope table — full pricing page only. */
+  showStackCompare?: boolean;
+}) {
   return (
     <div className="mt-14 space-y-10">
       <div className="pf-surface rounded-xl border border-[#5EEAD4]/20 p-6 md:p-8">
@@ -33,8 +40,12 @@ export function LandingPricingPlans({ contactHref = "/#contact" }: { contactHref
         <p className="mt-4 text-[11px] leading-relaxed text-[#7A8490]">{PRICING_BENCHMARK.footnote}</p>
       </div>
 
-      <PricingStackCalculator />
-      <PricingScopeCompare />
+      {showStackCompare ? (
+        <>
+          <PricingStackCalculator />
+          <PricingScopeCompare />
+        </>
+      ) : null}
 
       <div className="grid items-stretch gap-4 lg:grid-cols-3">
       {PLANS.map((plan) => (

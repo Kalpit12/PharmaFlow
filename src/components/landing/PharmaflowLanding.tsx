@@ -578,7 +578,7 @@ export function PharmaflowLanding({ signedIn = false }: { signedIn?: boolean }) 
                 Plant, Network, and Group — monthly, VAT exclusive, below typical APS + BI stack spend. Every plan ends in a call, not a checkout.
               </p>
             </div>
-            <LandingPricingPlans contactHref="#contact" />
+            <LandingPricingPlans contactHref="#contact" showStackCompare={false} />
             <a href="/pricing" className="mt-8 inline-flex items-center gap-2 text-sm font-medium text-[#7DD3FC] hover:text-[#F4F7FB]">
               See pricing <ArrowRight className="size-4" strokeWidth={2} />
             </a>

@@ -24,6 +24,7 @@ import {
   type ScheduledOrder,
 } from "@/lib/operations/schedule";
 import { buildOperationSchedule } from "@/lib/operations/routing";
+import { computeScheduleAdherence } from "@/lib/operations/schedule-adherence";
 import {
   buildOrderMaterialConstraints,
   type MaterialScheduleState,
@@ -133,6 +134,12 @@ export type OperationsView = {
   products: Array<{ id: string; name: string; sku: string }>;
   policy: PlanningPolicyView;
   proposal: ScheduleProposalView | null;
+  planningHealth: {
+    pastDueFeasibilityIssues: number;
+    scheduleAdherencePercent: number | null;
+    changeoverMinutesInWindow: number;
+    planningEventsLast7Days: number;
+  };
 };
 
 function startOfUtcDay(date: Date): Date {
@@ -174,7 +181,7 @@ export async function getOperationsPlanner(
       include: {
         product: { select: { name: true, id: true } },
         workstation: { select: { name: true } },
-        batch: { select: { producedQuantity: true } },
+        batch: { select: { producedQuantity: true, productionCompletedAt: true } },
         operations: {
           include: {
             routingOperation: {
@@ -267,6 +274,7 @@ export async function getOperationsPlanner(
               workstationId: resource.workstationId,
               efficiencyPercent: resource.efficiencyPercent,
               preferred: resource.preferred,
+              resourceRole: resource.resourceRole,
             })) ?? [],
           locked:
             operation.isLocked ||
@@ -473,6 +481,25 @@ export async function getOperationsPlanner(
     select: { id: true, name: true, sku: true },
   });
 
+  const pastDueFeasibilityIssues = operationPlan.issues.filter((issue) => issue.kind === "PAST_DUE").length;
+  const changeoverMinutesInWindow = operationPlan.operations.reduce(
+    (sum, operation) => sum + operation.changeoverMinutes,
+    0
+  );
+  const adherence = computeScheduleAdherence(
+    orderRows.map((row) => ({
+      plannedEnd: row.plannedEnd,
+      actualCompletion: row.batch?.productionCompletedAt ?? null,
+      status: row.status,
+    }))
+  );
+  const planningEventsLast7Days = await prisma.planningEvent.count({
+    where: {
+      tenantId: ctx.tenantId,
+      createdAt: { gte: new Date(Date.now() - 7 * 86_400_000) },
+    },
+  });
+
   return {
     brand: tenant?.name ?? "Workspace",
     disclaimer: tenant?.status === "DEMO" ? "Demo workspace data" : "Workspace data",
@@ -486,6 +513,24 @@ export async function getOperationsPlanner(
       { id: "planned-qty", label: "Planned quantity", value: plannedQuantity.toLocaleString("en-GB"), hint: "Units in scope" },
       { id: "hours", label: "Production hours", value: `${productionHours}h`, hint: "Scheduled run time" },
       { id: "unscheduled", label: "Unscheduled", value: String(unscheduled.length), hint: "Not on the Gantt" },
+      {
+        id: "adherence",
+        label: "Schedule adherence",
+        value: adherence.adherencePercent == null ? "—" : `${adherence.adherencePercent}%`,
+        hint: adherence.sampleSize > 0 ? `${adherence.sampleSize} completed orders` : "No completions yet",
+      },
+      {
+        id: "changeover",
+        label: "Changeover time",
+        value: `${Math.round(changeoverMinutesInWindow / 60)}h`,
+        hint: "Planned cleaning/setup between families",
+      },
+      {
+        id: "feasibility",
+        label: "Past-due feasibility",
+        value: String(pastDueFeasibilityIssues),
+        hint: "Orders finishing after due on finite plan",
+      },
     ],
     workstations: workstationViews,
     orders,
@@ -500,6 +545,12 @@ export async function getOperationsPlanner(
     products: productRows.filter((row) => !row.sku.includes("API") && !row.sku.startsWith("BLISTER") && !row.sku.startsWith("LABEL")),
     policy,
     proposal,
+    planningHealth: {
+      pastDueFeasibilityIssues,
+      scheduleAdherencePercent: adherence.adherencePercent,
+      changeoverMinutesInWindow,
+      planningEventsLast7Days,
+    },
   };
 }
 
@@ -806,6 +857,7 @@ export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: s
             workstationId: resource.workstationId,
             efficiencyPercent: resource.efficiencyPercent,
             preferred: resource.preferred,
+            resourceRole: resource.resourceRole,
           })) ?? [],
         locked,
         workstationId: operation.workstationId,

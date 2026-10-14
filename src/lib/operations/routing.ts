@@ -4,6 +4,12 @@ import {
   createStandardWorkCalendar,
   type WorkCalendar,
 } from "@/lib/operations/calendar";
+import {
+  DEFAULT_SEGREGATION_CLEAN_MINUTES,
+  segregationTransitionRequiresClean,
+  syntheticSegregationRuleId,
+} from "@/lib/operations/changeover-segregation";
+import { appendDueDateFeasibilityIssues } from "@/lib/operations/schedule-feasibility";
 import { PRIORITY_RANK, type PlannerPriority } from "@/lib/operations/schedule";
 
 export type RoutingWorkstation = {
@@ -17,6 +23,7 @@ export type QualifiedResource = {
   workstationId: string;
   efficiencyPercent: number;
   preferred: boolean;
+  resourceRole?: "STANDARD" | "ALTERNATE" | "SUBCONTRACT";
 };
 
 export type RoutableOperation = {
@@ -75,7 +82,8 @@ export type RoutingIssue = {
     | "NO_QUALIFIED_RESOURCE"
     | "CYCLIC_DEPENDENCY"
     | "INVALID_DURATION"
-    | "MATERIAL_UNAVAILABLE";
+    | "MATERIAL_UNAVAILABLE"
+    | "PAST_DUE";
   detail: string;
 };
 
@@ -147,7 +155,15 @@ function resolveChangeover(
         rule.fromFamily === fromFamily &&
         rule.toFamily === toFamily
     ) ??
-    null
+    (segregationTransitionRequiresClean(fromFamily, toFamily)
+      ? {
+          id: syntheticSegregationRuleId(fromFamily!, toFamily!),
+          workstationId: null,
+          fromFamily: fromFamily!,
+          toFamily: toFamily!,
+          durationMinutes: DEFAULT_SEGREGATION_CLEAN_MINUTES,
+        }
+      : null)
   );
 }
 
@@ -310,11 +326,21 @@ export function buildOperationSchedule(input: {
                 a.resource.workstationId.localeCompare(b.resource.workstationId)
               );
             }
-            const score = (candidate: typeof a) =>
+            const score = (candidate: typeof a) => {
+              const rolePenalty =
+                candidate.resource.resourceRole === "SUBCONTRACT"
+                  ? 4 * 60 * 60_000
+                  : candidate.resource.resourceRole === "ALTERNATE"
+                    ? 30 * 60_000
+                    : 0;
+              return (
               candidate.end.getTime() +
+              rolePenalty +
               weights.changeoverWeight * candidate.changeoverMinutes * 60_000 -
               weights.utilizationWeight * (candidate.resource.preferred ? 1 : 0) * 300_000 -
-              weights.utilizationWeight * candidate.resource.efficiencyPercent * 1_000;
+              weights.utilizationWeight * candidate.resource.efficiencyPercent * 1_000
+              );
+            };
             return (
               score(a) - score(b) ||
               Number(b.resource.preferred) - Number(a.resource.preferred) ||
@@ -361,5 +387,11 @@ export function buildOperationSchedule(input: {
     }
   }
 
-  return { operations: result, issues };
+  const feasibilityIssues = appendDueDateFeasibilityIssues({
+    orders: input.orders,
+    operations: result,
+    issues,
+  });
+
+  return { operations: result, issues: feasibilityIssues };
 }

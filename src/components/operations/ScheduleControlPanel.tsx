@@ -23,6 +23,7 @@ function stamp(iso: string | null): string {
 export function ScheduleControlPanel({
   data,
   pending,
+  compact = false,
   onRescheduleAll,
   onAccept,
   onReject,
@@ -30,6 +31,8 @@ export function ScheduleControlPanel({
 }: {
   data: OperationsView;
   pending: boolean;
+  /** Simple layout: reschedule + proposal only — no policy essay or weight form. */
+  compact?: boolean;
   onRescheduleAll: () => void;
   onAccept: () => void;
   onReject: () => void;
@@ -49,17 +52,25 @@ export function ScheduleControlPanel({
       <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <p className="text-sm font-medium">Reschedule all</p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Builds a versioned proposal from routings, calendars, changeovers, and material constraints. Frozen work
-            inside {data.policy.freezeMinutes} minutes and locked operations stay put until you accept.
-          </p>
-          <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
-            <StatusBadge tone={tone}>Autopilot {modeLabel(data.policy.autopilotMode)}</StatusBadge>
-            <span className="text-muted-foreground">
-              Weights {data.policy.priorityWeight}/{data.policy.dueDateWeight}/{data.policy.changeoverWeight}/
-              {data.policy.utilizationWeight}
-            </span>
-          </p>
+          {compact ? (
+            <p className="mt-1 text-xs text-muted-foreground">
+              Proposes a new plan — nothing moves until you accept unlocked changes.
+            </p>
+          ) : (
+            <>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Builds a versioned proposal from routings, calendars, changeovers, and material constraints. Frozen work
+                inside {data.policy.freezeMinutes} minutes and locked operations stay put until you accept.
+              </p>
+              <p className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                <StatusBadge tone={tone}>Autopilot {modeLabel(data.policy.autopilotMode)}</StatusBadge>
+                <span className="text-muted-foreground">
+                  Weights {data.policy.priorityWeight}/{data.policy.dueDateWeight}/{data.policy.changeoverWeight}/
+                  {data.policy.utilizationWeight}
+                </span>
+              </p>
+            </>
+          )}
         </div>
         <div className="flex flex-wrap gap-2">
           {data.capabilities.canSchedule ? (
@@ -70,7 +81,7 @@ export function ScheduleControlPanel({
         </div>
       </div>
 
-      {data.capabilities.canSchedule ? (
+      {data.capabilities.canSchedule && !compact ? (
         <form
           className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-6"
           onSubmit={(event) => {
@@ -193,12 +204,13 @@ export function ScheduleControlPanel({
             ))}
           </ol>
         </div>
-      ) : (
+      ) : !proposed ? (
         <p className="mt-3 text-xs text-muted-foreground">
-          No open proposal. Reschedule all compares a new plan against the accepted schedule without moving work until
-          you accept.
+          {compact
+            ? "No open proposal."
+            : "No open proposal. Reschedule all compares a new plan against the accepted schedule without moving work until you accept."}
         </p>
-      )}
+      ) : null}
     </section>
   );
 }

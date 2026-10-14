@@ -28,6 +28,7 @@ export async function PATCH(request: Request) {
       utilizationWeight?: number;
       freezeMinutes?: number;
       autopilotMode?: AutopilotMode;
+      useGlobalOptimizer?: boolean;
     };
     const policy = await updatePlanningPolicy(ctx, body);
     return NextResponse.json({ policy });

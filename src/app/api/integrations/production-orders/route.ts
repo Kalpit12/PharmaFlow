@@ -10,6 +10,7 @@ export async function POST(request: Request) {
   try {
     const ctx = await getAuthenticatedTenantContext();
     const body = (await request.json()) as {
+      idempotencyKey?: string;
       orders?: Array<{
         orderNumber?: string;
         sku: string;
@@ -18,7 +19,9 @@ export async function POST(request: Request) {
         priority?: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
       }>;
     };
-    const result = await importProductionOrders(ctx, body.orders ?? []);
+    const result = await importProductionOrders(ctx, body.orders ?? [], {
+      idempotencyKey: body.idempotencyKey,
+    });
     return NextResponse.json(result);
   } catch (error) {
     return jsonApiError(error, "Unable to import production orders.");

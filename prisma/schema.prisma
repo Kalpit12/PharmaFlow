@@ -184,6 +184,57 @@ enum AutopilotMode {
   AUTO_ACCEPT_UNLOCKED
 }
 
+enum WorkstationKind {
+  PRODUCTION_LINE
+  PACKAGING_LINE
+  CLEAN_ROOM
+  SUBCONTRACT
+}
+
+enum ProductionOperationEventType {
+  START
+  STOP
+  DOWNTIME
+  SCRAP
+}
+
+enum PlanningEventType {
+  PROPOSED
+  ACCEPTED
+  REJECTED
+  AUTO_ACCEPTED
+  IMPORTED
+  SHOP_FLOOR_TRIGGERED
+}
+
+enum IntegrationConnectorType {
+  SAP_B1
+  MES_SHOP_FLOOR
+}
+
+enum IntegrationConnectorStatus {
+  ACTIVE
+  DISABLED
+  ERROR
+}
+
+enum IntegrationSyncDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum IntegrationSyncStatus {
+  SUCCESS
+  FAILED
+  PARTIAL
+}
+
+enum RoutingResourceRole {
+  STANDARD
+  ALTERNATE
+  SUBCONTRACT
+}
+
 enum InventoryClass {
   FINISHED_GOOD
   RAW_MATERIAL
@@ -328,6 +379,12 @@ model Tenant {
   schedulePlans                SchedulePlan[]
   schedulePlanOrders           SchedulePlanOrder[]
   schedulePlanOperations       SchedulePlanOperation[]
+  productionOperationEvents    ProductionOperationEvent[]
+  planningEvents               PlanningEvent[]
+  integrationImportReceipts    IntegrationImportReceipt[]
+  integrationConnectors      IntegrationConnector[]
+  integrationSyncRuns        IntegrationSyncRun[]
+  integrationWebhookDeliveries IntegrationWebhookDelivery[]
   productionBatches            ProductionBatch[]
   productionBatchInputLots     ProductionBatchInputLot[]
   productionBatchQualityEvents ProductionBatchQualityEvent[]
@@ -379,6 +436,8 @@ model User {
   auditLogs                       AuditLog[]                    @relation("AuditLogActor")
   qualityExceptionEvents          QualityExceptionEvent[]       @relation("QualityExceptionEventActor")
   acceptedSchedulePlans           SchedulePlan[]                @relation("SchedulePlanAcceptedBy")
+  productionOperationEvents       ProductionOperationEvent[]    @relation("ProductionOperationEventActor")
+  planningEvents                  PlanningEvent[]               @relation("PlanningEventActor")
 
   @@index([tenantId])
   @@index([tenantId, status])
@@ -665,12 +724,13 @@ model CommunicationDraft {
 }
 
 model Workstation {
-  id                  String   @id @default(uuid())
+  id                  String          @id @default(uuid())
   tenantId            String
   name                String
   code                String
+  kind                WorkstationKind @default(PRODUCTION_LINE)
   capacityHoursPerDay Int
-  active              Boolean  @default(true)
+  active              Boolean         @default(true)
   createdAt           DateTime @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 
@@ -728,12 +788,68 @@ model PlanningPolicy {
   dueDateWeight     Int           @default(35)
   changeoverWeight  Int           @default(15)
   utilizationWeight Int           @default(10)
-  freezeMinutes     Int           @default(480)
-  autopilotMode     AutopilotMode @default(OFF)
-  createdAt         DateTime      @default(now()) @db.Timestamptz(6)
-  updatedAt         DateTime      @updatedAt @db.Timestamptz(6)
+  freezeMinutes        Int           @default(480)
+  autopilotMode        AutopilotMode @default(OFF)
+  useGlobalOptimizer   Boolean       @default(true)
+  createdAt            DateTime      @default(now()) @db.Timestamptz(6)
+  updatedAt            DateTime      @updatedAt @db.Timestamptz(6)
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
+model IntegrationConnector {
+  id             String                     @id @default(uuid())
+  tenantId       String
+  type           IntegrationConnectorType
+  name           String
+  status         IntegrationConnectorStatus @default(ACTIVE)
+  endpointUrl    String?
+  webhookSecret  String?
+  lastSyncAt     DateTime?                  @db.Timestamptz(6)
+  lastSyncStatus String?
+  config         Json?
+  createdAt      DateTime                   @default(now()) @db.Timestamptz(6)
+  updatedAt      DateTime                   @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  syncRuns   IntegrationSyncRun[]
+  deliveries IntegrationWebhookDelivery[]
+
+  @@unique([tenantId, type])
+  @@index([tenantId, status])
+}
+
+model IntegrationSyncRun {
+  id               String                   @id @default(uuid())
+  tenantId         String
+  connectorId      String
+  direction        IntegrationSyncDirection
+  status           IntegrationSyncStatus
+  recordsProcessed Int                      @default(0)
+  summary          String
+  errorMessage     String?
+  startedAt        DateTime                 @default(now()) @db.Timestamptz(6)
+  completedAt      DateTime?                @db.Timestamptz(6)
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connector IntegrationConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, connectorId])
+}
+
+model IntegrationWebhookDelivery {
+  id             String   @id @default(uuid())
+  tenantId       String
+  connectorId    String
+  idempotencyKey String
+  payload        Json
+  status         String   @default("PROCESSED")
+  processedAt    DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connector IntegrationConnector @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, connectorId, idempotencyKey])
 }
 
 model ProductionOrder {
@@ -814,12 +930,13 @@ model RoutingOperation {
 }
 
 model RoutingOperationResource {
-  id                 String  @id @default(uuid())
+  id                 String              @id @default(uuid())
   tenantId           String
   routingOperationId String
   workstationId      String
-  efficiencyPercent  Int     @default(100)
-  preferred          Boolean @default(false)
+  efficiencyPercent  Int                 @default(100)
+  preferred          Boolean             @default(false)
+  resourceRole       RoutingResourceRole @default(STANDARD)
 
   tenant           Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   routingOperation RoutingOperation @relation(fields: [routingOperationId], references: [id], onDelete: Cascade)
@@ -872,11 +989,60 @@ model ProductionOperation {
   routingOperation RoutingOperation? @relation(fields: [routingOperationId], references: [id], onDelete: SetNull)
   workstation      Workstation?      @relation(fields: [workstationId], references: [id], onDelete: SetNull)
   schedulePlanOperations SchedulePlanOperation[]
+  shopFloorEvents  ProductionOperationEvent[]
 
   @@unique([productionOrderId, sequence])
   @@index([tenantId, status])
   @@index([tenantId, workstationId, plannedStart])
   @@index([routingOperationId])
+}
+
+model ProductionOperationEvent {
+  id                    String                       @id @default(uuid())
+  tenantId              String
+  productionOperationId String
+  eventType             ProductionOperationEventType
+  quantity              Int?
+  reason                String?
+  recordedAt            DateTime                     @default(now()) @db.Timestamptz(6)
+  recordedById          String?
+
+  tenant              Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productionOperation ProductionOperation @relation(fields: [productionOperationId], references: [id], onDelete: Cascade)
+  recordedBy          User?               @relation("ProductionOperationEventActor", fields: [recordedById], references: [id], onDelete: SetNull)
+
+  @@index([tenantId, productionOperationId])
+}
+
+model PlanningEvent {
+  id             String            @id @default(uuid())
+  tenantId       String
+  schedulePlanId String?
+  eventType      PlanningEventType
+  summary        String
+  idempotencyKey String?
+  actorId        String?
+  createdAt      DateTime          @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  schedulePlan SchedulePlan? @relation(fields: [schedulePlanId], references: [id], onDelete: SetNull)
+  actor        User?         @relation("PlanningEventActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, createdAt])
+}
+
+model IntegrationImportReceipt {
+  id             String   @id @default(uuid())
+  tenantId       String
+  source         String   @default("production-orders")
+  idempotencyKey String
+  result         Json
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, source, idempotencyKey])
 }
 
 model SchedulePlan {
@@ -900,8 +1066,9 @@ model SchedulePlan {
 
   tenant     Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   acceptedBy User?                   @relation("SchedulePlanAcceptedBy", fields: [acceptedById], references: [id], onDelete: SetNull)
-  orders     SchedulePlanOrder[]
-  operations SchedulePlanOperation[]
+  orders         SchedulePlanOrder[]
+  operations     SchedulePlanOperation[]
+  planningEvents PlanningEvent[]
 
   @@unique([tenantId, version])
   @@index([tenantId, status, createdAt])

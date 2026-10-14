@@ -6,9 +6,18 @@ import { StatusBadge } from "@/components/ds/status-badge";
 import { Button } from "@/components/ui/button";
 import type { IntelligenceSignal } from "@/lib/mock/dashboard";
 
-export function PharmaflowIntelligence({ signals }: { signals: IntelligenceSignal[] }) {
+export function PharmaflowIntelligence({
+  signals,
+  compact = false,
+}: {
+  signals: IntelligenceSignal[];
+  compact?: boolean;
+}) {
   return (
-    <DashboardPanel title="Pharmaflow Intelligence" subtitle="AI-detected business signals">
+    <DashboardPanel
+      title={compact ? "Signals" : "Pharmaflow Intelligence"}
+      subtitle={compact ? undefined : "AI-detected business signals"}
+    >
       {signals.length === 0 ? (
         <EmptyState
           className="w-full border-0 bg-transparent px-0 py-6"
@@ -21,15 +30,19 @@ export function PharmaflowIntelligence({ signals }: { signals: IntelligenceSigna
             <li key={signal.id} className="border-b border-border/60 py-3 last:border-0">
               <StatusBadge tone="primary">{signal.category}</StatusBadge>
               <p className="mt-2 text-sm font-medium leading-snug">{signal.title}</p>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                <span className="font-medium text-foreground">Potential impact. </span>
-                {signal.impact}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                <span className="font-medium text-foreground">Recommended action. </span>
-                {signal.recommendation}
-              </p>
-              <Button asChild size="sm" variant="outline" className="mt-3">
+              {!compact ? (
+                <>
+                  <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-foreground">Potential impact. </span>
+                    {signal.impact}
+                  </p>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    <span className="font-medium text-foreground">Recommended action. </span>
+                    {signal.recommendation}
+                  </p>
+                </>
+              ) : null}
+              <Button asChild size="sm" variant="outline" className="mt-3 min-h-11 sm:min-h-8">
                 <Link href={signal.href}>{signal.actionLabel}</Link>
               </Button>
             </li>

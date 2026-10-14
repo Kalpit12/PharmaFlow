@@ -9,6 +9,7 @@ import { DEMO_TENANT_BRAND } from "@/lib/demo-tenant";
 import { ScheduleControlPanel } from "@/components/operations/ScheduleControlPanel";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { ChartUtilizationLegend } from "@/components/charts/ChartUtilizationLegend";
 import { GroupedBarChart } from "@/components/charts/GroupedBarChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { Button } from "@/components/ui/button";
@@ -30,9 +31,18 @@ import {
 } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { OperationsPlannerSimple } from "@/components/operations/OperationsPlannerSimple";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { buildProductionPlannedVsActual } from "@/lib/analytics/production";
 import { utilizationTone } from "@/lib/charts/tokens";
+import {
+  ganttCapacityStripClasses,
+  ganttJobColorClasses,
+  ganttJobSubtextClasses,
+  plannerLegendSwatches,
+  routingStepBorder,
+} from "@/lib/operations/planner-colors";
 import { intervalsForDay, isWorkingAt } from "@/lib/operations/calendar";
 import type { OperationsView } from "@/lib/server/operations";
 import {
@@ -224,6 +234,13 @@ function attentionAction(item: AttentionItem): string {
 function capacityBarClass(state: Workstation["capacityState"]): string {
   if (state === "DANGER") return "bg-danger";
   if (state === "WARNING") return "bg-warning";
+  return "bg-intel";
+}
+
+function utilizationBarClass(value: number): string {
+  if (value >= 95) return "bg-danger";
+  if (value >= 85) return "bg-warning";
+  if (value >= 50) return "bg-intel";
   return "bg-primary";
 }
 
@@ -281,6 +298,7 @@ function useClientNow(): number | null {
 }
 
 export function OperationsPlanner({ data }: { data: OperationsView }) {
+  const { simple } = useLayoutMode();
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -355,6 +373,21 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
     const ms = new Date(iso).getTime();
     if (clock) return ((ms - visibleStart) / clockRange) * 100;
     return (workingOffset(ms, visibleStart) / totalWorking) * 100;
+  };
+
+  const isoFromPosition = (pct: number) => {
+    const clamped = Math.max(0, Math.min(100, pct));
+    if (clock) return new Date(visibleStart + (clamped / 100) * clockRange).toISOString();
+    return new Date(visibleStart + (clamped / 100) * (visibleEnd - visibleStart)).toISOString();
+  };
+
+  const proposeGanttMove = (orderId: string, workstationId: string, proposedStart: string) => {
+    startTransition(async () => {
+      await runPlannerAction("/api/schedule-plans/propose-move", {
+        method: "POST",
+        body: JSON.stringify({ orderId, workstationId, proposedStart }),
+      });
+    });
   };
 
   const nowVisible = now !== null && now >= visibleStart && now < visibleEnd;
@@ -515,6 +548,10 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
     : zoom === "1d"
       ? dayLabel(isoDay(new Date(visibleStart).toISOString()))
       : `${dayLabel(start)} – ${dayLabel(lastDay)}`;
+
+  if (simple) {
+    return <OperationsPlannerSimple data={data} />;
+  }
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -758,10 +795,12 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
             className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
           />
           <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground md:justify-end">
-            <PlannerLegendSwatch className="bg-intel/35 ring-1 ring-inset ring-intel/50" label="Available capacity" />
-            <PlannerLegendSwatch className="bg-muted/30 ring-1 ring-inset ring-border/60" label="Non-working" />
-            <PlannerLegendSwatch className="border border-primary/60 bg-card" label="Scheduled job" />
-            <PlannerLegendSwatch className="border border-danger/70 bg-danger/20" label="At risk" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.availableCapacity} label="Available capacity" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.nonWorking} label="Non-working" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.scheduled} label="Scheduled" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.inProgress} label="In progress" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.materialWarning} label="Material watch" />
+            <PlannerLegendSwatch className={plannerLegendSwatches.atRisk} label="At risk" />
             <span className="inline-flex items-center gap-1.5">
               <Lock className="size-3" aria-hidden /> Locked
             </span>
@@ -789,7 +828,10 @@ export function OperationsPlanner({ data }: { data: OperationsView }) {
               nowVisible={nowVisible}
               nowLeft={nowLeft}
               position={position}
+              isoFromPosition={isoFromPosition}
+              canDrag={data.capabilities.canSchedule}
               onSelect={openOrder}
+              onProposeMove={proposeGanttMove}
             />
           </section>
           {unscheduledVisible.length > 0 ? (
@@ -949,7 +991,10 @@ function Gantt({
   nowVisible,
   nowLeft,
   position,
+  isoFromPosition,
+  canDrag,
   onSelect,
+  onProposeMove,
 }: {
   compact: boolean;
   clock: boolean;
@@ -964,8 +1009,14 @@ function Gantt({
   nowVisible: boolean;
   nowLeft: number;
   position: (iso: string) => number;
+  isoFromPosition: (pct: number) => string;
+  canDrag: boolean;
   onSelect: (id: string) => void;
+  onProposeMove: (orderId: string, workstationId: string, proposedStart: string) => void;
 }) {
+  const [drag, setDrag] = useState<null | { orderId: string; workstationId: string; startLeft: number; deltaPct: number }>(
+    null
+  );
   const labelWidth = compact ? undefined : "14rem";
   const dayMin = clock ? 4.5 : detailedBars ? 14 : days.length > 14 ? 5.25 : 11;
   const columns = clock
@@ -1045,7 +1096,7 @@ function Gantt({
                     </div>
                   ))}
                 </div>
-                <div className="pointer-events-none absolute inset-x-0 top-2 z-[1] grid h-2 grid-flow-col" style={{ gridTemplateColumns: `repeat(${Math.max(clock ? hourMarks.length : days.length, 1)}, minmax(0, 1fr))` }}>
+                <div className="pointer-events-none absolute inset-x-0 top-2 z-[1] grid h-2.5 grid-flow-col" style={{ gridTemplateColumns: `repeat(${Math.max(clock ? hourMarks.length : days.length, 1)}, minmax(0, 1fr))` }}>
                   {(clock ? hourMarks : days).map((item) => {
                     const hasCapacity = !ws.calendar
                       ? true
@@ -1058,12 +1109,12 @@ function Gantt({
                         className={cn(
                           "mx-px rounded-[2px] ring-1 ring-inset",
                           !hasCapacity
-                            ? "bg-muted/30 ring-border/50"
+                            ? ganttCapacityStripClasses.nonWorking
                             : ws.capacityState === "DANGER"
-                              ? "bg-danger/20 ring-danger/35"
+                              ? ganttCapacityStripClasses.danger
                               : ws.capacityState === "WARNING"
-                                ? "bg-warning/20 ring-warning/35"
-                                : "bg-intel/20 ring-intel/30"
+                                ? ganttCapacityStripClasses.warning
+                                : ganttCapacityStripClasses.available
                         )}
                       />
                     );
@@ -1093,7 +1144,7 @@ function Gantt({
                       className="absolute"
                       style={{
                         top: detailedBars ? "1.35rem" : "1.45rem",
-                        left: `${Math.max(0, left)}%`,
+                        left: `${Math.max(0, left + (drag?.orderId === job.id ? drag.deltaPct : 0))}%`,
                         width: `${Math.min(100 - Math.max(0, left), width)}%`,
                       }}
                     >
@@ -1102,20 +1153,49 @@ function Gantt({
                           <button
                             type="button"
                             onClick={() => onSelect(job.id)}
+                            onPointerDown={(event) => {
+                              if (!canDrag || job.isLocked) return;
+                              event.currentTarget.setPointerCapture(event.pointerId);
+                              setDrag({
+                                orderId: job.id,
+                                workstationId: ws.id,
+                                startLeft: left,
+                                deltaPct: 0,
+                              });
+                            }}
+                            onPointerMove={(event) => {
+                              if (!drag || drag.orderId !== job.id) return;
+                              const lane = event.currentTarget.parentElement?.parentElement;
+                              const width = lane?.clientWidth ?? 1;
+                              const moved = (event.movementX / width) * 100;
+                              setDrag((current) =>
+                                current && current.orderId === job.id
+                                  ? { ...current, deltaPct: current.deltaPct + moved }
+                                  : current
+                              );
+                            }}
+                            onPointerUp={(event) => {
+                              if (!drag || drag.orderId !== job.id) return;
+                              event.currentTarget.releasePointerCapture(event.pointerId);
+                              const nextLeft = drag.startLeft + drag.deltaPct;
+                              if (Math.abs(drag.deltaPct) > 0.4) {
+                                onProposeMove(job.id, drag.workstationId, isoFromPosition(nextLeft));
+                              }
+                              setDrag(null);
+                            }}
+                            onPointerCancel={() => setDrag(null)}
                             aria-label={`${job.productName}, ${job.orderNumber}, ${statusLabel(job.displayStatus)}${job.isLocked ? ", locked" : ""}${materialIssue ? `, material ${readinessLabel(job.materialReadiness).toLowerCase()}` : ""}${hasConflict ? ", planning conflict" : ""}`}
                             className={cn(
-                              "relative flex w-full flex-col justify-center overflow-hidden rounded-sm border bg-card px-2 text-left text-foreground shadow-sm transition duration-150 before:absolute before:inset-y-0 before:left-0 before:w-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
+                              "relative flex w-full flex-col justify-center overflow-hidden rounded-sm border px-2 text-left shadow-sm transition duration-150 before:absolute before:inset-y-0 before:left-0 before:w-0.5 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:outline-none",
+                              canDrag && !job.isLocked ? "cursor-grab active:cursor-grabbing" : null,
+                              drag?.orderId === job.id ? "z-30 ring-2 ring-intel" : null,
                               detailedBars ? "h-11" : "h-8",
-                              job.displayStatus === "AT_RISK"
-                                ? "border-danger/70 bg-danger/15 before:bg-danger"
-                                : job.status === "IN_PROGRESS"
-                                  ? "border-intel/60 bg-intel/15 before:bg-intel"
-                                  : "border-primary/55 before:bg-primary",
+                              ganttJobColorClasses(job.displayStatus, job.status),
                               job.priority === "CRITICAL" && job.displayStatus !== "AT_RISK" ? "before:w-1 before:bg-material" : null,
                               materialIssue ? "ring-1 ring-inset ring-warning/60" : null,
                               hasConflict ? "ring-1 ring-inset ring-danger/50" : null,
                               job.isLocked ? "ring-1 ring-inset ring-primary-foreground/35" : null,
-                              selected ? "z-20 ring-2 ring-ring" : "hover:z-10 hover:border-primary hover:bg-card",
+                              selected ? "z-20 ring-2 ring-ring brightness-110" : "hover:z-10 hover:brightness-110",
                               muted ? "opacity-25" : "opacity-100"
                             )}
                           >
@@ -1125,7 +1205,12 @@ function Gantt({
                               {job.productName}
                             </span>
                             {detailedBars ? (
-                              <span className="truncate text-[10px] text-muted-foreground">
+                              <span
+                                className={cn(
+                                  "truncate text-[10px]",
+                                  ganttJobSubtextClasses(job.displayStatus, job.status)
+                                )}
+                              >
                                 {job.orderNumber} · {compactQty(job.quantity)}
                                 {materialIssue ? ` · ${readinessLabel(job.materialReadiness)}` : ""}
                               </span>
@@ -1193,7 +1278,7 @@ function WorkstationLabel({
       </p>
       <div className="mt-0.5 h-1 overflow-hidden rounded-full bg-muted">
         <div
-          className={cn("h-full", utilization >= 95 ? "bg-danger" : utilization >= 85 ? "bg-warning" : "bg-primary")}
+          className={cn("h-full", utilizationBarClass(utilization))}
           style={{ width: `${Math.min(100, utilization)}%` }}
         />
       </div>
@@ -1252,7 +1337,7 @@ function CapacityView({ data }: { data: OperationsView }) {
       <div className="grid min-w-0 gap-3 lg:grid-cols-2">
         <HorizontalBarChart
           title="Workstation capacity"
-          description="Finite-capacity utilization for the planning window. Existing 85%/95% thresholds."
+          description="Finite-capacity utilization for the planning window."
           rows={data.workstations.map((ws) => ({
             id: ws.id,
             label: ws.name,
@@ -1272,6 +1357,7 @@ function CapacityView({ data }: { data: OperationsView }) {
           emptyMessage="No production orders to compare."
         />
       </div>
+      <ChartUtilizationLegend className="px-1" />
       <ul className="grid min-w-0 gap-3 md:grid-cols-2">
       {data.workstations.map((ws) => {
         const lineOrders = data.orders.filter((order) => order.workstationId === ws.id && order.plannedStart && order.plannedEnd);
@@ -1532,7 +1618,13 @@ function OrderDetail({
                     .map((id) => workstations.find((row) => row.id === id)?.name)
                     .filter(Boolean);
                   return (
-                    <li key={operation.id} className="rounded-lg border border-border bg-muted/20 px-3 py-2.5">
+                    <li
+                      key={operation.id}
+                      className={cn(
+                        "rounded-lg border border-border border-l-4 bg-muted/20 px-3 py-2.5",
+                        routingStepBorder(index)
+                      )}
+                    >
                       <div className="flex items-center justify-between gap-3">
                         <span className="font-medium">
                           {index + 1}. {operation.name}

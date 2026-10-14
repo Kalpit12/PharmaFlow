@@ -21,8 +21,8 @@ export default async function DailyReviewPage() {
       <WorkspacePage width="standard">
         <PageHeader
           context="Overview"
-          title="Daily Review"
-          description="Today's operational and commercial priorities, ranked by evidence."
+          title="Today"
+          description="What needs your action right now."
         />
         <EmptyState title="Unable to load daily review" description="Refresh the page and try again." />
       </WorkspacePage>
@@ -33,8 +33,8 @@ export default async function DailyReviewPage() {
     <WorkspacePage width="standard">
       <PageHeader
         context="Overview"
-        title="Daily Review"
-        description="Today's operational and commercial priorities, ranked by evidence."
+        title="Today"
+        description="What needs your action right now."
         metadata={data.disclaimer}
         relatedPath="/daily-review"
         actions={
@@ -42,7 +42,7 @@ export default async function DailyReviewPage() {
             href="/command-center"
             className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:min-h-8"
           >
-            Command Center
+            Full overview
           </a>
         }
       />

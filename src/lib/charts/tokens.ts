@@ -34,6 +34,13 @@ export const chartBarFill: Record<ChartTone, string> = {
 export function utilizationTone(value: number): ChartTone {
   if (value >= 95) return "danger";
   if (value >= 85) return "warning";
-  if (value >= 50) return "primary";
-  return "neutral";
+  if (value >= 50) return "intel";
+  return "primary";
 }
+
+/** Planned vs produced / primary-secondary bar pairs in operations charts. */
+export const groupedBarPrimaryClass = "bg-chart-1";
+export const groupedBarSecondaryClass = "bg-chart-2";
+
+/** Distinct funnel stage colors (blue → green → amber → analytical). */
+export const funnelStageBarClasses = ["bg-chart-1", "bg-chart-2", "bg-chart-3", "bg-chart-4"] as const;

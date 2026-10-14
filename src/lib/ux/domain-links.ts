@@ -11,14 +11,14 @@ export type DomainLink = {
 /** Related workspaces shown as a compact trail under page headers. */
 export const DOMAIN_TRAILS: Record<string, DomainLink[]> = {
   "/command-center": [
-    { label: "Daily Review", href: "/daily-review" },
+    { label: "Today", href: "/daily-review" },
     { label: "Reports", href: "/reports" },
     { label: "Execution", href: "/execution" },
   ],
   "/daily-review": [
     { label: "Command Center", href: "/command-center" },
-    { label: "Reports", href: "/reports" },
-    { label: "Forecast", href: "/forecast" },
+    { label: "Execution", href: "/execution" },
+    { label: "Approvals", href: "/approvals" },
   ],
   "/dashboard": [
     { label: "Command Center", href: "/command-center" },

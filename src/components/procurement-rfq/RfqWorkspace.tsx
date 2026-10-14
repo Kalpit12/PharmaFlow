@@ -8,58 +8,30 @@ import { Plus } from "lucide-react";
 import { EmptyState } from "@/components/ds/empty-state";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { RfqCreateDialog } from "@/components/procurement-rfq/RfqCreateDialog";
+import { RfqWorkspaceSimple } from "@/components/procurement-rfq/RfqWorkspaceSimple";
+import { formatDay, statusTone, VIEW_LABEL } from "@/components/procurement-rfq/rfq-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
-import {
-  PROCUREMENT_RFQ_VIEWS,
-  type ProcurementRfqListSnapshot,
-  type ProcurementRfqStatus,
-  type ProcurementRfqViewId,
-} from "@/lib/procurement-rfq/types";
-import type { StatusTone } from "@/types/status";
-
-const VIEW_LABEL: Record<ProcurementRfqViewId, string> = {
-  all: "All",
-  draft: "Draft",
-  review: "Review",
-  ready: "Ready",
-  responses: "Awaiting responses",
-  evaluation: "Evaluation",
-  awarded: "Awarded",
-  closed: "Closed",
-};
-
-const statusTone: Record<ProcurementRfqStatus, StatusTone> = {
-  DRAFT: "neutral",
-  REVIEW: "neutral",
-  READY: "info",
-  RESPONSES: "info",
-  EVALUATION: "primary",
-  AWARDED: "intel",
-  CLOSED: "neutral",
-  CANCELLED: "neutral",
-};
-
-function formatDay(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
+import { PROCUREMENT_RFQ_VIEWS, type ProcurementRfqListSnapshot, type ProcurementRfqViewId } from "@/lib/procurement-rfq/types";
 
 type FormProduct = { id: string; name: string; sku: string; unit: string | null };
 type FormSupplier = { id: string; name: string; code: string; status: string };
 
 export function RfqWorkspace({
+  data,
+  formOptions,
+}: {
+  data: ProcurementRfqListSnapshot;
+  formOptions: { products: FormProduct[]; suppliers: FormSupplier[] };
+}) {
+  const { simple } = useLayoutMode();
+  if (simple) return <RfqWorkspaceSimple data={data} formOptions={formOptions} />;
+  return <RfqWorkspaceFull data={data} formOptions={formOptions} />;
+}
+
+function RfqWorkspaceFull({
   data,
   formOptions,
 }: {
@@ -242,73 +214,26 @@ export function RfqWorkspace({
         </Link>
       </p>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>New procurement RFQ</DialogTitle>
-            <DialogDescription>Create an internal draft. No supplier communication is sent.</DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3 py-2">
-            <div>
-              <Label htmlFor="rfq-title">Title</Label>
-              <Input id="rfq-title" value={title} onChange={(e) => setTitle(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="rfq-due">Due date</Label>
-              <Input id="rfq-due" type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label htmlFor="rfq-material">Material</Label>
-              <select
-                id="rfq-material"
-                className="mt-1 flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                value={productId}
-                onChange={(e) => setProductId(e.target.value)}
-              >
-                {formOptions.products.map((product) => (
-                  <option key={product.id} value={product.id}>
-                    {product.sku} · {product.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <Label htmlFor="rfq-qty">Quantity</Label>
-              <Input id="rfq-qty" type="number" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="mt-1" />
-            </div>
-            <div>
-              <Label>Suppliers (optional)</Label>
-              <ul className="mt-1 max-h-32 space-y-1 overflow-y-auto rounded-md border border-border p-2">
-                {formOptions.suppliers.map((supplier) => (
-                  <li key={supplier.id}>
-                    <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm sm:min-h-8">
-                      <input
-                        type="checkbox"
-                        checked={supplierIds.includes(supplier.id)}
-                        onChange={() => toggleSupplier(supplier.id)}
-                      />
-                      {supplier.name} <span className="text-muted-foreground">({supplier.code})</span>
-                    </label>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <Label htmlFor="rfq-notes">Notes</Label>
-              <Textarea id="rfq-notes" value={notes} onChange={(e) => setNotes(e.target.value)} className="mt-1" rows={3} />
-            </div>
-            {error ? <p className="text-xs text-danger">{error}</p> : null}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" className="min-h-11 sm:min-h-9" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" className="min-h-11 sm:min-h-9" disabled={busy} onClick={() => void createDraft()}>
-              Create draft
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <RfqCreateDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        busy={busy}
+        error={error}
+        title={title}
+        dueDate={dueDate}
+        notes={notes}
+        productId={productId}
+        quantity={quantity}
+        supplierIds={supplierIds}
+        formOptions={formOptions}
+        onTitleChange={setTitle}
+        onDueDateChange={setDueDate}
+        onNotesChange={setNotes}
+        onProductIdChange={setProductId}
+        onQuantityChange={setQuantity}
+        onToggleSupplier={toggleSupplier}
+        onSubmit={() => void createDraft()}
+      />
     </div>
   );
 }

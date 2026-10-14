@@ -13,7 +13,7 @@ export function NeedsAttention({ items }: { items: AttentionRecord[] }) {
   return (
     <AttentionList
       title="Management Attention"
-      subtitle="Signal → evidence → consequence → inspect."
+      subtitle="Ranked items that need a person to follow up."
       empty={
         items.length === 0 ? (
           <EmptyState

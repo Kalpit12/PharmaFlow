@@ -7,13 +7,14 @@ import { usePathname } from "next/navigation";
 import { navIcons } from "@/components/layout/nav-icons";
 import { useShell } from "@/components/layout/shell-context";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useClientReady } from "@/hooks/use-client-ready";
 import { hasPermission, navPermissionForHref } from "@/lib/auth/permissions";
 import { getNavSections, type NavItem } from "@/lib/mock/navigation";
 import { cn } from "@/lib/utils";
 
 function isActivePath(pathname: string, href: string): boolean {
   if (pathname === href) return true;
-  if (href === "/dashboard" || href === "/command-center") return false;
+  if (href === "/dashboard" || href === "/command-center" || href === "/daily-review") return false;
   return pathname.startsWith(`${href}/`);
 }
 
@@ -26,6 +27,7 @@ export function SidebarNav({
 }) {
   const pathname = usePathname();
   const { user } = useShell();
+  const clientReady = useClientReady();
   const role = user.role;
   const sections = getNavSections()
     .map((section) => ({
@@ -43,14 +45,14 @@ export function SidebarNav({
       {sections.map((section) => (
         <div key={section.id} className="space-y-0.5">
           {section.label ? (
-            <p
+            <span
               className={cn(
-                "px-2 pb-1.5 text-[9px] font-medium tracking-[0.18em] text-sidebar-foreground/35 uppercase",
+                "block px-2 pb-1.5 text-[9px] font-medium tracking-[0.18em] text-sidebar-foreground/35 uppercase",
                 compact && "sr-only"
               )}
             >
               {section.label}
-            </p>
+            </span>
           ) : null}
           <ul>
             {section.items.map((item) => {
@@ -85,6 +87,22 @@ export function SidebarNav({
                     <Link
                       href={item.href}
                       onClick={onNavigate}
+                      aria-current={active ? "page" : undefined}
+                      className={className}
+                    >
+                      {content}
+                    </Link>
+                  </li>
+                );
+              }
+
+              if (!clientReady) {
+                return (
+                  <li key={item.id}>
+                    <Link
+                      href={item.href}
+                      onClick={onNavigate}
+                      aria-label={item.label}
                       aria-current={active ? "page" : undefined}
                       className={className}
                     >

@@ -203,4 +203,44 @@ const cycle = buildOperationSchedule({
 assert.equal(cycle.issues.length, 2);
 assert.ok(cycle.issues.every((issue) => issue.kind === "CYCLIC_DEPENDENCY"));
 
+const segregationDefault = buildOperationSchedule({
+  orders: [second],
+  dependencies: [],
+  workstations,
+  changeovers: [],
+  windowStart: start,
+});
+const segregated = segregationDefault.operations.find((row) => row.id === "mix-2")!;
+assert.equal(segregated.changeoverMinutes, 0, "First job on a line has no changeover");
+const afterGeneral = buildOperationSchedule({
+  orders: [first, second],
+  dependencies: [],
+  workstations,
+  changeovers: [],
+  windowStart: start,
+});
+const betaAfterGeneral = afterGeneral.operations.find((row) => row.id === "mix-2")!;
+assert.equal(
+  betaAfterGeneral.changeoverMinutes,
+  120,
+  "Cross-potency families apply default segregation clean when no explicit rule exists"
+);
+
+const tightDue = buildOperationSchedule({
+  orders: [
+    {
+      ...first,
+      dueDate: new Date("2026-10-05T09:00:00.000Z"),
+    },
+  ],
+  dependencies: [{ fromOperationId: "mix-1", toOperationId: "pack-1", minimumLagMinutes: 30 }],
+  workstations,
+  changeovers: [],
+  windowStart: start,
+});
+assert.ok(
+  tightDue.issues.some((issue) => issue.kind === "PAST_DUE"),
+  "Schedules that finish after due date emit PAST_DUE feasibility issues"
+);
+
 console.log("Operations routing verification passed.");

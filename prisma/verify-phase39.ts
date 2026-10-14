@@ -21,4 +21,10 @@ export async function runPhase39Verify(prisma: PrismaClient) {
 
   const operations = await prisma.productionOperation.count({ where: { tenantId: tenant.id } });
   if (operations < 1) throw new Error("Expected instantiated production operations");
+
+  const workstation = await prisma.workstation.findFirst({
+    where: { tenantId: tenant.id },
+    select: { kind: true },
+  });
+  if (!workstation?.kind) throw new Error("Expected workstation resource kind");
 }

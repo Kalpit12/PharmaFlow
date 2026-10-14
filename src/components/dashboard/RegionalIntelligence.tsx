@@ -14,7 +14,7 @@ export function RegionalIntelligence({ rows }: { rows: RegionalRow[] }) {
   const max = Math.max(...rows.map((row) => row.revenueValue), 0);
 
   return (
-    <DashboardPanel title="Regional Intelligence" subtitle="Commercial activity by market">
+    <DashboardPanel title="Regional Intelligence" subtitle="Revenue by market">
       {rows.length === 0 ? (
         <EmptyState
           className="w-full border-0 bg-transparent px-0 py-6"

@@ -18,9 +18,12 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { buildInventoryHealthSegments } from "@/lib/analytics/inventory";
+import { InventoryItemSheet } from "@/components/inventory/InventoryItemSheet";
+import { InventoryWorkspaceSimple } from "@/components/inventory/InventoryWorkspaceSimple";
+import { formatDay, formatQty, healthTone } from "@/components/inventory/inventory-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { INVENTORY_VIEWS, type InventoryItem, type InventorySnapshot, type InventoryViewId } from "@/lib/inventory/types";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
-import type { StatusTone } from "@/types/status";
 
 const VIEW_LABEL: Record<InventoryViewId, string> = {
   overview: "Overview",
@@ -30,25 +33,13 @@ const VIEW_LABEL: Record<InventoryViewId, string> = {
   requirements: "Requirements",
 };
 
-const healthTone: Record<string, StatusTone> = {
-  OUT_OF_STOCK: "danger",
-  CRITICAL: "danger",
-  LOW: "material",
-  HEALTHY: "intel",
-  EXPIRED: "danger",
-  EXPIRING_SOON: "material",
-};
-
-function formatQty(value: number): string {
-  return value.toLocaleString("en-KE");
-}
-
-function formatDay(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
-
 export function InventoryWorkspace({ data }: { data: InventorySnapshot }) {
+  const { simple } = useLayoutMode();
+  if (simple) return <InventoryWorkspaceSimple data={data} />;
+  return <InventoryWorkspaceFull data={data} />;
+}
+
+function InventoryWorkspaceFull({ data }: { data: InventorySnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -254,7 +245,7 @@ export function InventoryWorkspace({ data }: { data: InventorySnapshot }) {
           side={compact ? "bottom" : "right"}
           className={compact ? "max-h-[85vh] overflow-y-auto sm:max-w-none" : "overflow-y-auto sm:max-w-md"}
         >
-          {selected ? <ItemDetail item={selected} /> : null}
+          {selected ? <InventoryItemSheet item={selected} /> : null}
         </SheetContent>
       </Sheet>
     </div>
@@ -503,78 +494,3 @@ function BatchTable({ items, mode, onOpen }: { items: InventoryItem[]; mode: "ex
   );
 }
 
-function ItemDetail({ item }: { item: InventoryItem }) {
-  return (
-    <>
-      <SheetHeader>
-        <SheetTitle>{item.name}</SheetTitle>
-        <SheetDescription>
-          {item.sku} · {item.classId.replace(/_/g, " ").toLowerCase()}
-        </SheetDescription>
-      </SheetHeader>
-      <dl className="grid grid-cols-2 gap-3 px-4 text-sm">
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">On hand</dt>
-          <dd className="mt-0.5 tabular-nums">
-            {formatQty(item.onHand)} {item.unit}
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">Safety stock</dt>
-          <dd className="mt-0.5 tabular-nums">{formatQty(item.safetyStock)}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">In transit</dt>
-          <dd className="mt-0.5 tabular-nums">{formatQty(item.inTransit)}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">Status</dt>
-          <dd className="mt-0.5">
-            <StatusBadge tone={healthTone[item.health]}>{item.health.replace(/_/g, " ")}</StatusBadge>
-          </dd>
-        </div>
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">Nearest expiry</dt>
-          <dd className="mt-0.5">{formatDay(item.nearestExpiry)}</dd>
-        </div>
-        <div>
-          <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">Projected</dt>
-          <dd className="mt-0.5 tabular-nums">{formatQty(item.projected)}</dd>
-        </div>
-      </dl>
-      <div className="px-4 pb-6">
-        <h3 className="mt-4 text-sm font-semibold tracking-tight">Batches</h3>
-        <ul className="mt-2 space-y-2 text-sm">
-          {item.batches.map((batch) => (
-            <li key={batch.id} className="text-muted-foreground">
-              {batch.batchCode} · {formatQty(batch.quantity)} · {batch.warehouseName}
-              {batch.expiryDate ? ` · exp ${formatDay(batch.expiryDate)}` : ""}
-            </li>
-          ))}
-        </ul>
-        <h3 className="mt-4 text-sm font-semibold tracking-tight">Production</h3>
-        {item.orders.length === 0 ? (
-          <p className="mt-2 text-sm text-muted-foreground">Production linkage unavailable</p>
-        ) : (
-          <ul className="mt-2 space-y-2 text-sm">
-            {item.orders.map((order) => (
-              <li key={order.id}>
-                <Link href="/operations" className="hover:underline">
-                  {order.orderNumber}
-                </Link>
-                <span className="text-muted-foreground">
-                  {" "}
-                  · {formatQty(order.quantity)} · {order.status.replace(/_/g, " ")}
-                  {order.workstationName ? ` · ${order.workstationName}` : ""}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
-        <Button asChild size="sm" variant="outline" className="mt-4 min-h-11 sm:min-h-7">
-          <Link href="/reports?view=inventory">Open in Reports</Link>
-        </Button>
-      </div>
-    </>
-  );
-}

@@ -19,7 +19,7 @@ export default async function AdministrationPage() {
     data = await getAdministrationSnapshot(ctx);
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login?callbackUrl=%2Fadministration");
-    if (error instanceof ServerError && error.code === "FORBIDDEN") redirect("/dashboard");
+    if (error instanceof ServerError && error.code === "FORBIDDEN") redirect("/daily-review");
     return (
       <WorkspacePage width="wide">
         <PageHeader

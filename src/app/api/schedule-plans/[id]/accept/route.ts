@@ -6,11 +6,12 @@ import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 
 export const dynamic = "force-dynamic";
 
-export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const ctx = await getAuthenticatedTenantContext();
     const { id } = await params;
-    const proposal = await acceptSchedulePlan(ctx, id);
+    const body = (await request.json().catch(() => ({}))) as { idempotencyKey?: string };
+    const proposal = await acceptSchedulePlan(ctx, id, { idempotencyKey: body.idempotencyKey });
     return NextResponse.json({ proposal });
   } catch (error) {
     return jsonApiError(error, "Unable to accept the proposed schedule.");

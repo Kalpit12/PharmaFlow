@@ -1260,6 +1260,27 @@ Closed the remaining SkyPlanner-class operations gaps without copying Autopilot 
 - **Delivery simulation** — New order dialog can simulate a feasible finish in memory. Canonical ERP JSON is `GET /api/integrations/production-schedule` and `POST /api/integrations/production-orders`.
 - Engine tests: `verify:operations-calendar`, `routing`, `plan`, `delivery`. Persistence: `scripts/run-phase39-verify.ts`. Control plane: `scripts/verify-aps-control.ts`.
 
+## October 2026 — Operations APS complete (no partial gaps)
+
+Status: **COMPLETE + VERIFIED** (`npm run verify:operations-complete` on seeded `medicrest`)
+
+- **Global optimizer** — `buildOptimizedOperationSchedule` improves tardiness/changeover score over forward heuristic; toggled via `PlanningPolicy.useGlobalOptimizer` (default on).
+- **Gantt drag** — drag job bars → `POST /api/schedule-plans/propose-move` → versioned proposal → accept/reject.
+- **SAP B1 + MES connectors** — `IntegrationConnector`, webhook routes (`/api/integrations/webhooks/sap-b1`, `/mes`), sync runs, idempotent deliveries; outbound sync on plan accept.
+- **Shop-floor auto-replan** — downtime/scrap events trigger debounced `maybeTriggerShopFloorReplan` per autopilot policy.
+
+## October 2026 — Operations partial-gap closure
+
+Status: **COMPLETE + VERIFIED** (unit scripts; DB scripts require seeded `medicrest`)
+
+- **Finite feasibility** — `PAST_DUE` routing issues when the forward schedule finishes after order due date (`schedule-feasibility.ts`).
+- **Changeover segregation** — cross-potency family transitions apply default validated-clean minutes when no explicit `ChangeoverRule` exists (`changeover-segregation.ts`).
+- **Alternative resources** — `RoutingResourceRole` + `WorkstationKind`; subcontract/alternate roles penalized in scheduler scoring.
+- **Planning event stream** — `PlanningEvent` rows on propose/accept/reject/auto-accept/import; accept + ERP import idempotency keys.
+- **Shop-floor feedback** — `ProductionOperationEvent` API + downtime/scrap logging in `/execution/production`; mobile station queue when a workstation filter is active.
+- **Reporting on planner** — schedule adherence %, changeover hours, past-due feasibility counts on `/operations` KPIs.
+- Scripts: `verify:operations-partial`, `verify:operations-integration`, extended `verify:operations-routing`.
+
 ## October 2026 — Operations planner refinement
 
 - `/operations` Gantt hierarchy refined using finite-capacity APS patterns: in-lane capacity bands, restrained job bars, workstation utilization rails, compact plan controls, shared legend, and a dominant scrollable timeline.
@@ -1289,6 +1310,31 @@ Status: **COMPLETE + VERIFIED**
 - User-menu Profile and Preferences links now land in Settings; Settings is no longer marked as coming soon in navigation.
 - TypeScript and IDE lint checks pass; browser verification covered appearance, time zone, reduced motion, unread indicator, reset behavior, and live Lab & Allied context.
 
+## Workspace UX simplification (Oct 2026)
+
+- Default signed-in home: **Today** (`/daily-review`); nav regrouped into Start / Insights / Operations / Procurement / Intelligence / Control / System.
+- **Simple layout** (default, Settings → Workspace layout): shorter page headers (no trail/disclaimer), compact attention items, streamlined Today + Command Center.
+- **Advanced layout**: prior density (domain trails, metadata, intelligence explain, Command Center charts).
+- First-visit **Getting started** checklist on Today (dismissible).
+- **Dashboard** uses `DashboardWorkspace`: Simple shows KPIs → attention → sales chart → top products → recent activity; Advanced keeps full commercial panels with clearer grid spacing.
+- **Operations** (`/operations`): Simple shows reschedule control (compact copy), four KPIs, attention list, and orders-to-review; **Gantt & capacity** switches to Advanced layout.
+- **Materials** (`/materials`): Simple shows view tabs, four KPIs, material pressure attention, production-at-risk list, and a 15-row priority list with compact inspect sheet; **Full MRP table** switches to Advanced.
+- **Procurement** (`/procurement`): Simple shows view tabs, four KPIs, procurement queue attention, actionable row list, and compact requisition sheet (draft / RFQ / review); **Full planning table** switches to Advanced.
+- **Execution** (`/execution`): Simple shows KPIs, needs-review filter, compact approval queue and review sheet; **Filters & history** switches to Advanced (domain filters, history, full review trail).
+- **Inventory** (`/inventory`): Simple shows health/expiry/overview tabs, four risk KPIs, stock signals, priority item list, compact lot sheet; **Charts & filters** switches to Advanced.
+- **AttentionList** shows subtitle in Simple layout again (one-line context under the section title).
+- **Production execution** (`/execution/production`): Simple shows shop-floor header, attention, four KPIs, next task, station queue when filtered, card board, compact detail; **Full board** → Advanced.
+- **Reports** (`/reports`): Simple shows primary report tabs, four KPIs, management attention, top findings, shortcuts; **Full reports** → Advanced (charts, catalog, export).
+- **Batches** (`/batches`): Simple shows review/hold/all tabs, four KPIs, batch quality attention, priority list (15 rows), compact inspect sheet with hold/release/reject; **Full batch table** → Advanced (process trail, search, wide table, full detail).
+- **Quality** (`/quality`): Simple shows open/critical/overdue tabs, four KPIs, quality signals, exception list, compact inspect + log exception; **Distribution & search** → Advanced (trail, all views, distribution sidebar, full investigation sheet).
+- **Traceability** (`/traceability`): Simple shows entity picker, four KPIs, trace-gap attention, compact path + impact + affected list with coverage badges; **Search & tables** → Advanced (process trail, search, coverage/entity tables).
+- **Forecast** (`/forecast`): Simple shows horizon, four confidence-coded KPIs, revenue chart, watch-next attention, signals; **Outlook & AI** → Advanced (full risks, outlook cards, AI explain).
+- **Scenarios** (`/scenarios`): Simple shows status badges, three presets, decision headline, plan vs scenario, journey + impact chain with severity colors; **Assumptions & explain** → Advanced (full assumption panel, comparison table, decision sidebar).
+- **RFQs** (`/rfqs`): Simple shows draft/review/responses tabs, four KPIs, status-colored queue, new RFQ; **Search & table** → Advanced (all views, search, wide table).
+- **Suppliers** (`/suppliers`): Simple shows active/gaps/all tabs, four KPIs (coverage badge), directory with status + lead-data colors, compact detail sheet; **Filters & table** → Advanced (filters, sortable table, full detail).
+- **Supplier performance** (`/supplier-performance`): Simple shows attention/risk/all tabs, four KPIs, supplier signals attention, band-colored list, compact metrics sheet; **Compare & AI** → Advanced (search, compare table, full detail, AI explain).
+- **Sidebar hydration** — compact nav defers Radix tooltips until after mount; section/brand labels use `span` instead of `p`; desktop sidebars + command palette mount after `useClientReady` (width placeholders avoid layout shift). Cursor Simple Browser `data-cursor-ref` injection can still warn on page content — verify in Chrome if needed.
+
 ## Commands
 
 ```bash
@@ -1310,5 +1356,5 @@ npm run qa:phase37
 npm run qa:phase38
 ```
 
-Inspect: [http://localhost:3000](http://localhost:3000) → [http://localhost:3000/login](http://localhost:3000/login) → [http://localhost:3000/dashboard](http://localhost:3000/dashboard)  
+Inspect: [http://localhost:3000](http://localhost:3000) → [http://localhost:3000/login](http://localhost:3000/login) → [http://localhost:3000/daily-review](http://localhost:3000/daily-review)  
 DB health (after migrate + seed): [http://localhost:3000/api/health/db](http://localhost:3000/api/health/db)

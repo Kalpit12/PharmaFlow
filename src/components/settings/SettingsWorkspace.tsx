@@ -6,7 +6,7 @@ import { Bell, Check, Clock3, KeyRound, Monitor, Moon, RotateCcw, ShieldCheck, S
 import { toast } from "sonner";
 
 import { StatusBadge } from "@/components/ds/status-badge";
-import { usePreferences, type TimeZonePreference } from "@/components/providers/preferences-provider";
+import { usePreferences, type LayoutMode, type TimeZonePreference } from "@/components/providers/preferences-provider";
 import { useTheme } from "@/components/providers/theme-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -40,6 +40,8 @@ export function SettingsWorkspace({ data }: { data: SettingsSnapshot }) {
     setReduceMotion,
     showNotificationBadge,
     setShowNotificationBadge,
+    layoutMode,
+    setLayoutMode,
     resetPreferences,
   } = usePreferences();
 
@@ -88,6 +90,25 @@ export function SettingsWorkspace({ data }: { data: SettingsSnapshot }) {
             })}
           </div>
           <div className="divide-y divide-border border-t border-border">
+            <PreferenceRow
+              title="Workspace layout"
+              description={
+                layoutMode === "simple"
+                  ? "Focused queues and shorter pages — best for first-time use."
+                  : "Full headers, related links, charts, and analyst detail."
+              }
+              control={
+                <Select value={layoutMode} onValueChange={(value) => setLayoutMode(value as LayoutMode)}>
+                  <SelectTrigger className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="simple">Simple</SelectItem>
+                    <SelectItem value="advanced">Advanced</SelectItem>
+                  </SelectContent>
+                </Select>
+              }
+            />
             <PreferenceRow
               title="Reduce motion"
               description="Minimizes animations and transitions across the workspace."

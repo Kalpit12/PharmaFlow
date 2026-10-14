@@ -11,7 +11,7 @@ export type CommandItem = {
 
 export const commandItems: CommandItem[] = [
   { id: "open-command-center", label: "Open Command Center", kind: "action", href: "/command-center", group: "Quick Actions" },
-  { id: "open-daily-review", label: "Open Daily Review", kind: "action", href: "/daily-review", group: "Quick Actions" },
+  { id: "open-daily-review", label: "Open Today", kind: "action", href: "/daily-review", group: "Quick Actions" },
   { id: "open-reports", label: "Open Reports", kind: "action", href: "/reports", group: "Quick Actions" },
   { id: "open-operations", label: "Open Operations", kind: "action", href: "/operations", group: "Quick Actions" },
   { id: "open-materials", label: "Open Materials", kind: "action", href: "/materials", group: "Quick Actions" },

@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import { DashboardPanel } from "@/components/dashboard/DashboardPanel";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ds/empty-state";
 import { StatusBadge } from "@/components/ds/status-badge";
 import type { ProductPerformanceRow } from "@/lib/mock/dashboard";
@@ -11,10 +14,23 @@ const statusTone: Record<ProductPerformanceRow["status"], StatusTone> = {
   Watch: "warning",
 };
 
-export function ProductIntelligence({ rows }: { rows: ProductPerformanceRow[] }) {
+export function ProductIntelligence({
+  rows,
+  maxRows,
+  compact = false,
+}: {
+  rows: ProductPerformanceRow[];
+  maxRows?: number;
+  compact?: boolean;
+}) {
+  const visible = maxRows ? rows.slice(0, maxRows) : rows;
+
   return (
-    <DashboardPanel title="Product Intelligence" subtitle="Top products by commercial activity">
-      {rows.length === 0 ? (
+    <DashboardPanel
+      title={compact ? "Top products" : "Product Intelligence"}
+      subtitle={compact ? undefined : "Top products by commercial activity"}
+    >
+      {visible.length === 0 ? (
         <EmptyState
           className="w-full border-0 bg-transparent px-0 py-6"
           title="No products yet"
@@ -35,7 +51,7 @@ export function ProductIntelligence({ rows }: { rows: ProductPerformanceRow[] })
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row) => (
+                {visible.map((row) => (
                   <tr key={row.id} className="border-b border-border/70 last:border-0 hover:bg-muted/40">
                     <td className="py-2.5 pr-3">
                       <p className="font-medium">{row.product}</p>
@@ -56,7 +72,7 @@ export function ProductIntelligence({ rows }: { rows: ProductPerformanceRow[] })
           </div>
 
           <ul className="space-y-2 lg:hidden">
-            {rows.map((row) => (
+            {visible.map((row) => (
               <li key={row.id} className="rounded-lg border border-border px-3 py-2.5">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -86,6 +102,13 @@ export function ProductIntelligence({ rows }: { rows: ProductPerformanceRow[] })
           </ul>
         </>
       )}
+      {maxRows && rows.length > maxRows ? (
+        <div className="mt-4 border-t border-border/70 pt-3">
+          <Button asChild variant="outline" size="sm" className="min-h-11 w-full sm:min-h-8 sm:w-auto">
+            <Link href="/reports?view=products">View all products</Link>
+          </Button>
+        </div>
+      ) : null}
     </DashboardPanel>
   );
 }

@@ -9,6 +9,7 @@ import { Topbar } from "@/components/layout/Topbar";
 import { WorkspaceSwitcher } from "@/components/layout/WorkspaceSwitcher";
 import { ShellProvider, useShell } from "@/components/layout/shell-context";
 import { CommandPalette } from "@/components/search/CommandPalette";
+import { useClientReady } from "@/hooks/use-client-ready";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { X } from "lucide-react";
@@ -23,21 +24,38 @@ export function AppShell({ children, user }: { children: ReactNode; user: Authen
 }
 
 function ShellFrame({ children }: { children: ReactNode }) {
+  const clientReady = useClientReady();
+
   return (
     <div className="fixed inset-0 z-0 flex overflow-hidden bg-background">
-      <Sidebar compact className="hidden md:flex lg:hidden" />
-      <Sidebar className="hidden lg:flex" />
-      <MobileNav />
+      {clientReady ? (
+        <>
+          <Sidebar compact className="hidden md:flex lg:hidden" />
+          <Sidebar className="hidden lg:flex" />
+        </>
+      ) : (
+        <>
+          <aside
+            className="hidden h-full w-14 shrink-0 border-r border-sidebar-border bg-sidebar md:flex lg:hidden"
+            aria-hidden
+          />
+          <aside
+            className="hidden h-full w-[15.25rem] shrink-0 border-r border-sidebar-border bg-sidebar lg:flex"
+            aria-hidden
+          />
+        </>
+      )}
+      <MobileNav clientReady={clientReady} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar />
         <main className="scrollbar-themed min-h-0 flex-1 overflow-x-hidden overflow-y-auto">{children}</main>
       </div>
-      <CommandPalette />
+      {clientReady ? <CommandPalette /> : null}
     </div>
   );
 }
 
-function MobileNav() {
+function MobileNav({ clientReady }: { clientReady: boolean }) {
   const { mobileNavOpen, setMobileNavOpen } = useShell();
 
   return (
@@ -71,7 +89,7 @@ function MobileNav() {
             <WorkspaceSwitcher />
           </div>
           <div className="scrollbar-themed scrollbar-sidebar min-h-0 flex-1 overflow-y-auto pb-4">
-            <SidebarNav onNavigate={() => setMobileNavOpen(false)} />
+            {clientReady ? <SidebarNav onNavigate={() => setMobileNavOpen(false)} /> : null}
           </div>
           <SidebarAccount />
         </div>

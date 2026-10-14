@@ -89,6 +89,16 @@ export type ExecutionOrderRow = {
   canResume: boolean;
   canComplete: boolean;
   history: ExecutionHistoryEntry[];
+  activeOperationId: string | null;
+  activeOperationCode: string | null;
+  shopFloorEvents: Array<{
+    id: string;
+    eventType: "START" | "STOP" | "DOWNTIME" | "SCRAP";
+    quantity: number | null;
+    reason: string | null;
+    recordedAt: string;
+    actorName: string | null;
+  }>;
 };
 
 export type ExecutionKpi = {
@@ -118,6 +128,8 @@ export type ProductionExecutionSnapshot = {
   workstations: Array<{ id: string; name: string; code: string }>;
   workstationId: string | null;
   nextTask: ExecutionOrderRow | null;
+  shopFloorMode: boolean;
+  stationQueue: ExecutionOrderRow[];
   capabilities: {
     canExecute: boolean;
     canRead: boolean;

@@ -9,6 +9,7 @@
 
 import { Prisma } from "@prisma/client";
 
+import { buildDashboardDayBrief, type DashboardDayBrief } from "@/lib/dashboard/day-brief";
 import type {
   ActivityItem,
   AttentionItem,
@@ -34,6 +35,7 @@ import { getTenant } from "@/lib/server/services/tenant";
 export type DashboardData = {
   brand: string;
   disclaimer: string;
+  dayBrief: DashboardDayBrief;
   metrics: DashboardMetric[];
   sales: Record<DashboardRange, SalesPoint[]>;
   intelligence: IntelligenceSignal[];
@@ -95,7 +97,11 @@ function regionRow(row: RegionAgg, maxRevenue: Prisma.Decimal): RegionalRow {
   };
 }
 
-export async function getDashboardData(ctx: TenantContext, now = new Date()): Promise<DashboardData> {
+export async function getDashboardData(
+  ctx: TenantContext,
+  now = new Date(),
+  options?: { userName?: string | null }
+): Promise<DashboardData> {
   try {
     const tenant = await getTenant(ctx);
     const [analytics, inventory, materials, procurementPending, supplierGaps, supplierPerfAttention] = await Promise.all([
@@ -138,10 +144,7 @@ export async function getDashboardData(ctx: TenantContext, now = new Date()): Pr
       href: item.href,
     }));
 
-    return {
-      brand: tenant.name,
-      disclaimer: tenant.status === "DEMO" ? "Demo workspace data" : "Workspace data",
-      metrics: [
+    const metrics: DashboardMetric[] = [
         {
           id: "revenue",
           label: "Revenue",
@@ -187,17 +190,9 @@ export async function getDashboardData(ctx: TenantContext, now = new Date()): Pr
           period: "vs previous 30 days",
           icon: "demand",
         },
-      ],
-      sales: {
-        "7D": toSalesPoints(analytics.series["7D"]),
-        "30D": toSalesPoints(analytics.series["30D"]),
-        "90D": toSalesPoints(analytics.series["90D"]),
-        "12M": toSalesPoints(analytics.series["12M"]),
-      },
-      intelligence,
-      products: products.map(productRow),
-      regions: regions.map((row) => regionRow(row, maxRegion)),
-      attention: [
+      ];
+
+    const attention: AttentionItem[] = [
         ...analytics.attention,
         ...(inventory && inventory.expiredQty > 0
           ? [
@@ -286,7 +281,31 @@ export async function getDashboardData(ctx: TenantContext, now = new Date()): Pr
           actionLabel: "Open forecast",
           href: "/forecast",
         },
-      ],
+      ];
+
+    const dayBrief = buildDashboardDayBrief({
+      userName: options?.userName,
+      brand: tenant.name,
+      metrics,
+      attention,
+      now,
+    });
+
+    return {
+      brand: tenant.name,
+      disclaimer: tenant.status === "DEMO" ? "Demo workspace data" : "Workspace data",
+      dayBrief,
+      metrics,
+      sales: {
+        "7D": toSalesPoints(analytics.series["7D"]),
+        "30D": toSalesPoints(analytics.series["30D"]),
+        "90D": toSalesPoints(analytics.series["90D"]),
+        "12M": toSalesPoints(analytics.series["12M"]),
+      },
+      intelligence,
+      products: products.map(productRow),
+      regions: regions.map((row) => regionRow(row, maxRegion)),
+      attention,
       opportunities,
       activity: analytics.activities.map((item) => ({
         id: item.id,

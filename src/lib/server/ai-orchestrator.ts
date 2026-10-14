@@ -1,6 +1,7 @@
 import { detectIntent } from "@/lib/ai/detect-intent";
 import { demoAIProvider } from "@/lib/ai/mock-adapter";
 import { openaiAIProvider } from "@/lib/ai/openai-provider";
+import { resolveAIProviderId } from "@/lib/ai/resolve-provider";
 import type { ConversationTurn } from "@/lib/ai/provider";
 import type { StructuredAIResponse } from "@/lib/ai/response";
 import { actionsForIntent, fallbackStructuredResponse } from "@/lib/ai/validate-response";
@@ -18,8 +19,7 @@ const MEDICAL_SUMMARY =
   "Pharmaflow analyzes business and operational data rather than providing medical advice. Ask about sales, products, customers, RFQs, or regional performance.";
 
 export function getAIProvider() {
-  if (process.env.AI_PROVIDER === "mock") return demoAIProvider;
-  return openaiAIProvider;
+  return resolveAIProviderId() === "mock" ? demoAIProvider : openaiAIProvider;
 }
 
 export async function runProductionOrchestrator(input: {

@@ -18,7 +18,7 @@ export default async function GovernancePage() {
     data = await getGovernanceSnapshot(ctx);
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
-    if (error instanceof ServerError && error.code === "FORBIDDEN") redirect("/dashboard");
+    if (error instanceof ServerError && error.code === "FORBIDDEN") redirect("/daily-review");
     return (
       <WorkspacePage>
         <PageHeader

@@ -7,11 +7,14 @@ import { Loader2 } from "lucide-react";
 
 import { AttentionItem, AttentionList } from "@/components/ds/attention-item";
 import { EmptyState } from "@/components/ds/empty-state";
+import { ClusteredColumnChart } from "@/components/charts/ClusteredColumnChart";
+import { ColumnChart } from "@/components/charts/ColumnChart";
 import { FunnelChart } from "@/components/charts/FunnelChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
 import { LineComboChart } from "@/components/charts/LineComboChart";
 import { StackedPercentBar } from "@/components/charts/StackedPercentBar";
-import { GroupedBarChart } from "@/components/charts/GroupedBarChart";
+import { utilizationTone } from "@/lib/charts/tokens";
+import type { ChartTone } from "@/lib/charts/types";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { IntelligenceSurface } from "@/components/intelligence/IntelligenceSurface";
@@ -27,6 +30,8 @@ import type { StructuredAIResponse } from "@/lib/ai/response";
 import { REPORT_PRIMARY_VIEWS, REPORT_VIEWS, type InboundReceiptRow, type ProductionOrderRow, type ReportLot, type ReportingSnapshot, type ReportViewId } from "@/lib/reports/types";
 import { downloadReportsExcel } from "@/lib/reports/export";
 import { metricCatalogByDomain } from "@/lib/reports/metric-catalog";
+import { ReportingWorkspaceSimple } from "@/components/reports/ReportingWorkspaceSimple";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import type { StatusTone } from "@/types/status";
 
@@ -103,6 +108,12 @@ function lotRisk(lot: ReportLot): string {
 }
 
 export function ReportingWorkspace({ data }: { data: ReportingSnapshot }) {
+  const { simple } = useLayoutMode();
+  if (simple) return <ReportingWorkspaceSimple data={data} />;
+  return <ReportingWorkspaceFull data={data} />;
+}
+
+function ReportingWorkspaceFull({ data }: { data: ReportingSnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -234,6 +245,7 @@ export function ReportingWorkspace({ data }: { data: ReportingSnapshot }) {
           <label className="flex min-w-0 items-center gap-2 text-xs font-medium lg:hidden">
             <span className="text-muted-foreground">Report</span>
             <select
+              suppressHydrationWarning
               className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-sm"
               value={data.view}
               onChange={(event) => router.push(href({ view: event.target.value, bucket: undefined }))}
@@ -254,6 +266,7 @@ export function ReportingWorkspace({ data }: { data: ReportingSnapshot }) {
             <label className="flex min-w-0 items-center gap-1 text-xs font-medium">
               <span className="sr-only">More reports</span>
               <select
+                suppressHydrationWarning
                 className="h-11 min-w-0 rounded-lg border border-input bg-transparent px-2 text-sm md:h-8"
                 value={LEGACY_VIEWS.includes(data.view) ? data.view : ""}
                 onChange={(event) => {
@@ -658,9 +671,9 @@ function ExecutiveReport({ data, href }: { data: ReportingSnapshot; href: (patch
         emptyMessage="Not enough realized-order history to draw a trend."
       />
       <div className="grid min-w-0 gap-3 xl:grid-cols-2">
-        <HorizontalBarChart
+        <ColumnChart
           title="Revenue by Product"
-          description="Top products by unit volume with revenue context."
+          description="Top products by unit volume (column chart)."
           rows={data.sales.products.map((row) => ({
             id: row.id,
             label: row.name,
@@ -670,8 +683,9 @@ function ExecutiveReport({ data, href }: { data: ReportingSnapshot; href: (patch
             tone: "primary",
           }))}
         />
-        <HorizontalBarChart
+        <ColumnChart
           title="Revenue by Region"
+          description="Order volume by region."
           rows={data.sales.regions.map((row) => ({
             id: row.id,
             label: row.country,
@@ -681,22 +695,23 @@ function ExecutiveReport({ data, href }: { data: ReportingSnapshot; href: (patch
             tone: "intel",
           }))}
         />
-        <GroupedBarChart
+        <ClusteredColumnChart
           title="Production: Planned vs Actual"
           description="Open pipeline vs completed order quantity."
           rows={data.production.plannedVsActual}
           note="Produced quantity reflects completed production orders only."
           emptyMessage="No production orders in scope."
         />
-        <HorizontalBarChart
+        <ColumnChart
           title="Workstation Capacity"
+          description="Finite-capacity utilization (%)."
           rows={data.production.lines.map((row) => ({
             id: row.id,
             label: row.name,
             value: row.utilization,
             hint: `${row.orders} orders`,
             href: href({ view: "operations", workstation: row.id }),
-            tone: row.utilization >= 95 ? "danger" : row.utilization >= 85 ? "material" : "neutral",
+            tone: utilizationTone(row.utilization),
           }))}
           valueSuffix="%"
         />
@@ -785,7 +800,7 @@ function SalesReport({ data }: { data: ReportingSnapshot }) {
         dominant
       />
       <div className="grid min-w-0 gap-3 xl:grid-cols-2">
-        <HorizontalBarChart
+        <ColumnChart
           title="Revenue by Region"
           rows={data.sales.regions.map((row) => ({
             id: row.id,
@@ -796,7 +811,7 @@ function SalesReport({ data }: { data: ReportingSnapshot }) {
             tone: "intel",
           }))}
         />
-        <HorizontalBarChart
+        <ColumnChart
           title="Revenue by Product"
           rows={data.sales.products.map((row) => ({
             id: row.id,
@@ -946,12 +961,32 @@ function ProcurementReport({ data }: { data: ReportingSnapshot }) {
           { id: "open", label: "Outstanding qty", value: String(p.receivingOutstandingQty), hint: "Open PO exposure unreceived", risk: p.receivingOutstandingQty > 0 ? "HIGH" : "HEALTHY", href: "/receiving", available: true },
         ]}
       />
-      <BarPanel
+      <ColumnChart
         title="Procurement lifecycle (actual counts)"
-        rows={data.procurementPipeline.map((row) => ({ id: row.id, label: row.label, value: row.count, hint: "" }))}
-        hrefFor={(id) => data.procurementPipeline.find((row) => row.id === id)?.href ?? "/procurement"}
+        description="Stage counts as vertical columns."
+        rows={data.procurementPipeline.map((row, index) => ({
+          id: row.id,
+          label: row.label,
+          value: row.count,
+          href: row.href,
+          tone: index === 0 ? "primary" : index === 1 ? "intel" : index === 2 ? "material" : "neutral",
+        }))}
       />
-      <FunnelChart title="Procurement Pipeline" stages={data.procurementPipeline} />
+      <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+        <FunnelChart title="Procurement Pipeline (bar view)" stages={data.procurementPipeline} />
+        <HorizontalBarChart
+          title="Procurement Pipeline (ranked)"
+          description="Same counts with end labels."
+          rows={data.procurementPipeline.map((row, index) => ({
+            id: row.id,
+            label: row.label,
+            value: row.count,
+            href: row.href,
+            tone: index % 2 === 0 ? "primary" : "intel",
+          }))}
+          showValues
+        />
+      </div>
       <p className="text-xs text-muted-foreground">Counts are independent snapshots. A later stage does not imply a record moved from an earlier stage.</p>
       <SimpleTable
         title="Pipeline detail"
@@ -981,7 +1016,7 @@ function SuppliersReport({ data }: { data: ReportingSnapshot }) {
         ]}
         notes={data.metricNotes}
       />
-      <HorizontalBarChart
+      <ColumnChart
         title="Supplier Performance Score"
         description="Phase 25 deterministic score bands."
         rows={data.supplierBands.map((row) => ({
@@ -1091,6 +1126,7 @@ function FilterSelect({
     <label className="flex min-w-0 items-center gap-2 text-xs font-medium">
       <span className="shrink-0 text-muted-foreground">{label}</span>
       <select
+        suppressHydrationWarning
         className="h-11 min-w-0 flex-1 rounded-lg border border-input bg-transparent px-2.5 text-sm md:h-8 md:max-w-52"
         value={value}
         onChange={(event) => onChange(event.target.value || undefined)}
@@ -1131,20 +1167,17 @@ function KpiStrip({ kpis, notes }: { kpis: ReportingSnapshot["kpis"]; notes?: Re
 
 function HistoryPanel({ data }: { data: ReportingSnapshot }) {
   if (data.history.length < 2) return null;
-  const max = Math.max(1, ...data.history.map((row) => row.quantity));
   return (
-    <section className="work-surface p-4">
-      <h2 className="text-sm font-semibold tracking-tight">Inventory quantity by week</h2>
-      <p className="mt-1 text-xs text-muted-foreground">{data.historyNote}</p>
-      <ul className="mt-3 flex h-28 items-end gap-1">
-        {data.history.map((row) => (
-          <li key={row.date} className="flex min-w-0 flex-1 flex-col items-center justify-end gap-1">
-            <div className="w-full rounded-sm bg-primary" style={{ height: `${Math.max(6, (row.quantity / max) * 100)}%` }} title={`${row.label}: ${formatQty(row.quantity)}`} />
-            <span className="truncate text-[10px] text-muted-foreground">{row.label}</span>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <ColumnChart
+      title="Inventory quantity by week"
+      description={data.historyNote}
+      rows={data.history.map((row) => ({
+        id: row.date,
+        label: row.label,
+        value: row.quantity,
+        tone: "primary",
+      }))}
+    />
   );
 }
 
@@ -1451,7 +1484,7 @@ function ProductionReport({
           rows={data.production.statuses.map((row) => ({ id: row.id, label: row.label, value: row.count, hint: "" }))}
           hrefFor={(id) => href({ status: id })}
         />
-        <HorizontalBarChart
+        <ColumnChart
           title="Workstation Capacity"
           description="Utilization from the operations planner window."
           rows={data.production.lines.map((row) => ({
@@ -1460,11 +1493,11 @@ function ProductionReport({
             value: row.utilization,
             hint: `${row.orders} orders`,
             href: href({ workstation: row.id }),
-            tone: row.utilization >= 95 ? "danger" : row.utilization >= 85 ? "material" : "neutral",
+            tone: utilizationTone(row.utilization),
           }))}
           valueSuffix="%"
         />
-        <GroupedBarChart
+        <ClusteredColumnChart
           title="Production: Planned vs Actual"
           rows={data.production.plannedVsActual}
           note="Produced quantity reflects completed production orders only."
@@ -1762,6 +1795,7 @@ function LotTable({
           <label className="flex items-center gap-1.5">
             <span>Rows</span>
             <select
+              suppressHydrationWarning
               className="h-11 rounded-lg border border-input bg-transparent px-2 text-sm md:h-8"
               value={pageSize}
               aria-label="Rows per page"
@@ -1803,23 +1837,19 @@ function BarPanel({
   embedded?: boolean;
   hrefFor?: (id: string) => string;
 }) {
+  const palette: ChartTone[] = ["primary", "intel", "material"];
+  const chartRows = rows.map((row, index) => ({
+    ...row,
+    href: hrefFor?.(row.id),
+    tone: palette[index % palette.length],
+  }));
+
   if (embedded) {
     if (rows.length === 0) return <div className="mt-3 text-sm text-muted-foreground">No data in this view.</div>;
-    return (
-      <HorizontalBarChart
-        title=""
-        rows={rows.map((row) => ({ ...row, href: hrefFor?.(row.id) }))}
-        embedded
-      />
-    );
+    return <ColumnChart title="" rows={chartRows} embedded />;
   }
 
-  return (
-    <HorizontalBarChart
-      title={title}
-      rows={rows.map((row) => ({ ...row, href: hrefFor?.(row.id) }))}
-    />
-  );
+  return <ColumnChart title={title} description="Category breakdown with Y-axis grid and data labels." rows={chartRows} />;
 }
 
 function RankList({ items, onOpen }: { items: ReportingSnapshot["topExpiry"]; onOpen: (id: string) => void }) {

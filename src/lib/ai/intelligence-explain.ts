@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+import { resolveAIProviderId } from "@/lib/ai/resolve-provider";
 import { fallbackExplanation } from "@/lib/intelligence/priorities";
 import type { CompactIntelligenceContext, IntelligenceExplanation, IntelligenceSnapshot } from "@/lib/intelligence/types";
 import { sanitizeIntelligenceContext } from "@/lib/server/intelligence";
@@ -60,7 +61,7 @@ export async function explainOperationalIntelligence(input: {
   context: CompactIntelligenceContext;
 }): Promise<IntelligenceExplanation> {
   const fallback = fallbackExplanation(input.snapshot.priorities, input.context.question);
-  if (process.env.AI_PROVIDER === "mock" || !process.env.OPENAI_API_KEY) {
+  if (resolveAIProviderId() === "mock" || !process.env.OPENAI_API_KEY) {
     return fallback;
   }
 

@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Filter, Loader2, ShieldAlert } from "lucide-react";
+import { ExecutionReviewPanel } from "@/components/execution/ExecutionReviewPanel";
+import { useLayoutMode, usePreferences } from "@/components/providers/preferences-provider";
+import { Filter } from "lucide-react";
 
 import { EmptyState } from "@/components/ds/empty-state";
 import { StatusBadge } from "@/components/ds/status-badge";
@@ -122,99 +124,13 @@ function FiltersForm({
   );
 }
 
-function ReviewPanel({
-  item,
-  busy,
-  error,
-  onApprove,
-  onReject,
-}: {
-  item: ExecutionItem;
-  busy: boolean;
-  error: string | null;
-  onApprove: () => void;
-  onReject: () => void;
-}) {
-  return (
-    <div className="space-y-5">
-      <div className="flex flex-wrap items-center gap-2">
-        <StatusBadge tone={statusTone[item.priority] ?? "neutral"}>{item.priority}</StatusBadge>
-        <StatusBadge tone={statusTone[item.status] ?? "neutral"}>{item.status.replaceAll("_", " ")}</StatusBadge>
-        <span className="text-[11px] tracking-wide text-muted-foreground uppercase">{item.domain}</span>
-      </div>
-
-      <div>
-        <h3 className="text-base font-semibold tracking-tight">{item.title}</h3>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {item.kind} · {item.createdByName} ·{" "}
-          {new Date(item.createdAt).toLocaleString("en-GB", { timeZone: "UTC" })} UTC
-        </p>
-      </div>
-
-      <section>
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Why</p>
-        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{item.reason}</p>
-        <p className="mt-2 text-xs text-muted-foreground">Source status: {item.sourceStatus.replaceAll("_", " ")}</p>
-      </section>
-
-      <section>
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">What Pharmaflow prepared</p>
-        <p className="mt-1 text-sm leading-relaxed">{item.preparedSummary}</p>
-        {item.steps && item.steps.length > 0 ? (
-          <ul className="mt-2 list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
-            {item.steps.map((step) => (
-              <li key={step}>{step}</li>
-            ))}
-          </ul>
-        ) : null}
-      </section>
-
-      <section>
-        <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Impact</p>
-        <p className="mt-1 text-sm text-muted-foreground">{item.impactSummary}</p>
-      </section>
-
-      <section className="rounded-lg border border-border/70 bg-muted/30 px-3 py-3">
-        <div className="flex gap-2">
-          <ShieldAlert className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <div>
-            <p className="text-[11px] font-medium tracking-wide text-muted-foreground uppercase">Safety</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{item.safetyNote}</p>
-          </div>
-        </div>
-      </section>
-
-      <div className="flex flex-wrap gap-2">
-        {item.canDecide && item.executable ? (
-          <>
-            <Button type="button" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onApprove}>
-              {busy ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : null}
-              {item.kind === "REQUISITION" ? "Mark reviewed" : item.sourceStatus === "FAILED" ? "Retry" : "Approve & execute"}
-            </Button>
-            {item.status === "NEEDS_REVIEW" ? (
-              <Button type="button" variant="outline" className="min-h-11 sm:min-h-8" disabled={busy} onClick={onReject}>
-                Reject
-              </Button>
-            ) : null}
-          </>
-        ) : null}
-        <Button asChild type="button" variant="outline" className="min-h-11 sm:min-h-8">
-          <Link href={item.sourceHref}>Open source record</Link>
-        </Button>
-        <Button asChild type="button" variant="ghost" className="min-h-11 sm:min-h-8">
-          <Link href="/ai?q=What%20needs%20my%20attention%20today%3F">Explain in AI</Link>
-        </Button>
-      </div>
-      {error ? <p className="text-xs text-danger">{error}</p> : null}
-    </div>
-  );
-}
-
 export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const compact = useCompactLayout();
+  const { simple } = useLayoutMode();
+  const { setLayoutMode } = usePreferences();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [selected, setSelected] = useState<ExecutionItem | null>(null);
   const [busy, setBusy] = useState(false);
@@ -293,14 +209,23 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
     <div className="flex min-w-0 flex-col gap-5">
       <div className="flex flex-wrap items-center justify-between gap-3 work-surface px-4 py-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Production execution</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Shop-floor release → start → pause/resume → complete lives on the production execution board.
-          </p>
+          <p className="text-sm font-medium">{simple ? "Approvals queue" : "Production execution"}</p>
+          {!simple ? (
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Shop-floor release → start → pause/resume → complete lives on the production execution board.
+            </p>
+          ) : null}
         </div>
-        <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
-          <Link href="/execution/production">Open production execution</Link>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+            <Link href="/execution/production">Shop floor</Link>
+          </Button>
+          {simple ? (
+            <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setLayoutMode("advanced")}>
+              Filters & history
+            </Button>
+          ) : null}
+        </div>
       </div>
       <section className="-mx-1 flex gap-0 overflow-x-auto border-y border-border px-1 [scrollbar-width:thin]">
         {[
@@ -316,30 +241,52 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
         ))}
       </section>
 
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground">{data.disclaimer}</p>
-        <Button type="button" variant="outline" size="sm" className="min-h-11 lg:hidden" onClick={() => setFiltersOpen(true)}>
-          <Filter data-icon="inline-start" />
-          Filters
-        </Button>
-      </div>
-
-      <div className="hidden lg:block">{filterControls}</div>
+      {simple ? (
+        <nav aria-label="Queue filters" className="flex flex-wrap gap-1">
+          {(["needs-review", "all"] as const).map((id) => (
+            <Button
+              key={id}
+              type="button"
+              size="sm"
+              variant={filters.view === id ? "secondary" : "ghost"}
+              className="min-h-11 sm:min-h-8"
+              onClick={() => navigate({ view: id === "all" ? undefined : id })}
+            >
+              {FILTER_LABEL[id]}
+            </Button>
+          ))}
+        </nav>
+      ) : (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">{data.disclaimer}</p>
+            <Button type="button" variant="outline" size="sm" className="min-h-11 lg:hidden" onClick={() => setFiltersOpen(true)}>
+              <Filter data-icon="inline-start" />
+              Filters
+            </Button>
+          </div>
+          <div className="hidden lg:block">{filterControls}</div>
+        </>
+      )}
 
       <section className="min-w-0 work-surface">
         <div className="border-b border-border/70 px-4 py-3 sm:px-5">
-          <h2 className="text-sm font-semibold tracking-tight">Priority queue</h2>
+          <h2 className="text-sm font-semibold tracking-tight">{simple ? "Needs your decision" : "Priority queue"}</h2>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            {queue.length === 0 ? "No actions need your attention." : `${queue.length} item${queue.length === 1 ? "" : "s"} in queue`}
+            {queue.length === 0 ? "Nothing waiting on you." : `${queue.length} item${queue.length === 1 ? "" : "s"}`}
             {pending ? " · Refreshing…" : ""}
           </p>
         </div>
         {queue.length === 0 ? (
-          <EmptyState
-            className="border-0 bg-transparent px-4 py-10"
-            title="No actions need your attention."
-            description="When Pharmaflow prepares an action, workflow, or requisition, it will appear here for review."
-          />
+          simple ? (
+            <p className="px-4 py-8 text-sm text-muted-foreground">You’re clear for now. New items appear here when Pharmaflow prepares an action or requisition.</p>
+          ) : (
+            <EmptyState
+              className="border-0 bg-transparent px-4 py-10"
+              title="No actions need your attention."
+              description="When Pharmaflow prepares an action, workflow, or requisition, it will appear here for review."
+            />
+          )
         ) : (
           <ul className="divide-y divide-border/60">
             {queue.map((item) => (
@@ -351,13 +298,19 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
                     <span className="text-[11px] tracking-wide text-muted-foreground uppercase">{item.domain}</span>
                   </div>
                   <p className="mt-1.5 text-sm font-medium tracking-tight">{item.title}</p>
-                  <p className="mt-1 text-sm text-muted-foreground">{item.reason}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {item.targetLabel} · {item.recommendedAction}
-                  </p>
-                  <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
-                    {new Date(item.createdAt).toLocaleString("en-GB", { timeZone: "UTC" })} UTC
-                  </p>
+                  {!simple ? (
+                    <>
+                      <p className="mt-1 text-sm text-muted-foreground">{item.reason}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {item.targetLabel} · {item.recommendedAction}
+                      </p>
+                      <p className="mt-1 text-[11px] tabular-nums text-muted-foreground">
+                        {new Date(item.createdAt).toLocaleString("en-GB", { timeZone: "UTC" })} UTC
+                      </p>
+                    </>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">{item.recommendedAction}</p>
+                  )}
                 </div>
                 <Button type="button" size="sm" variant="outline" className="min-h-11 shrink-0 sm:min-h-8" onClick={() => { setSelected(item); setError(null); }}>
                   Review
@@ -368,39 +321,41 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
         )}
       </section>
 
-      <section className="min-w-0 work-surface">
-        <div className="border-b border-border/70 px-4 py-3 sm:px-5">
-          <h2 className="text-sm font-semibold tracking-tight">Execution history</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">Recently executed, rejected, or completed items.</p>
-        </div>
-        {history.length === 0 ? (
-          <EmptyState
-            className="border-0 bg-transparent px-4 py-8"
-            title="No approved actions are waiting to execute."
-            description="Completed and rejected items from Actions, Workflows, and Procurement appear here."
-          />
-        ) : (
-          <ul className="divide-y divide-border/60">
-            {history.slice(0, 20).map((item) => (
-              <li key={item.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusBadge tone={statusTone[item.status] ?? "neutral"}>{item.status.replaceAll("_", " ")}</StatusBadge>
-                    <span className="text-[11px] text-muted-foreground uppercase">{item.kind}</span>
+      {!simple ? (
+        <section className="min-w-0 work-surface">
+          <div className="border-b border-border/70 px-4 py-3 sm:px-5">
+            <h2 className="text-sm font-semibold tracking-tight">Execution history</h2>
+            <p className="mt-0.5 text-xs text-muted-foreground">Recently executed, rejected, or completed items.</p>
+          </div>
+          {history.length === 0 ? (
+            <EmptyState
+              className="border-0 bg-transparent px-4 py-8"
+              title="No approved actions are waiting to execute."
+              description="Completed and rejected items from Actions, Workflows, and Procurement appear here."
+            />
+          ) : (
+            <ul className="divide-y divide-border/60">
+              {history.slice(0, 20).map((item) => (
+                <li key={item.id} className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusBadge tone={statusTone[item.status] ?? "neutral"}>{item.status.replaceAll("_", " ")}</StatusBadge>
+                      <span className="text-[11px] text-muted-foreground uppercase">{item.kind}</span>
+                    </div>
+                    <p className="mt-1 text-sm font-medium">{item.title}</p>
+                    <p className="text-xs text-muted-foreground">{item.targetLabel}</p>
                   </div>
-                  <p className="mt-1 text-sm font-medium">{item.title}</p>
-                  <p className="text-xs text-muted-foreground">{item.targetLabel}</p>
-                </div>
-                <Button type="button" size="sm" variant="ghost" className="min-h-9 shrink-0" onClick={() => { setSelected(item); setError(null); }}>
-                  Details
-                </Button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+                  <Button type="button" size="sm" variant="ghost" className="min-h-9 shrink-0" onClick={() => { setSelected(item); setError(null); }}>
+                    Details
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      ) : null}
 
-      <p className="text-[11px] text-muted-foreground">{data.planningNote}</p>
+      {!simple ? <p className="text-[11px] text-muted-foreground">{data.planningNote}</p> : null}
 
       <Sheet open={filtersOpen} onOpenChange={setFiltersOpen}>
         <SheetContent side="bottom" className="max-h-[85vh] overflow-y-auto sm:max-w-none lg:hidden">
@@ -417,13 +372,20 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
           side={compact ? "bottom" : "right"}
           className={compact ? "max-h-[90vh] overflow-y-auto sm:max-w-none" : "w-full overflow-y-auto sm:max-w-md"}
         >
-          <SheetHeader>
-            <SheetTitle>Review</SheetTitle>
-            <SheetDescription>Signal → recommendation → approval → execution.</SheetDescription>
-          </SheetHeader>
+          {!simple ? (
+            <SheetHeader>
+              <SheetTitle>Review</SheetTitle>
+              <SheetDescription>Signal → recommendation → approval → execution.</SheetDescription>
+            </SheetHeader>
+          ) : (
+            <SheetHeader>
+              <SheetTitle>Review</SheetTitle>
+            </SheetHeader>
+          )}
           <div className="mt-4 px-1 pb-8">
             {selected ? (
-              <ReviewPanel
+              <ExecutionReviewPanel
+                compact={simple}
                 item={selected}
                 busy={busy}
                 error={error}

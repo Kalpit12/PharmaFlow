@@ -11,7 +11,7 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     user = await getAuthenticatedUser();
   } catch (error) {
     if (error instanceof ServerError && (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN")) {
-      redirect("/login?callbackUrl=%2Fdashboard");
+      redirect("/login?callbackUrl=%2Fdaily-review");
     }
     throw error;
   }

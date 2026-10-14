@@ -4,6 +4,7 @@ import { buildWorkCalendar, type WorkCalendar } from "@/lib/operations/calendar"
 import { buildOrderMaterialConstraints } from "@/lib/operations/material-constraints";
 import {
   buildProposedOrderChanges,
+  rollupOrderFromOperations,
   summarizeProposal,
   type ProposalSummary,
 } from "@/lib/operations/proposal";
@@ -14,12 +15,18 @@ import {
   type RoutableOperation,
   type RoutingOrder,
 } from "@/lib/operations/routing";
+import { buildOptimizedOperationSchedule } from "@/lib/operations/schedule-optimizer";
+import { syncAllActiveConnectors } from "@/lib/server/integrations/connector-service";
 import { requirePermission } from "@/lib/auth/authorization";
 import { writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { ServerError } from "@/lib/server/errors";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
+import {
+  findAcceptedPlanByIdempotencyKey,
+  writePlanningEvent,
+} from "@/lib/server/planning-events";
 
 export type PlanningPolicyView = {
   priorityWeight: number;
@@ -29,6 +36,7 @@ export type PlanningPolicyView = {
   freezeMinutes: number;
   freezeUntil: string;
   autopilotMode: AutopilotMode;
+  useGlobalOptimizer: boolean;
 };
 
 export type ScheduleProposalView = {
@@ -90,6 +98,7 @@ function toPolicyView(policy: {
   utilizationWeight: number;
   freezeMinutes: number;
   autopilotMode: AutopilotMode;
+  useGlobalOptimizer: boolean;
 }): PlanningPolicyView {
   return {
     priorityWeight: policy.priorityWeight,
@@ -99,6 +108,7 @@ function toPolicyView(policy: {
     freezeMinutes: policy.freezeMinutes,
     freezeUntil: freezeUntilFromPolicy(policy.freezeMinutes).toISOString(),
     autopilotMode: policy.autopilotMode,
+    useGlobalOptimizer: policy.useGlobalOptimizer,
   };
 }
 
@@ -129,6 +139,7 @@ export async function updatePlanningPolicy(
       utilizationWeight: input.utilizationWeight ?? current.utilizationWeight,
       freezeMinutes: input.freezeMinutes ?? current.freezeMinutes,
       autopilotMode: input.autopilotMode ?? current.autopilotMode,
+      useGlobalOptimizer: input.useGlobalOptimizer ?? current.useGlobalOptimizer,
     },
   });
   await writeAuditLog(ctx, {
@@ -376,6 +387,7 @@ export async function proposeRescheduleAll(
               workstationId: resource.workstationId,
               efficiencyPercent: resource.efficiencyPercent,
               preferred: resource.preferred,
+              resourceRole: resource.resourceRole,
             })) ??
             (operation.workstationId
               ? [{ workstationId: operation.workstationId, efficiencyPercent: 100, preferred: true }]
@@ -402,7 +414,7 @@ export async function proposeRescheduleAll(
     });
   });
 
-  const scheduled = buildOperationSchedule({
+  const scheduleInput = {
     orders: routingOrders,
     dependencies,
     workstations: workstationRows.map((row) => ({
@@ -415,7 +427,12 @@ export async function proposeRescheduleAll(
     windowStart,
     freezeUntil,
     weights,
-  });
+  };
+  const policyRow = await prisma.planningPolicy.findUnique({ where: { tenantId: ctx.tenantId } });
+  const scheduled =
+    policyRow?.useGlobalOptimizer !== false
+      ? buildOptimizedOperationSchedule(scheduleInput)
+      : buildOperationSchedule(scheduleInput);
 
   const changes = buildProposedOrderChanges({
     orders: refreshedOrders.map((order) => ({
@@ -433,18 +450,17 @@ export async function proposeRescheduleAll(
   });
   const summary = summarizeProposal({ orders: changes, operations: scheduled.operations, freezeUntil });
   const source = policy.autopilotMode === "OFF" ? "AUTO_SCHEDULE" : "AUTOPILOT";
-  const latest = await prisma.schedulePlan.findFirst({
-    where: { tenantId: ctx.tenantId },
-    orderBy: { version: "desc" },
-    select: { version: true },
-  });
-  const version = (latest?.version ?? 0) + 1;
-
   const created = await prisma.$transaction(async (tx) => {
     await tx.schedulePlan.updateMany({
       where: { tenantId: ctx.tenantId, status: { in: ["DRAFT", "PROPOSED"] } },
       data: { status: "SUPERSEDED" },
     });
+    const latest = await tx.schedulePlan.findFirst({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+    const version = (latest?.version ?? 0) + 1;
     return tx.schedulePlan.create({
       data: {
         tenantId: ctx.tenantId,
@@ -489,7 +505,7 @@ export async function proposeRescheduleAll(
       },
       select: { id: true },
     });
-  });
+  }, { maxWait: 20_000, timeout: 120_000 });
 
   await writeAuditLog(ctx, {
     action: "SCHEDULE_PLAN_PROPOSED",
@@ -497,9 +513,20 @@ export async function proposeRescheduleAll(
     entityId: created.id,
     newValue: summary.text,
   });
+  await writePlanningEvent(ctx, {
+    eventType: "PROPOSED",
+    schedulePlanId: created.id,
+    summary: summary.text,
+  });
 
   if (policy.autopilotMode === "AUTO_ACCEPT_UNLOCKED") {
-    return acceptSchedulePlan(ctx, created.id);
+    const accepted = await acceptSchedulePlan(ctx, created.id);
+    await writePlanningEvent(ctx, {
+      eventType: "AUTO_ACCEPTED",
+      schedulePlanId: created.id,
+      summary: `Autopilot accepted plan v${accepted.version}.`,
+    });
+    return accepted;
   }
 
   const view = await mapProposal(created.id, ctx.tenantId);
@@ -507,7 +534,11 @@ export async function proposeRescheduleAll(
   return view;
 }
 
-export async function acceptSchedulePlan(ctx: TenantContext, planId: string): Promise<ScheduleProposalView> {
+export async function acceptSchedulePlan(
+  ctx: TenantContext,
+  planId: string,
+  options?: { idempotencyKey?: string }
+): Promise<ScheduleProposalView> {
   requirePermission(ctx, "production.schedule");
   const prisma = getPrisma();
   const plan = await prisma.schedulePlan.findFirst({
@@ -515,20 +546,31 @@ export async function acceptSchedulePlan(ctx: TenantContext, planId: string): Pr
     include: { orders: true, operations: true },
   });
   if (!plan) throw new ServerError("Schedule plan not found.", "NOT_FOUND");
+  if (plan.status === "ACCEPTED") {
+    const view = await mapProposal(plan.id, ctx.tenantId);
+    if (!view) throw new ServerError("Accepted plan could not be loaded.", "INTERNAL");
+    return view;
+  }
+  const priorAccept = await findAcceptedPlanByIdempotencyKey(ctx, planId, options?.idempotencyKey);
+  if (priorAccept) {
+    const view = await mapProposal(priorAccept, ctx.tenantId);
+    if (view) return view;
+  }
   if (plan.status !== "PROPOSED" && plan.status !== "DRAFT") {
     throw new ServerError("Only a proposed plan can be accepted.", "FORBIDDEN");
   }
 
   const orderRows = await prisma.productionOrder.findMany({
     where: { id: { in: plan.orders.map((row) => row.productionOrderId) } },
-    select: { id: true, status: true, dueDate: true },
+    select: { id: true, status: true, dueDate: true, isLocked: true },
   });
   const statusById = new Map(orderRows.map((row) => [row.id, row.status]));
   const dueById = new Map(orderRows.map((row) => [row.id, row.dueDate]));
+  const orderLockedById = new Map(orderRows.map((row) => [row.id, row.isLocked]));
 
-  await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(
+    async (tx) => {
     for (const operation of plan.operations) {
-      if (operation.isLocked) continue;
       const nextStatus = operation.proposedStart && operation.proposedEnd ? "SCHEDULED" : "UNSCHEDULED";
       await tx.productionOperation.update({
         where: { id: operation.productionOperationId },
@@ -541,7 +583,7 @@ export async function acceptSchedulePlan(ctx: TenantContext, planId: string): Pr
       });
     }
     for (const order of plan.orders) {
-      if (order.isLocked) continue;
+      if (orderLockedById.get(order.productionOrderId)) continue;
       const currentStatus = statusById.get(order.productionOrderId);
       if (!currentStatus || !MUTABLE_ORDER_STATUSES.includes(currentStatus as (typeof MUTABLE_ORDER_STATUSES)[number])) {
         continue;
@@ -575,7 +617,9 @@ export async function acceptSchedulePlan(ctx: TenantContext, planId: string): Pr
         acceptedById: ctx.userId,
       },
     });
-  });
+    },
+    { maxWait: 20_000, timeout: 120_000 }
+  );
 
   await writeAuditLog(ctx, {
     action: "SCHEDULE_PLAN_ACCEPTED",
@@ -583,10 +627,100 @@ export async function acceptSchedulePlan(ctx: TenantContext, planId: string): Pr
     entityId: plan.id,
     newValue: `VERSION: ${plan.version}`,
   });
+  const acceptKey = options?.idempotencyKey?.trim()
+    ? `accept:${planId}:${options.idempotencyKey.trim()}`
+    : undefined;
+  await writePlanningEvent(ctx, {
+    eventType: "ACCEPTED",
+    schedulePlanId: plan.id,
+    summary: `Accepted plan v${plan.version}.`,
+    idempotencyKey: acceptKey,
+  });
 
   const view = await mapProposal(plan.id, ctx.tenantId);
   if (!view) throw new ServerError("Accepted plan could not be loaded.", "INTERNAL");
+  void syncAllActiveConnectors(ctx).catch(() => undefined);
   return view;
+}
+
+export async function proposeGanttOrderMove(
+  ctx: TenantContext,
+  input: { orderId: string; workstationId: string; proposedStart: string }
+): Promise<ScheduleProposalView> {
+  requirePermission(ctx, "production.schedule");
+  const proposedStart = new Date(input.proposedStart);
+  if (Number.isNaN(proposedStart.getTime())) {
+    throw new ServerError("Proposed start is not a valid date.", "INTERNAL");
+  }
+  const prisma = getPrisma();
+  const order = await prisma.productionOrder.findFirst({
+    where: { id: input.orderId, tenantId: ctx.tenantId },
+    include: {
+      operations: { include: { routingOperation: { include: { resources: true } } }, orderBy: { sequence: "asc" } },
+    },
+  });
+  if (!order) throw new ServerError("Production order not found.", "NOT_FOUND");
+  if (order.isLocked) throw new ServerError("Locked orders cannot be moved from the Gantt.", "FORBIDDEN");
+
+  const first = order.operations[0];
+  if (!first) throw new ServerError("Order has no operations to move.", "INTERNAL");
+  const qualified = first.routingOperation?.resources.some((resource) => resource.workstationId === input.workstationId);
+  if (!qualified) throw new ServerError("Target workstation is not qualified for this order.", "FORBIDDEN");
+
+  const shiftMs = proposedStart.getTime() - (first.plannedStart?.getTime() ?? proposedStart.getTime());
+  await prisma.productionOperation.updateMany({
+    where: { productionOrderId: order.id, tenantId: ctx.tenantId },
+    data: { isLocked: false },
+  });
+  for (const operation of order.operations) {
+    const nextStart = operation.plannedStart ? new Date(operation.plannedStart.getTime() + shiftMs) : proposedStart;
+    const nextEnd = operation.plannedEnd
+      ? new Date(operation.plannedEnd.getTime() + shiftMs)
+      : new Date(nextStart.getTime() + operation.durationMinutes * 60_000);
+    await prisma.productionOperation.update({
+      where: { id: operation.id },
+      data: {
+        workstationId: operation.sequence === first.sequence ? input.workstationId : operation.workstationId,
+        plannedStart: nextStart,
+        plannedEnd: nextEnd,
+        isLocked: true,
+      },
+    });
+  }
+
+  const shiftedOps = await prisma.productionOperation.findMany({
+    where: { productionOrderId: order.id, tenantId: ctx.tenantId },
+    orderBy: { sequence: "asc" },
+  });
+  const rolled = rollupOrderFromOperations(
+    shiftedOps.map((operation) => ({
+      id: operation.id,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      sequence: operation.sequence,
+      durationMinutes: operation.durationMinutes,
+      setupMinutes: operation.setupMinutes,
+      teardownMinutes: operation.teardownMinutes,
+      changeoverFamily: operation.changeoverFamily,
+      resources: [],
+      locked: true,
+      workstationId: operation.workstationId,
+      plannedStart: operation.plannedStart,
+      plannedEnd: operation.plannedEnd,
+      changeoverMinutes: 0,
+      appliedChangeoverRuleId: null,
+    }))
+  );
+  await prisma.productionOrder.update({
+    where: { id: order.id },
+    data: {
+      workstationId: rolled.workstationId,
+      plannedStart: rolled.plannedStart,
+      plannedEnd: rolled.plannedEnd,
+    },
+  });
+
+  return proposeRescheduleAll(ctx, proposedStart.toISOString());
 }
 
 export async function rejectSchedulePlan(ctx: TenantContext, planId: string): Promise<ScheduleProposalView> {
@@ -603,6 +737,11 @@ export async function rejectSchedulePlan(ctx: TenantContext, planId: string): Pr
     entityType: "SCHEDULE_PLAN",
     entityId: plan.id,
     newValue: `VERSION: ${plan.version}`,
+  });
+  await writePlanningEvent(ctx, {
+    eventType: "REJECTED",
+    schedulePlanId: plan.id,
+    summary: `Rejected plan v${plan.version}.`,
   });
   const view = await mapProposal(plan.id, ctx.tenantId);
   if (!view) throw new ServerError("Rejected plan could not be loaded.", "INTERNAL");
@@ -674,6 +813,7 @@ export async function simulateDeliveryDate(
       workstationId: resource.workstationId,
       efficiencyPercent: resource.efficiencyPercent,
       preferred: resource.preferred,
+      resourceRole: resource.resourceRole,
     })),
     locked: false,
     workstationId: null,
@@ -702,6 +842,7 @@ export async function simulateDeliveryDate(
             workstationId: resource.workstationId,
             efficiencyPercent: resource.efficiencyPercent,
             preferred: resource.preferred,
+            resourceRole: resource.resourceRole,
           })) ?? [],
         locked: operationIsCommitted(operation, order.isLocked, freezeUntil),
         workstationId: operation.workstationId,
@@ -839,13 +980,29 @@ export async function importProductionOrders(
     quantity: number;
     dueDate: string;
     priority?: RoutingOrder["priority"];
-  }>
+  }>,
+  options?: { idempotencyKey?: string }
 ) {
   requirePermission(ctx, "production.schedule");
   if (!Array.isArray(orders) || orders.length === 0) {
     throw new ServerError("At least one production order is required.", "INTERNAL");
   }
   const prisma = getPrisma();
+  const idempotencyKey = options?.idempotencyKey?.trim();
+  if (idempotencyKey) {
+    const receipt = await prisma.integrationImportReceipt.findUnique({
+      where: {
+        tenantId_source_idempotencyKey: {
+          tenantId: ctx.tenantId,
+          source: "production-orders",
+          idempotencyKey,
+        },
+      },
+    });
+    if (receipt?.result) {
+      return receipt.result as { imported: number; orders: Array<{ orderNumber: string; sku: string }> };
+    }
+  }
   const created: Array<{ orderNumber: string; sku: string }> = [];
   for (const row of orders) {
     const product = await prisma.product.findFirst({
@@ -896,10 +1053,25 @@ export async function importProductionOrders(
     await instantiateOperationsForOrder(prisma, ctx.tenantId, order);
     created.push({ orderNumber, sku: row.sku });
   }
+  const payload = { imported: created.length, orders: created };
   await writeAuditLog(ctx, {
     action: "PRODUCTION_ORDERS_IMPORTED",
     entityType: "PRODUCTION_ORDER",
     newValue: `${created.length} orders`,
   });
-  return { imported: created.length, orders: created };
+  await writePlanningEvent(ctx, {
+    eventType: "IMPORTED",
+    summary: `Imported ${created.length} production order(s) via integration contract.`,
+  });
+  if (idempotencyKey) {
+    await prisma.integrationImportReceipt.create({
+      data: {
+        tenantId: ctx.tenantId,
+        source: "production-orders",
+        idempotencyKey,
+        result: payload,
+      },
+    });
+  }
+  return payload;
 }

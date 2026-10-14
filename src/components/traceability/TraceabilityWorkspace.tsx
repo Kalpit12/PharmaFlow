@@ -8,6 +8,10 @@ import { EmptyState } from "@/components/ds/empty-state";
 import { ProcessTrail } from "@/components/ds/process-trail";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { TracePath } from "@/components/traceability/TracePath";
+import { TraceabilityWorkspaceSimple } from "@/components/traceability/TraceabilityWorkspaceSimple";
+import { ENTITY_LABEL, coverageTone, scopeTone } from "@/components/traceability/traceability-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -18,84 +22,15 @@ import {
 } from "@/components/ui/sheet";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { confidenceLabel, coverageLabel, scopeLabel } from "@/lib/traceability/impact";
-import type {
-  TraceabilityCoverage,
-  TraceabilityEntityOption,
-  TraceabilityEntityType,
-  TraceabilityPathNode,
-  TraceabilitySnapshot,
-} from "@/lib/traceability/types";
-import type { StatusTone } from "@/types/status";
-
-const ENTITY_LABEL: Record<TraceabilityEntityType, string> = {
-  lot: "Material lot",
-  batch: "Production batch",
-  order: "Sales order",
-  customer: "Customer",
-};
-
-const coverageTone: Record<TraceabilityCoverage, StatusTone> = {
-  TRACEABLE: "intel",
-  PARTIAL: "material",
-  NOT_RECORDED: "warning",
-};
-
-
-function TracePath({ nodes, compact }: { nodes: TraceabilityPathNode[]; compact: boolean }) {
-  if (nodes.length === 0) return null;
-
-  if (compact) {
-    return (
-      <ol className="flex min-w-0 flex-col gap-3" aria-label="Traceability path">
-        {nodes.map((node, index) => (
-          <li key={`${node.kind}-${node.id}`} className="relative border-l border-border pl-4">
-            {index < nodes.length - 1 ? <span className="absolute -bottom-3 left-[-1px] h-3 w-px bg-border" aria-hidden /> : null}
-            <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{node.kind.replaceAll("_", " ")}</p>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
-              <StatusBadge tone={coverageTone[node.coverage]}>{coverageLabel(node.coverage)}</StatusBadge>
-              {node.href ? (
-                <Link href={node.href} className="font-medium hover:underline">
-                  {node.label}
-                </Link>
-              ) : (
-                <span className="font-medium">{node.label}</span>
-              )}
-            </div>
-            {node.sublabel ? <p className="mt-1 text-xs text-muted-foreground">{node.sublabel}</p> : null}
-          </li>
-        ))}
-      </ol>
-    );
-  }
-
-  return (
-    <div className="min-w-0 overflow-x-auto">
-      <ol className="flex min-w-max items-start gap-0" aria-label="Traceability path">
-        {nodes.map((node, index) => (
-          <li key={`${node.kind}-${node.id}`} className="flex min-w-[9rem] max-w-[12rem] shrink-0 flex-col px-3 first:pl-0 last:pr-0">
-            <div className="flex items-center gap-2">
-              {index > 0 ? <span className="text-border" aria-hidden>↓</span> : null}
-              <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{node.kind.replaceAll("_", " ")}</p>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <StatusBadge tone={coverageTone[node.coverage]}>{coverageLabel(node.coverage)}</StatusBadge>
-            </div>
-            {node.href ? (
-              <Link href={node.href} className="mt-2 font-medium hover:underline">
-                {node.label}
-              </Link>
-            ) : (
-              <p className="mt-2 font-medium">{node.label}</p>
-            )}
-            {node.sublabel ? <p className="mt-1 text-xs text-muted-foreground">{node.sublabel}</p> : null}
-          </li>
-        ))}
-      </ol>
-    </div>
-  );
-}
+import type { TraceabilityEntityOption, TraceabilityPathNode, TraceabilitySnapshot } from "@/lib/traceability/types";
 
 export function TraceabilityWorkspace({ data }: { data: TraceabilitySnapshot }) {
+  const { simple } = useLayoutMode();
+  if (simple) return <TraceabilityWorkspaceSimple data={data} />;
+  return <TraceabilityWorkspaceFull data={data} />;
+}
+
+function TraceabilityWorkspaceFull({ data }: { data: TraceabilitySnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -146,9 +81,7 @@ export function TraceabilityWorkspace({ data }: { data: TraceabilitySnapshot }) 
             <select
               aria-label="Select traceability entity"
               className="mt-1 block h-11 w-full min-w-[14rem] rounded-sm border border-border bg-background px-2 text-sm sm:h-8"
-              value={
-                data.entityType && data.entityId ? `${data.entityType}:${data.entityId}` : ""
-              }
+              value={data.entityType && data.entityId ? `${data.entityType}:${data.entityId}` : ""}
               onChange={(event) => {
                 const value = event.target.value;
                 if (!value) {
@@ -233,9 +166,7 @@ export function TraceabilityWorkspace({ data }: { data: TraceabilitySnapshot }) 
               </div>
               <div className="flex flex-wrap gap-2">
                 <StatusBadge tone="info">{confidenceLabel(investigation.impact.confidence)} confidence</StatusBadge>
-                <StatusBadge tone={investigation.impact.scope === "SIGNIFICANT_IMPACT" ? "danger" : investigation.impact.scope === "LIMITED_IMPACT" ? "material" : "warning"}>
-                  {scopeLabel(investigation.impact.scope)}
-                </StatusBadge>
+                <StatusBadge tone={scopeTone(investigation.impact.scope)}>{scopeLabel(investigation.impact.scope)}</StatusBadge>
               </div>
             </div>
             <div className="mt-4">

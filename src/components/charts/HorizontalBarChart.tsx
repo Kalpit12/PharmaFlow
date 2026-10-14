@@ -16,6 +16,7 @@ export function HorizontalBarChart({
   valueSuffix = "",
   emptyMessage = "No data available for this view.",
   embedded = false,
+  showValues = false,
 }: {
   title: string;
   description?: string;
@@ -23,6 +24,8 @@ export function HorizontalBarChart({
   valueSuffix?: string;
   emptyMessage?: string;
   embedded?: boolean;
+  /** Power BI–style end labels on bars. */
+  showValues?: boolean;
 }) {
   const max = Math.max(1, ...rows.map((row) => row.value));
 
@@ -39,16 +42,30 @@ export function HorizontalBarChart({
               <div className="flex items-center justify-between gap-2 text-xs">
                 <p className="min-w-0 truncate font-medium">{row.label}</p>
                 <p className="shrink-0 tabular-nums text-muted-foreground">
-                  {formatValue(row.value)}
-                  {valueSuffix}
-                  {row.hint ? ` · ${row.hint}` : ""}
+                  {!showValues ? (
+                    <>
+                      {formatValue(row.value)}
+                      {valueSuffix}
+                      {row.hint ? ` · ${row.hint}` : ""}
+                    </>
+                  ) : row.hint ? (
+                    row.hint
+                  ) : null}
                 </p>
               </div>
-              <div className="mt-1 h-1.5 overflow-hidden rounded-sm bg-muted">
-                <div
-                  className={cn("h-full duration-150", chartBarFill[tone])}
-                  style={{ width: `${(row.value / max) * 100}%` }}
-                />
+              <div className="mt-1 flex items-center gap-2">
+                <div className="relative h-2 min-w-0 flex-1 overflow-hidden rounded-sm bg-muted/80">
+                  <div
+                    className={cn("h-full duration-150", chartBarFill[tone])}
+                    style={{ width: `${(row.value / max) * 100}%` }}
+                  />
+                </div>
+                {showValues ? (
+                  <span className="w-14 shrink-0 text-right text-[10px] font-medium tabular-nums text-foreground">
+                    {formatValue(row.value)}
+                    {valueSuffix}
+                  </span>
+                ) : null}
               </div>
             </>
           );

@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 
 import { EmptyState } from "@/components/ds/empty-state";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
 import { confidenceLabel } from "@/lib/intelligence/facts";
 import type { IntelligenceExplanation, IntelligenceSnapshot, OperationalPriority } from "@/lib/intelligence/types";
@@ -64,12 +65,17 @@ export function IntelligenceSurface({
   title = "Operational Intelligence",
   subtitle = "Deterministic priorities from production, materials, quality, and supply. Explain is optional.",
   grouped = false,
+  limit,
 }: {
   data: IntelligenceSnapshot;
   title?: string;
   subtitle?: string;
   grouped?: boolean;
+  limit?: number;
 }) {
+  const { simple } = useLayoutMode();
+  const rowLimit = limit ?? (simple ? 3 : 8);
+
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [explanation, setExplanation] = useState<IntelligenceExplanation | null>(null);
@@ -99,33 +105,52 @@ export function IntelligenceSurface({
     }
   }
 
+  const flatPriorities = [
+    ...data.bands.critical,
+    ...data.bands.high,
+    ...data.bands.watch,
+    ...data.priorities,
+  ];
+  const uniquePriorities = flatPriorities.filter(
+    (row, index, list) => list.findIndex((entry) => entry.id === row.id) === index
+  );
+
   const sections = grouped
     ? [
-        { id: "critical", label: "Critical", rows: data.bands.critical },
-        { id: "high", label: "High", rows: data.bands.high },
-        { id: "watch", label: "Watch", rows: data.bands.watch },
+        { id: "critical", label: simple ? null : "Critical", rows: data.bands.critical.slice(0, rowLimit) },
+        { id: "high", label: simple ? null : "High", rows: simple ? [] : data.bands.high },
+        { id: "watch", label: simple ? null : "Watch", rows: simple ? [] : data.bands.watch },
       ]
-    : [{ id: "all", label: null, rows: data.priorities.slice(0, 8) }];
+    : [{ id: "all", label: null, rows: data.priorities.slice(0, rowLimit) }];
+
+  if (simple && grouped && sections[0].rows.length < rowLimit) {
+    const extra = uniquePriorities
+      .filter((row) => !sections[0].rows.some((existing) => existing.id === row.id))
+      .slice(0, rowLimit - sections[0].rows.length);
+    sections[0].rows = [...sections[0].rows, ...extra];
+  }
 
   return (
     <section className="work-surface" aria-label="Operational intelligence">
       <div className="flex flex-wrap items-end justify-between gap-3 border-b border-border/70 px-4 py-3 sm:px-5">
         <div>
-          <h2 className="text-sm font-medium tracking-tight">{title}</h2>
-          <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p>
+          <h2 className="text-sm font-medium tracking-tight">{simple ? "Also on the radar" : title}</h2>
+          {!simple && subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p> : null}
         </div>
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          className="min-h-11 sm:min-h-8"
-          onClick={() => explain()}
-          disabled={pendingId !== null}
-          aria-label="Explain operational priorities"
-        >
-          {pendingId === "all" ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : null}
-          Explain
-        </Button>
+        {!simple ? (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="min-h-11 sm:min-h-8"
+            onClick={() => explain()}
+            disabled={pendingId !== null}
+            aria-label="Explain operational priorities"
+          >
+            {pendingId === "all" ? <Loader2 className="size-4 animate-spin" data-icon="inline-start" /> : null}
+            Explain
+          </Button>
+        ) : null}
       </div>
 
       {data.priorities.length === 0 ? (
@@ -153,34 +178,44 @@ export function IntelligenceSurface({
                     <li key={row.id} className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
                       <div className="min-w-0 flex-1 space-y-1.5">
                         <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-                          <span className="text-[11px] font-medium tabular-nums text-muted-foreground/70">{row.rank}</span>
-                          <span className="label-context">{row.domain}</span>
+                          {!simple ? (
+                            <span className="text-[11px] font-medium tabular-nums text-muted-foreground/70">{row.rank}</span>
+                          ) : null}
+                          {!simple ? <span className="label-context">{row.domain}</span> : null}
                           <StatusBadge tone={severityTone(row.band)}>{row.band}</StatusBadge>
-                          <span className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
-                            {confidenceLabel(row.confidence)}
-                          </span>
+                          {!simple ? (
+                            <span className="text-[10px] tracking-[0.12em] text-muted-foreground uppercase">
+                              {confidenceLabel(row.confidence)}
+                            </span>
+                          ) : null}
                         </div>
                         <p className="text-[15px] leading-snug font-medium tracking-tight">{row.title}</p>
-                        <p className="text-sm leading-relaxed text-muted-foreground">{row.reason}</p>
-                        <p className="text-xs leading-relaxed text-foreground/75">{row.impact}</p>
-                        <p className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">
-                          {row.relatedDomains.join(" → ")}
-                        </p>
+                        {!simple ? (
+                          <>
+                            <p className="text-sm leading-relaxed text-muted-foreground">{row.reason}</p>
+                            <p className="text-xs leading-relaxed text-foreground/75">{row.impact}</p>
+                            <p className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">
+                              {row.relatedDomains.join(" → ")}
+                            </p>
+                          </>
+                        ) : null}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">
-                        <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
-                          <Link href={row.href}>View</Link>
+                        <Button asChild size="sm" variant={simple ? "default" : "outline"} className="min-h-11 sm:min-h-8">
+                          <Link href={row.href}>Open</Link>
                         </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          className="min-h-11 sm:min-h-8"
-                          onClick={() => explain(row)}
-                          disabled={pendingId !== null}
-                          aria-label={`Explain ${row.title}`}
-                        >
-                          {pendingId === row.id ? <Loader2 className="size-4 animate-spin" /> : "Explain"}
-                        </Button>
+                        {!simple ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            className="min-h-11 sm:min-h-8"
+                            onClick={() => explain(row)}
+                            disabled={pendingId !== null}
+                            aria-label={`Explain ${row.title}`}
+                          >
+                            {pendingId === row.id ? <Loader2 className="size-4 animate-spin" /> : "Explain"}
+                          </Button>
+                        ) : null}
                       </div>
                     </li>
                   ))}

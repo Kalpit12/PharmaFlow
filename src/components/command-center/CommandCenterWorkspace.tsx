@@ -11,6 +11,7 @@ import { AttentionItem, AttentionList } from "@/components/ds/attention-item";
 import { EmptyState } from "@/components/ds/empty-state";
 import { MetricStrip } from "@/components/ds/metric-strip";
 import { IntelligenceSurface } from "@/components/intelligence/IntelligenceSurface";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
 import type { CommandCenterSnapshot, CommandSeverity } from "@/lib/command-center/types";
 import { cn } from "@/lib/utils";
@@ -23,6 +24,8 @@ function healthTone(severity: CommandCenterSnapshot["health"][number]["severity"
 }
 
 export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }) {
+  const { simple } = useLayoutMode();
+
   const stamp = new Date(data.generatedAt).toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
@@ -67,7 +70,7 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         <div className="min-w-0 lg:col-span-7">
           <AttentionList
             title="Management Attention"
-            subtitle="Signal → evidence → consequence → inspect."
+            subtitle={simple ? undefined : "Signal → evidence → consequence → inspect."}
             empty={
               data.signals.length === 0 ? (
                 <EmptyState
@@ -161,9 +164,10 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
         </div>
       </div>
 
-      <IntelligenceSurface data={data.intelligence} />
+      {!simple ? <IntelligenceSurface data={data.intelligence} /> : null}
 
       {/* 4 — Production / workload */}
+      {!simple ? (
       <section className="work-surface" aria-label="Planning outlook">
         <div className="border-b border-border/70 px-4 py-3 sm:px-5">
           <div className="flex flex-wrap items-end justify-between gap-3">
@@ -196,7 +200,9 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
           </div>
         </dl>
       </section>
+      ) : null}
 
+      {!simple ? (
       <section aria-label="Analytical command layer">
         <p className="label-context">Analytical command layer</p>
         <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-12">
@@ -253,6 +259,14 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
           </div>
         </div>
       </section>
+      ) : null}
+
+      {simple ? (
+        <p className="text-center text-sm text-muted-foreground">
+          Charts and planning detail are in{" "}
+          <Link href="/settings#preferences" className="text-primary hover:underline">Advanced layout</Link>.
+        </p>
+      ) : null}
 
       {/* 5 — Procurement / commercial */}
       <div className="grid min-w-0 gap-4 lg:grid-cols-2">
@@ -306,7 +320,7 @@ export function CommandCenterWorkspace({ data }: { data: CommandCenterSnapshot }
 
       <footer className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-4 text-[11px] text-muted-foreground">
         <Link href="/daily-review" className="hover:text-foreground">
-          Daily Review
+          Today
         </Link>
         <span aria-hidden>·</span>
         <Link href="/reports" className="hover:text-foreground">

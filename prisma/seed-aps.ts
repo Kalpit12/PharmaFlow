@@ -268,6 +268,28 @@ export async function ensureApsDemoData(prisma: PrismaClient) {
     }
   }
 
+  const orderCount = await prisma.productionOrder.count({ where: { tenantId: tenant.id } });
+  if (orderCount === 0) {
+    const product = productBySku.get("PARA-500-TAB");
+    const workstation = workstationByCode.get("TLA");
+    if (product && workstation) {
+      await prisma.productionOrder.create({
+        data: {
+          tenantId: tenant.id,
+          orderNumber: "PO-APS-DEMO",
+          productId: product.id,
+          workstationId: workstation.id,
+          quantity: 8000,
+          priority: "NORMAL",
+          status: "UNSCHEDULED",
+          dueDate: new Date(Date.now() + 14 * 86_400_000),
+          durationMinutes: 480,
+          isLocked: false,
+        },
+      });
+    }
+  }
+
   const orders = await prisma.productionOrder.findMany({
     where: { tenantId: tenant.id, operations: { none: {} } },
     include: {

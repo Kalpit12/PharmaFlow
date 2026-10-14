@@ -8,6 +8,9 @@ import { Loader2, Sparkles } from "lucide-react";
 import { EmptyState } from "@/components/ds/empty-state";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { SupplierPerformanceWorkspaceSimple } from "@/components/supplier-performance/SupplierPerformanceWorkspaceSimple";
+import { bandLabel, bandTone, VIEW_LABEL } from "@/components/supplier-performance/supplier-performance-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -20,35 +23,24 @@ import { useCompactLayout } from "@/hooks/use-compact-layout";
 import type { StructuredAIResponse } from "@/lib/ai/response";
 import {
   SUPPLIER_PERFORMANCE_VIEWS,
-  type PerformanceBand,
   type SupplierPerformanceDetail,
   type SupplierPerformanceSnapshot,
   type SupplierPerformanceViewId,
 } from "@/lib/supplier-performance/types";
-import type { StatusTone } from "@/types/status";
-
-const VIEW_LABEL: Record<SupplierPerformanceViewId, string> = {
-  all: "All",
-  history: "With history",
-  attention: "Needs attention",
-  excellent: "Excellent / Strong",
-  risk: "Watch / Risk",
-  insufficient: "Insufficient data",
-};
-
-const bandTone: Record<PerformanceBand, StatusTone> = {
-  EXCELLENT: "success",
-  STRONG: "success",
-  WATCH: "warning",
-  RISK: "danger",
-  INSUFFICIENT_DATA: "neutral",
-};
-
-function bandLabel(band: PerformanceBand): string {
-  return band.replaceAll("_", " ");
-}
 
 export function SupplierPerformanceWorkspace({
+  data,
+  initialDetail,
+}: {
+  data: SupplierPerformanceSnapshot;
+  initialDetail: SupplierPerformanceDetail | null;
+}) {
+  const { simple } = useLayoutMode();
+  if (simple) return <SupplierPerformanceWorkspaceSimple data={data} initialDetail={initialDetail} />;
+  return <SupplierPerformanceWorkspaceFull data={data} initialDetail={initialDetail} />;
+}
+
+function SupplierPerformanceWorkspaceFull({
   data,
   initialDetail,
 }: {

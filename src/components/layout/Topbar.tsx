@@ -33,7 +33,7 @@ export function Topbar() {
       </Button>
 
       <div className="hidden min-w-0 md:block lg:max-w-sm">
-        <p className="truncate text-[11px] text-muted-foreground">
+        <p className="truncate text-[11px] text-muted-foreground" suppressHydrationWarning>
           <span className="font-medium text-foreground">{context.tenant}</span>
           <span className="mx-1.5 text-border">/</span>
           <span>{context.section}</span>

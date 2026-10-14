@@ -20,6 +20,7 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { useLayoutMode, usePreferences } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { cn } from "@/lib/utils";
 import {
@@ -85,6 +86,9 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const compact = useCompactLayout();
+  const { simple } = useLayoutMode();
+  const { setLayoutMode } = usePreferences();
+  const boardCompact = compact || simple;
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("order"));
   const selected =
     data.orders.find((row) => row.id === selectedId) ??
@@ -118,21 +122,44 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
     );
   }, [data.orders]);
 
+  const simpleViews: ExecutionViewId[] = ["active", "at-risk", "all"];
+  const kpiItems = simple
+    ? data.kpis.filter((kpi) => ["active", "at-risk", "paused", "waiting"].includes(kpi.id))
+    : data.kpis;
+  const attentionItems = useMemo(
+    () => (simple ? data.attention.slice(0, 5) : data.attention),
+    [data.attention, simple]
+  );
+
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      <ProcessTrail
-        steps={[
-          { id: "plan", label: "Plan", href: "/operations" },
-          { id: "execute", label: "Execute" },
-          { id: "batch", label: "Batches", href: "/batches" },
-          { id: "reports", label: "Reports", href: "/reports?view=production" },
-        ]}
-        current="execute"
-      />
+      {simple ? (
+        <div className="flex flex-wrap items-center justify-between gap-3 work-surface px-4 py-3">
+          <p className="text-sm font-medium">Shop floor</p>
+          <div className="flex flex-wrap gap-2">
+            <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+              <Link href="/operations">Planning</Link>
+            </Button>
+            <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setLayoutMode("advanced")}>
+              Full board
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <ProcessTrail
+          steps={[
+            { id: "plan", label: "Plan", href: "/operations" },
+            { id: "execute", label: "Execute" },
+            { id: "batch", label: "Batches", href: "/batches" },
+            { id: "reports", label: "Reports", href: "/reports?view=production" },
+          ]}
+          current="execute"
+        />
+      )}
 
-      {data.attention.length > 0 ? (
-        <AttentionList title="Production attention">
-          {data.attention.map((item) => (
+      {attentionItems.length > 0 ? (
+        <AttentionList title="Production attention" subtitle={simple ? "Orders that need a shop-floor decision." : undefined}>
+          {attentionItems.map((item) => (
             <AttentionItem
               key={item.id}
               domain="Production"
@@ -148,7 +175,7 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
 
       <MetricStrip
         aria-label="Execution metrics"
-        items={data.kpis.map((kpi) => ({
+        items={kpiItems.map((kpi) => ({
           id: kpi.id,
           label: kpi.label,
           value: kpi.value,
@@ -157,6 +184,27 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
           href: href({ view: kpi.id === "at-risk" ? "at-risk" : kpi.id === "active" ? "active" : kpi.id === "paused" ? "paused" : kpi.id === "waiting" ? "waiting" : kpi.id === "completed" ? "completed" : undefined }),
         }))}
       />
+
+      {data.shopFloorMode && data.stationQueue.length > 0 ? (
+        <section aria-label="Station queue" className={cn("min-w-0 work-surface p-3", !simple && "md:hidden")}>
+          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Station queue</p>
+          <ul className="mt-2 space-y-2">
+            {data.stationQueue.map((row, index) => (
+              <li key={row.id}>
+                <button
+                  type="button"
+                  className="flex min-h-12 w-full flex-col rounded-lg border border-border px-3 py-2 text-left"
+                  onClick={() => setSelectedId(row.id)}
+                >
+                  <span className="text-[10px] font-semibold text-muted-foreground">#{index + 1}</span>
+                  <span className="text-sm font-medium">{row.orderNumber}</span>
+                  <span className="text-xs text-muted-foreground">{row.productName}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {data.nextTask ? (
         <section aria-label="Next task" className="min-w-0 work-surface p-3">
@@ -172,61 +220,65 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
         </section>
       ) : null}
 
-      <section aria-label="Planned vs actual" className="min-w-0 work-surface p-3">
-        <p className="text-sm font-medium">Planned vs actual</p>
-        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-          {data.performance.map((row) => (
-            <div key={row.id} className="rounded-sm border border-border px-3 py-2.5">
-              <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{row.label}</p>
-              <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
-                <div>
-                  <dt className="text-xs text-muted-foreground">Planned</dt>
-                  <dd className="tabular-nums font-medium">
-                    {row.planned == null ? "No data" : row.unit === "minutes" ? formatMinutes(row.planned) : row.planned.toLocaleString("en-GB")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Actual</dt>
-                  <dd className="tabular-nums font-medium">
-                    {row.actual == null ? "No data" : row.unit === "minutes" ? formatMinutes(row.actual) : row.actual.toLocaleString("en-GB")}
-                  </dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted-foreground">Variance</dt>
-                  <dd className="tabular-nums font-medium">
-                    {row.planned == null || row.actual == null
-                      ? "No data"
-                      : row.unit === "minutes"
-                        ? formatMinutes(row.actual - row.planned)
-                        : (row.actual - row.planned).toLocaleString("en-GB")}
-                  </dd>
-                </div>
-              </dl>
-            </div>
-          ))}
-        </div>
-      </section>
+      {!simple ? (
+        <section aria-label="Planned vs actual" className="min-w-0 work-surface p-3">
+          <p className="text-sm font-medium">Planned vs actual</p>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {data.performance.map((row) => (
+              <div key={row.id} className="rounded-sm border border-border px-3 py-2.5">
+                <p className="text-[11px] tracking-wide text-muted-foreground uppercase">{row.label}</p>
+                <dl className="mt-2 grid grid-cols-3 gap-2 text-sm">
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Planned</dt>
+                    <dd className="tabular-nums font-medium">
+                      {row.planned == null ? "No data" : row.unit === "minutes" ? formatMinutes(row.planned) : row.planned.toLocaleString("en-GB")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Actual</dt>
+                    <dd className="tabular-nums font-medium">
+                      {row.actual == null ? "No data" : row.unit === "minutes" ? formatMinutes(row.actual) : row.actual.toLocaleString("en-GB")}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted-foreground">Variance</dt>
+                    <dd className="tabular-nums font-medium">
+                      {row.planned == null || row.actual == null
+                        ? "No data"
+                        : row.unit === "minutes"
+                          ? formatMinutes(row.actual - row.planned)
+                          : (row.actual - row.planned).toLocaleString("en-GB")}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <div className="flex min-w-0 flex-col gap-3 work-surface p-3">
         <nav aria-label="Execution views" className="flex min-w-0 flex-wrap gap-1">
-          {EXECUTION_VIEWS.map((view) => (
+          {(simple ? simpleViews : EXECUTION_VIEWS).map((view) => (
             <Button key={view} asChild size="sm" variant={data.view === view ? "secondary" : "ghost"} className="min-h-11 sm:min-h-7">
               <Link href={href({ view: view === "all" ? undefined : view })}>{VIEW_LABEL[view]}</Link>
             </Button>
           ))}
         </nav>
-        <SearchInput
-          defaultValue={searchParams.get("q") ?? ""}
-          placeholder="Order, product, workstation"
-          aria-label="Search production execution"
-          className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.preventDefault();
-              router.push(href({ q: event.currentTarget.value || undefined }));
-            }
-          }}
-        />
+        {!simple ? (
+          <SearchInput
+            defaultValue={searchParams.get("q") ?? ""}
+            placeholder="Order, product, workstation"
+            aria-label="Search production execution"
+            className="md:max-w-56 [&_input]:h-11 md:[&_input]:h-8"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                router.push(href({ q: event.currentTarget.value || undefined }));
+              }
+            }}
+          />
+        ) : null}
         {data.workstations.length > 0 ? (
           <label className="flex min-w-0 items-center gap-2 text-xs font-medium">
             <span className="shrink-0 text-muted-foreground">Station</span>
@@ -248,7 +300,7 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
 
       {sorted.length === 0 ? (
         <EmptyState title="No production orders to show" description="Adjust filters or schedule work in Operations." />
-      ) : compact ? (
+      ) : boardCompact ? (
         <ul aria-label="Production execution board" className="min-w-0 divide-y divide-border work-surface">
           {sorted.map((row) => (
             <li key={row.id}>
@@ -329,8 +381,8 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
 
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
         <SheetContent
-          side={compact ? "bottom" : "right"}
-          className={compact ? "max-h-[85vh] overflow-y-auto sm:max-w-none" : "overflow-y-auto sm:max-w-lg"}
+          side={boardCompact ? "bottom" : "right"}
+          className={boardCompact ? "max-h-[85vh] overflow-y-auto sm:max-w-none" : "overflow-y-auto sm:max-w-lg"}
         >
           {selected ? <ExecutionDetail row={selected} canExecute={data.capabilities.canExecute} onComplete={() => router.refresh()} /> : null}
         </SheetContent>
@@ -411,9 +463,43 @@ function ExecutionDetail({
   onComplete: () => void;
 }) {
   const [producedQuantity, setProducedQuantity] = useState(String(row.producedQuantity ?? row.plannedQuantity));
+  const [downtimeReason, setDowntimeReason] = useState("");
+  const [scrapQty, setScrapQty] = useState("1");
+  const [scrapReason, setScrapReason] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+
+  async function logShopFloor(eventType: "DOWNTIME" | "SCRAP") {
+    if (!row.activeOperationId) {
+      setError("No active operation to log against.");
+      return;
+    }
+    setError(null);
+    setMessage(null);
+    startTransition(async () => {
+      try {
+        const response = await fetch(`/api/production-operations/${row.activeOperationId}/events`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            eventType,
+            reason: eventType === "DOWNTIME" ? downtimeReason : scrapReason,
+            quantity: eventType === "SCRAP" ? Number(scrapQty) : undefined,
+          }),
+        });
+        const payload = (await response.json()) as { message?: string };
+        if (!response.ok) {
+          setError(payload.message ?? "Unable to record shop-floor event.");
+          return;
+        }
+        setMessage(eventType === "DOWNTIME" ? "Downtime recorded." : "Scrap recorded.");
+        onComplete();
+      } catch {
+        setError("Unable to record shop-floor event.");
+      }
+    });
+  }
 
   async function mutate(path: "release" | "start" | "pause" | "resume" | "complete") {
     setError(null);
@@ -517,6 +603,30 @@ function ExecutionDetail({
           </div>
         </InspectionSection>
 
+        <InspectionSection title="Shop-floor log">
+          {row.activeOperationCode ? (
+            <p className="text-xs text-muted-foreground">
+              Active operation: <span className="font-medium text-foreground">{row.activeOperationCode}</span>
+            </p>
+          ) : null}
+          {row.shopFloorEvents.length === 0 ? (
+            <p className="mt-2 text-muted-foreground">No downtime or scrap events recorded.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {row.shopFloorEvents.map((entry) => (
+                <li key={entry.id} className="rounded-sm border border-border px-2 py-1.5 text-xs">
+                  <p className="font-medium">{entry.eventType.replace(/_/g, " ")}</p>
+                  <p className="text-muted-foreground">
+                    {formatStamp(entry.recordedAt)}
+                    {entry.quantity != null ? ` · qty ${entry.quantity}` : ""}
+                    {entry.reason ? ` · ${entry.reason}` : ""}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </InspectionSection>
+
         <InspectionSection title="History">
           {row.history.length === 0 ? (
             <p className="text-muted-foreground">No execution transitions recorded.</p>
@@ -577,6 +687,57 @@ function ExecutionDetail({
               ) : null}
               {pending ? <Loader2 className="size-4 animate-spin text-muted-foreground" /> : null}
             </div>
+            {row.activeOperationId ? (
+              <div className="mt-4 space-y-3 border-t border-border pt-4">
+                <p className="text-xs font-medium">Shop-floor feedback</p>
+                <label className="block text-xs">
+                  Downtime reason
+                  <input
+                    value={downtimeReason}
+                    onChange={(event) => setDowntimeReason(event.target.value)}
+                    placeholder="e.g. line cleaning, breakdown"
+                    className="mt-1 flex h-11 w-full rounded-sm border border-border bg-background px-3 text-sm sm:h-8"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 w-full sm:min-h-8"
+                  disabled={pending || !downtimeReason.trim()}
+                  onClick={() => logShopFloor("DOWNTIME")}
+                >
+                  Log downtime
+                </Button>
+                <label className="block text-xs">
+                  Scrap quantity
+                  <input
+                    type="number"
+                    min={1}
+                    value={scrapQty}
+                    onChange={(event) => setScrapQty(event.target.value)}
+                    className="mt-1 flex h-11 w-full rounded-sm border border-border bg-background px-3 text-sm sm:h-8"
+                  />
+                </label>
+                <label className="block text-xs">
+                  Scrap reason
+                  <input
+                    value={scrapReason}
+                    onChange={(event) => setScrapReason(event.target.value)}
+                    placeholder="e.g. weight check fail"
+                    className="mt-1 flex h-11 w-full rounded-sm border border-border bg-background px-3 text-sm sm:h-8"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 w-full sm:min-h-8"
+                  disabled={pending || !scrapReason.trim()}
+                  onClick={() => logShopFloor("SCRAP")}
+                >
+                  Log scrap
+                </Button>
+              </div>
+            ) : null}
             {message ? <p className="mt-2 text-xs text-success">{message}</p> : null}
             {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
           </InspectionSection>

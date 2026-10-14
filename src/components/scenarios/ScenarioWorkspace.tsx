@@ -6,6 +6,10 @@ import { usePathname, useRouter } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
 import { EmptyState } from "@/components/ds/empty-state";
+import { ScenarioJourneyRail } from "@/components/scenarios/ScenarioJourneyRail";
+import { ScenarioWorkspaceSimple } from "@/components/scenarios/ScenarioWorkspaceSimple";
+import { chainSeverityTone, scenarioToQuery } from "@/components/scenarios/scenario-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { StatusBadge } from "@/components/ds/status-badge";
 import { Button } from "@/components/ui/button";
 import { encodeScenarioInput, isIdentityScenario } from "@/lib/scenarios/engine";
@@ -22,32 +26,8 @@ import {
   type ScenarioInput,
   type ScenarioSnapshot,
 } from "@/lib/scenarios/types";
-import type { StatusTone } from "@/types/status";
-import { cn } from "@/lib/utils";
-
-const severityTone: Record<string, StatusTone> = {
-  CRITICAL: "danger",
-  HIGH: "warning",
-  MEDIUM: "material",
-  LOW: "neutral",
-  OK: "success",
-};
-
 function pctLabel(value: number): string {
   return `${value > 0 ? "+" : ""}${value}%`;
-}
-
-function toQuery(input: ScenarioInput): string {
-  const params = new URLSearchParams({
-    horizon: String(input.horizon),
-    demand: String(input.demandChangePct),
-    capacity: String(input.productionCapacityChangePct),
-    delay: String(input.productionDelayDays),
-    inventory: String(input.inventoryAvailabilityChangePct),
-    procurement: String(input.procurementAvailabilityChangePct),
-    priority: input.priorityMode,
-  });
-  return params.toString();
 }
 
 function ChoiceGroup<T extends string | number>({
@@ -85,47 +65,13 @@ function ChoiceGroup<T extends string | number>({
   );
 }
 
-function JourneyRail({ data }: { data: ScenarioSnapshot }) {
-  return (
-    <ol className="relative space-y-0" aria-label="Operational journey">
-      {data.journey.map((stage, index) => (
-        <li key={stage.id} className="relative flex gap-3 pb-5 last:pb-0">
-          {index < data.journey.length - 1 ? (
-            <span className="absolute top-3 left-[7px] h-[calc(100%-4px)] w-px bg-border/80" aria-hidden />
-          ) : null}
-          <span
-            className={cn(
-              "relative z-10 mt-0.5 size-3.5 shrink-0 rounded-full ring-2 ring-background",
-              stage.status === "CRITICAL" || stage.status === "HIGH"
-                ? "bg-destructive"
-                : stage.status === "MEDIUM"
-                  ? "bg-intel"
-                  : "bg-muted-foreground/40"
-            )}
-            aria-hidden
-          />
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-[10px] tracking-[0.14em] text-muted-foreground uppercase">{stage.label}</p>
-              <StatusBadge tone={severityTone[stage.status] ?? "neutral"}>{stage.status}</StatusBadge>
-              <span className="text-[10px] tracking-[0.08em] text-muted-foreground uppercase">{stage.confidence.replace(/_/g, " ")}</span>
-            </div>
-            <p className="mt-1 text-sm font-medium tracking-tight">{stage.metric}</p>
-            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{stage.reason}</p>
-            <p className="mt-1 text-[11px] tabular-nums text-foreground/75">
-              Current {stage.baseline} · Scenario {stage.projected} · {stage.delta}
-            </p>
-            <Link href={stage.href} className="mt-2 inline-flex text-[11px] text-primary">
-              Inspect workspace
-            </Link>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
+export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
+  const { simple } = useLayoutMode();
+  if (simple) return <ScenarioWorkspaceSimple data={data} />;
+  return <ScenarioWorkspaceFull data={data} />;
 }
 
-export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
+function ScenarioWorkspaceFull({ data }: { data: ScenarioSnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const [draft, setDraft] = useState<ScenarioInput>(data.inputs);
@@ -149,10 +95,10 @@ export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
   const dirty = encodeScenarioInput(draft) !== appliedKey;
   const identity = isIdentityScenario(data.inputs);
 
-  const queryParams = useMemo(() => toQuery(data.inputs), [data.inputs]);
+  const queryParams = useMemo(() => scenarioToQuery(data.inputs), [data.inputs]);
 
   function runScenario() {
-    router.push(`${pathname}?${toQuery(draft)}`);
+    router.push(`${pathname}?${scenarioToQuery(draft)}`);
   }
 
   function resetScenario() {
@@ -306,7 +252,7 @@ export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
               {data.journey.length === 0 ? (
                 <EmptyState className="border-0 bg-transparent px-0 py-6" title="No authorized journey stages" description={`Excluded domains: ${data.excludedDomains.join(", ") || "none"}.`} />
               ) : (
-                <JourneyRail data={data} />
+                <ScenarioJourneyRail data={data} />
               )}
             </div>
           </section>
@@ -325,7 +271,7 @@ export function ScenarioWorkspace({ data }: { data: ScenarioSnapshot }) {
                     <p className="mt-1 text-sm text-muted-foreground">{link.consequence}</p>
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
-                    <StatusBadge tone={severityTone[link.severity] ?? "neutral"}>{link.severity}</StatusBadge>
+                    <StatusBadge tone={chainSeverityTone[link.severity] ?? "neutral"}>{link.severity}</StatusBadge>
                     <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
                       <Link href={link.href}>View</Link>
                     </Button>

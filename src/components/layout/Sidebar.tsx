@@ -17,7 +17,7 @@ export function Sidebar({ compact = false, className }: { compact?: boolean; cla
       )}
     >
       <div className={cn("flex items-center gap-2.5 px-3 pt-5 pb-4", compact && "justify-center px-2")}>
-        <BrandLogo href="/dashboard" compact={compact} />
+        <BrandLogo href="/daily-review" compact={compact} />
       </div>
 
       <div className={cn("px-2 pb-3", compact && "px-1.5")}>
@@ -41,9 +41,9 @@ export function SidebarAccount({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className={cn("border-t border-sidebar-border px-3 py-3", compact && "px-2")}>
-      <p className={cn("truncate text-[11px] text-sidebar-foreground/45", compact && "sr-only")}>
+      <span className={cn("block truncate text-[11px] text-sidebar-foreground/45", compact && "sr-only")}>
         {workspace.brand}
-      </p>
+      </span>
       <div className={cn("mt-2 flex items-center gap-2", compact && "justify-center")}>
         <span className="flex size-7 shrink-0 items-center justify-center rounded-sm bg-sidebar-accent text-[10px] font-medium text-sidebar-accent-foreground">
           {initials}

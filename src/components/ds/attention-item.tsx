@@ -1,7 +1,10 @@
+"use client";
+
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { cn } from "@/lib/utils";
 
 export type AttentionSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW" | "INFO" | "WATCH";
@@ -39,7 +42,7 @@ export type AttentionItemProps = {
 
 /**
  * Management Attention — signature Pharmora signal.
- * Domain + severity, issue, evidence, consequence, inspect.
+ * Simple layout: issue + action only. Advanced: full evidence trail.
  */
 export function AttentionItem({
   domain,
@@ -48,10 +51,12 @@ export function AttentionItem({
   evidence,
   consequence,
   href,
-  actionLabel = "Inspect",
+  actionLabel = "Open",
   rank,
   className,
 }: AttentionItemProps) {
+  const { simple } = useLayoutMode();
+
   return (
     <li className={cn("group relative", className)}>
       <Link
@@ -61,12 +66,12 @@ export function AttentionItem({
         <span className={cn("absolute inset-y-3 left-0", severityMark[severity])} aria-hidden />
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-            {rank != null ? (
+            {rank != null && !simple ? (
               <span className="text-[11px] font-medium tabular-nums text-muted-foreground/70">{rank}</span>
             ) : null}
-            <span className="label-context">{domain}</span>
+            {!simple ? <span className="label-context">{domain}</span> : null}
             <span className={cn("text-[10px] font-medium tracking-[0.12em] uppercase", severityText[severity])}>
-              {severity.replace(/_/g, " ")}
+              {simple && severity === "WATCH" ? "Watch" : severity.replace(/_/g, " ")}
             </span>
           </div>
           <div className="space-y-1.5">
@@ -74,7 +79,7 @@ export function AttentionItem({
               <span className="sr-only">Signal: </span>
               {issue}
             </p>
-            {evidence ? (
+            {!simple && evidence ? (
               <p className="text-sm leading-relaxed text-muted-foreground">
                 <span className="mr-1.5 text-[10px] font-medium tracking-[0.14em] text-muted-foreground/80 uppercase">
                   Evidence
@@ -82,7 +87,7 @@ export function AttentionItem({
                 {evidence}
               </p>
             ) : null}
-            {consequence ? (
+            {!simple && consequence ? (
               <p className="text-xs leading-relaxed text-foreground/80">
                 <span className="mr-1.5 text-[10px] font-medium tracking-[0.14em] text-muted-foreground/80 uppercase">
                   Consequence
@@ -102,7 +107,7 @@ export function AttentionItem({
 }
 
 export function AttentionList({
-  title = "Management Attention",
+  title = "Needs your attention",
   subtitle,
   children,
   empty,
@@ -112,10 +117,12 @@ export function AttentionList({
   children: ReactNode;
   empty?: ReactNode;
 }) {
+  const { simple } = useLayoutMode();
+
   return (
     <section className="work-surface">
       <div className="border-b border-border/70 px-4 py-3 sm:px-5">
-        <h2 className="text-sm font-medium tracking-tight">{title}</h2>
+        <h2 className="text-sm font-medium tracking-tight">{simple ? "Needs your attention" : title}</h2>
         {subtitle ? <p className="mt-0.5 text-xs text-muted-foreground">{subtitle}</p> : null}
       </div>
       {empty ? empty : <ol className="divide-y divide-border/60">{children}</ol>}

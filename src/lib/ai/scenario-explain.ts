@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 
+import { resolveAIProviderId } from "@/lib/ai/resolve-provider";
 import { fallbackScenarioExplanation } from "@/lib/scenarios/decision";
 import type { CompactScenarioContext, ScenarioDecision, ScenarioExplanation } from "@/lib/scenarios/types";
 import { sanitizeScenarioContext } from "@/lib/server/scenarios";
@@ -61,7 +62,7 @@ export async function explainScenario(input: {
   question: string;
 }): Promise<ScenarioExplanation> {
   const fallback = fallbackScenarioExplanation({ decision: input.decision, question: input.question });
-  if (process.env.AI_PROVIDER === "mock" || !process.env.OPENAI_API_KEY) {
+  if (resolveAIProviderId() === "mock" || !process.env.OPENAI_API_KEY) {
     return fallback;
   }
 

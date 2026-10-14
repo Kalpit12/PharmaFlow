@@ -39,19 +39,20 @@ export type NavIconName =
  */
 export const navSections: NavSection[] = [
   {
-    id: "overview",
-    label: "Overview",
+    id: "start",
+    label: "Start",
     items: [
-      { id: "command-center", label: "Command Center", href: "/command-center", icon: "chart-column", phase: "Phase 19" },
-      { id: "daily-review", label: "Daily Review", href: "/daily-review", icon: "clipboard-list", phase: "Phase 17" },
-      { id: "overview", label: "Dashboard", href: "/dashboard", icon: "layout-dashboard", phase: "Phase 4" },
+      { id: "daily-review", label: "Today", href: "/daily-review", icon: "clipboard-list", phase: "Phase 17" },
       { id: "execution", label: "Execution", href: "/execution", icon: "shield-check", phase: "Phase 18" },
+      { id: "approvals", label: "Approvals", href: "/approvals", icon: "shield-check", phase: "Phase 9" },
     ],
   },
   {
-    id: "commercial",
-    label: "Commercial",
+    id: "insights",
+    label: "Insights",
     items: [
+      { id: "command-center", label: "Command Center", href: "/command-center", icon: "chart-column", phase: "Phase 19" },
+      { id: "overview", label: "Dashboard", href: "/dashboard", icon: "layout-dashboard", phase: "Phase 4" },
       { id: "reports", label: "Reports", href: "/reports", icon: "chart-column", phase: "Phase 26" },
     ],
   },
@@ -92,10 +93,7 @@ export const navSections: NavSection[] = [
   {
     id: "control",
     label: "Control",
-    items: [
-      { id: "approvals", label: "Approvals", href: "/approvals", icon: "shield-check", phase: "Phase 9" },
-      { id: "communications", label: "Communications", href: "/communications", icon: "mail", phase: "Phase 11" },
-    ],
+    items: [{ id: "communications", label: "Communications", href: "/communications", icon: "mail", phase: "Phase 11" }],
   },
   {
     id: "system",

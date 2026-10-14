@@ -24,6 +24,7 @@ import type { TenantContext } from "@/lib/server/errors";
 import { ServerError } from "@/lib/server/errors";
 import { computeOrderMaterialReadiness } from "@/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
+import { listRecentShopFloorEvents } from "@/lib/server/production-operation-events";
 
 export type ProductionExecutionFilters = {
   view: ExecutionViewId;
@@ -90,6 +91,10 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
           productionCompletedAt: true,
         },
       },
+      operations: {
+        orderBy: { sequence: "asc" },
+        select: { id: true, operationCode: true, status: true, sequence: true },
+      },
     },
     orderBy: [{ plannedEnd: "asc" }, { orderNumber: "asc" }],
   });
@@ -128,6 +133,16 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
 
   const now = new Date();
   const canExecute = can(ctx.role, "production.execute");
+  const activeOperationIds = orders
+    .map((order) => {
+      const active =
+        order.operations.find((operation) => operation.status === "IN_PROGRESS") ??
+        order.operations.find((operation) => operation.status === "SCHEDULED") ??
+        order.operations[0];
+      return active?.id ?? null;
+    })
+    .filter((id): id is string => Boolean(id));
+  const shopFloorEventsByOperation = await listRecentShopFloorEvents(ctx, activeOperationIds);
 
   const rows: ExecutionOrderRow[] = orders.map((order) => {
     const historyRows = auditsByOrder.get(order.id) ?? [];
@@ -164,6 +179,11 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     const readiness = materials
       ? computeOrderMaterialReadiness(materials.materials, order.id, true)
       : null;
+    const activeOperation =
+      order.operations.find((operation) => operation.status === "IN_PROGRESS") ??
+      order.operations.find((operation) => operation.status === "SCHEDULED") ??
+      order.operations[0] ??
+      null;
 
     return {
       id: order.id,
@@ -204,6 +224,11 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       canResume: canExecute && actions.canResume,
       canComplete: canExecute && actions.canComplete,
       history,
+      activeOperationId: activeOperation?.id ?? null,
+      activeOperationCode: activeOperation?.operationCode ?? null,
+      shopFloorEvents: activeOperation
+        ? shopFloorEventsByOperation.get(activeOperation.id) ?? []
+        : [],
     };
   });
 
@@ -295,6 +320,17 @@ export async function getProductionExecutionSnapshot(
     workstations,
     workstationId: filters.workstationId ?? null,
     nextTask,
+    shopFloorMode: Boolean(filters.workstationId),
+    stationQueue: filters.workstationId
+      ? filtered
+          .filter(
+            (row) =>
+              row.executionState === "IN_PROGRESS" ||
+              row.executionState === "RELEASED" ||
+              row.executionState === "WAITING"
+          )
+          .slice(0, 8)
+      : [],
     performance: [
       {
         id: "duration",

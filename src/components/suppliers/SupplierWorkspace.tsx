@@ -7,26 +7,30 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { EmptyState } from "@/components/ds/empty-state";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { SupplierDetailSheet } from "@/components/suppliers/SupplierDetailSheet";
+import { SupplierWorkspaceSimple } from "@/components/suppliers/SupplierWorkspaceSimple";
+import { formatDay, toneByStatus, VIEW_LABEL } from "@/components/suppliers/supplier-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import type { MaterialSupplierSnapshot, SupplierDetail, SupplierSnapshot, SupplierViewId } from "@/lib/suppliers/types";
-import type { StatusTone } from "@/types/status";
-
-const VIEW_LABEL: Record<SupplierViewId, string> = {
-  all: "All",
-  active: "Active",
-  inactive: "Inactive",
-  gaps: "Data gaps",
-};
-
-const toneByStatus: Record<string, StatusTone> = { ACTIVE: "intel", INACTIVE: "neutral" };
-
-function formatDay(iso: string): string {
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
 
 export function SupplierWorkspace({
+  data,
+  details,
+  materialView,
+}: {
+  data: SupplierSnapshot;
+  details: Record<string, SupplierDetail>;
+  materialView: MaterialSupplierSnapshot | null;
+}) {
+  const { simple } = useLayoutMode();
+  if (simple) return <SupplierWorkspaceSimple data={data} details={details} materialView={materialView} />;
+  return <SupplierWorkspaceFull data={data} details={details} materialView={materialView} />;
+}
+
+function SupplierWorkspaceFull({
   data,
   details,
   materialView,
@@ -230,7 +234,7 @@ export function SupplierWorkspace({
 
       <Sheet open={selected !== null} onOpenChange={(open) => !open && setSelectedId(null)}>
         <SheetContent side={compact ? "bottom" : "right"} className={compact ? "max-h-[85vh] overflow-y-auto sm:max-w-none" : "overflow-y-auto sm:max-w-lg"}>
-          {selected ? <SupplierDetailView row={selected} /> : null}
+          {selected ? <SupplierDetailSheet row={selected} /> : null}
         </SheetContent>
       </Sheet>
     </div>
@@ -247,53 +251,3 @@ function SortHead({ label, active, onClick, right }: { label: string; active: bo
   );
 }
 
-function SupplierDetailView({ row }: { row: SupplierDetail }) {
-  return (
-    <>
-      <SheetHeader>
-        <SheetTitle>{row.name}</SheetTitle>
-        <SheetDescription>
-          {row.code} · {row.status}
-        </SheetDescription>
-      </SheetHeader>
-      <div className="space-y-4 px-4 pb-6 text-sm">
-        <section>
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Material coverage</p>
-          <p className="mt-2 text-muted-foreground">
-            {row.materials.length} materials · {row.materials.filter((item) => item.preferred).length} preferred
-          </p>
-          <ul className="mt-2 space-y-2">
-            {row.materials.map((item) => (
-              <li key={`${item.productId}-${item.sku}`} className="rounded-lg border border-border px-3 py-2">
-                <p className="font-medium">
-                  {item.name} <span className="text-xs text-muted-foreground">({item.sku})</span>
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Lead time: {item.leadTimeDays !== null ? `${item.leadTimeDays} days` : "Not available"} · MOQ:{" "}
-                  {item.minimumOrderQuantity !== null ? item.minimumOrderQuantity.toLocaleString("en-KE") : "Not available"} · Price:{" "}
-                  {item.unitPrice !== null ? `${item.currency ?? "—"} ${item.unitPrice.toLocaleString("en-KE", { maximumFractionDigits: 2 })}` : "Not available"}
-                </p>
-                {item.preferred ? <p className="mt-1 text-xs text-success">Preferred material supplier</p> : null}
-                <Link href={`/procurement?material=${item.productId}`} className="mt-1 inline-block text-xs hover:underline">
-                  Compare from procurement
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Commercial data</p>
-          <p className="mt-2 text-muted-foreground">
-            Known prices: {row.knownPrices} · Lead-time records: {row.leadTimeKnown}
-          </p>
-        </section>
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Performance</p>
-          <p className="mt-2 text-muted-foreground">
-            {row.performanceAvailable ? "Historical performance available." : "Historical performance data not available."}
-          </p>
-        </section>
-      </div>
-    </>
-  );
-}

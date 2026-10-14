@@ -3,77 +3,34 @@
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
 
 import { EmptyState } from "@/components/ds/empty-state";
 import { ProcessTrail } from "@/components/ds/process-trail";
 import { SearchInput } from "@/components/ds/search-input";
 import { StatusBadge } from "@/components/ds/status-badge";
+import { QualityExceptionInspectSheet } from "@/components/quality/QualityExceptionInspectSheet";
+import { QualityLogExceptionDialog } from "@/components/quality/QualityLogExceptionDialog";
+import { QualityWorkspaceSimple } from "@/components/quality/QualityWorkspaceSimple";
+import { formatDay, severityRank, severityTone, statusTone, VIEW_LABEL } from "@/components/quality/quality-display";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { dueStateLabel, statusLabel, typeLabel } from "@/lib/quality/service";
 import {
-  QUALITY_EXCEPTION_TYPES,
-  QUALITY_EXCEPTION_SEVERITIES,
   QUALITY_VIEWS,
-  type QualityExceptionRow,
   type QualityExceptionSeverity,
-  type QualityExceptionStatus,
   type QualityExceptionType,
   type QualitySnapshot,
-  type QualityViewId,
 } from "@/lib/quality/types";
-import { confidenceLabel, scopeLabel } from "@/lib/traceability/impact";
-import type { StatusTone } from "@/types/status";
-
-const VIEW_LABEL: Record<QualityViewId, string> = {
-  all: "All exceptions",
-  open: "Open",
-  critical: "Critical / high",
-  overdue: "Overdue",
-  unassigned: "Unassigned",
-};
-
-const severityTone: Record<QualityExceptionSeverity, StatusTone> = {
-  CRITICAL: "danger",
-  HIGH: "danger",
-  MEDIUM: "material",
-  LOW: "intel",
-};
-
-const statusTone: Record<QualityExceptionStatus, StatusTone> = {
-  OPEN: "info",
-  INVESTIGATING: "material",
-  ACTION_REQUIRED: "warning",
-  RESOLVED: "intel",
-  CLOSED: "intel",
-};
-
-function formatDay(iso: string | null): string {
-  if (!iso) return "—";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "—";
-  const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-}
 
 export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
+  const { simple } = useLayoutMode();
+  if (simple) return <QualityWorkspaceSimple data={data} />;
+  return <QualityWorkspaceFull data={data} />;
+}
+
+function QualityWorkspaceFull({ data }: { data: QualitySnapshot }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -102,9 +59,8 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
   };
 
   const sorted = useMemo(() => {
-    const rank: Record<QualityExceptionSeverity, number> = { CRITICAL: 4, HIGH: 3, MEDIUM: 2, LOW: 1 };
     return [...data.exceptions].sort(
-      (a, b) => rank[b.severity] - rank[a.severity] || b.updatedAt.localeCompare(a.updatedAt)
+      (a, b) => severityRank[b.severity] - severityRank[a.severity] || b.updatedAt.localeCompare(a.updatedAt)
     );
   }, [data.exceptions]);
 
@@ -185,81 +141,23 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
         </div>
       </div>
 
-      <Dialog open={logOpen} onOpenChange={setLogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Log quality exception</DialogTitle>
-            <DialogDescription>Operational exception record — not a validated QMS submission.</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3 py-2">
-            <label className="grid gap-1.5 text-sm">
-              <span className="text-muted-foreground">Title</span>
-              <Input value={logTitle} onChange={(event) => setLogTitle(event.target.value)} maxLength={160} />
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="text-muted-foreground">Description</span>
-              <textarea
-                className="min-h-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
-                value={logDescription}
-                onChange={(event) => setLogDescription(event.target.value)}
-              />
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="text-muted-foreground">Type</span>
-              <select
-                className="h-9 rounded-md border border-border bg-background px-2"
-                value={logType}
-                onChange={(event) => setLogType(event.target.value as QualityExceptionType)}
-              >
-                {QUALITY_EXCEPTION_TYPES.map((type) => (
-                  <option key={type} value={type}>
-                    {typeLabel(type)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="grid gap-1.5 text-sm">
-              <span className="text-muted-foreground">Severity</span>
-              <select
-                className="h-9 rounded-md border border-border bg-background px-2"
-                value={logSeverity}
-                onChange={(event) => setLogSeverity(event.target.value as QualityExceptionSeverity)}
-              >
-                {QUALITY_EXCEPTION_SEVERITIES.map((severity) => (
-                  <option key={severity} value={severity}>
-                    {severity}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {data.batchOptions.length > 0 ? (
-              <label className="grid gap-1.5 text-sm">
-                <span className="text-muted-foreground">Linked batch (optional)</span>
-                <select
-                  className="h-9 rounded-md border border-border bg-background px-2"
-                  value={logBatchId}
-                  onChange={(event) => setLogBatchId(event.target.value)}
-                >
-                  <option value="">None</option>
-                  {data.batchOptions.map((batch) => (
-                    <option key={batch.id} value={batch.id}>
-                      {batch.batchNumber} · {batch.productName}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLogOpen(false)}>
-              Cancel
-            </Button>
-            <Button type="button" disabled={pending} onClick={() => void submitException()}>
-              {pending ? <Loader2 className="size-4 animate-spin" /> : "Log exception"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <QualityLogExceptionDialog
+        open={logOpen}
+        onOpenChange={setLogOpen}
+        data={data}
+        pending={pending}
+        title={logTitle}
+        description={logDescription}
+        type={logType}
+        severity={logSeverity}
+        batchId={logBatchId}
+        onTitleChange={setLogTitle}
+        onDescriptionChange={setLogDescription}
+        onTypeChange={setLogType}
+        onSeverityChange={setLogSeverity}
+        onBatchIdChange={setLogBatchId}
+        onSubmit={() => void submitException()}
+      />
 
       <section aria-label="Quality metrics" className="flex gap-2 overflow-x-auto pb-1 xl:grid xl:grid-cols-5 xl:overflow-visible">
         {data.kpis.map((kpi) => (
@@ -393,133 +291,13 @@ export function QualityWorkspace({ data }: { data: QualitySnapshot }) {
       >
         <SheetContent side={compact ? "bottom" : "right"} className={compact ? "max-h-[85vh] overflow-y-auto" : "overflow-y-auto sm:max-w-xl"}>
           {selected ? (
-            <>
-              <SheetHeader>
-                <SheetTitle>{selected.reference}</SheetTitle>
-                <SheetDescription>{selected.title}</SheetDescription>
-              </SheetHeader>
-              <div className="space-y-5 px-4 pb-6 text-sm">
-                {error ? <p className="text-sm text-destructive">{error}</p> : null}
-                {pending ? (
-                  <p className="flex items-center gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" /> Updating…
-                  </p>
-                ) : null}
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Identity</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <StatusBadge tone={severityTone[selected.severity]}>{selected.severity}</StatusBadge>
-                    <StatusBadge tone={statusTone[selected.status]}>{statusLabel(selected.status)}</StatusBadge>
-                    <StatusBadge tone="info">{typeLabel(selected.type)}</StatusBadge>
-                  </div>
-                  <p className="mt-2 text-muted-foreground">{selected.description}</p>
-                </section>
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Ownership</p>
-                  <dl className="mt-2 grid gap-2 sm:grid-cols-2">
-                    <div><dt className="text-xs text-muted-foreground">Owner</dt><dd>{selected.ownerName ?? "UNASSIGNED"}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">Due</dt><dd>{formatDay(selected.dueDate)} · {dueStateLabel(selected.dueState)}</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">Age</dt><dd>{selected.ageDays} days</dd></div>
-                    <div><dt className="text-xs text-muted-foreground">Created</dt><dd>{formatDay(selected.createdAt)}</dd></div>
-                  </dl>
-                </section>
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Affected entity</p>
-                  <dl className="mt-2 grid gap-2">
-                    <div><dt className="text-xs text-muted-foreground">Entity</dt><dd>{selected.entity.entityLabel}</dd></div>
-                    {selected.entity.batchNumber ? (
-                      <div><dt className="text-xs text-muted-foreground">Batch quality</dt><dd>{selected.entity.batchQualityStatus?.replaceAll("_", " ").toLowerCase() ?? "—"}</dd></div>
-                    ) : null}
-                  </dl>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {selected.entity.batchId ? <Button asChild size="sm" variant="outline"><Link href={`/batches?batch=${selected.entity.batchId}`}>Open batch</Link></Button> : null}
-                    {selected.entity.inventoryLotId ? <Button asChild size="sm" variant="outline"><Link href={`/traceability?lot=${selected.entity.inventoryLotId}`}>Trace lot</Link></Button> : null}
-                    {selected.entity.batchId ? <Button asChild size="sm" variant="outline"><Link href={`/traceability?batch=${selected.entity.batchId}`}>Trace batch</Link></Button> : null}
-                    {selected.entity.productionOrderId ? <Button asChild size="sm" variant="outline"><Link href={`/operations?order=${selected.entity.productionOrderId}`}>Production order</Link></Button> : null}
-                  </div>
-                </section>
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Investigation</p>
-                  <div className="mt-2 space-y-2 text-muted-foreground">
-                    <p><span className="text-foreground">Notes:</span> {selected.investigationNotes ?? "—"}</p>
-                    <p><span className="text-foreground">Findings:</span> {selected.findings ?? "—"}</p>
-                    <p><span className="text-foreground">Resolution:</span> {selected.resolutionNotes ?? "—"}</p>
-                  </div>
-                </section>
-
-                {selected.traceabilityImpact ? (
-                  <section>
-                    <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Traceability</p>
-                    <p className="mt-2 font-medium">{selected.traceabilityImpact.title}</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      <StatusBadge tone="info">{confidenceLabel(selected.traceabilityImpact.confidence)} confidence</StatusBadge>
-                      <StatusBadge tone="material">{scopeLabel(selected.traceabilityImpact.scope)}</StatusBadge>
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">{selected.traceabilityImpact.allocationNote}</p>
-                  </section>
-                ) : null}
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Corrective actions</p>
-                  <ul className="mt-2 space-y-2">
-                    {selected.correctiveActions.map((action) => (
-                      <li key={action.id} className="rounded-sm border border-border p-3">
-                        <p>{action.description}</p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {action.ownerName ?? "UNASSIGNED"} · {action.status.replace("_", " ").toLowerCase()} · due {formatDay(action.dueDate)}
-                        </p>
-                        {action.status !== "COMPLETED" && data.capabilities.canManage ? (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="mt-2 min-h-9"
-                            onClick={() => mutate(`/api/quality/corrective-actions/${action.id}`, "PATCH", { status: "COMPLETED" })}
-                          >
-                            Mark completed
-                          </Button>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                <section>
-                  <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Timeline</p>
-                  <ul className="mt-2 space-y-2">
-                    {selected.timeline.map((event) => (
-                      <li key={event.id} className="border-l border-border pl-3">
-                        <p className="font-medium">{event.label}</p>
-                        <p className="text-xs text-muted-foreground">{formatDay(event.createdAt)}{event.actorName ? ` · ${event.actorName}` : ""}</p>
-                        {event.detail ? <p className="text-xs text-muted-foreground">{event.detail}</p> : null}
-                      </li>
-                    ))}
-                  </ul>
-                </section>
-
-                {selected.allowedTransitions.length > 0 && data.capabilities.canManage ? (
-                  <section>
-                    <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Status</p>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {selected.allowedTransitions.map((status) => (
-                        <Button
-                          key={status}
-                          size="sm"
-                          variant="outline"
-                          className="min-h-11 sm:min-h-8"
-                          onClick={() => mutate(`/api/quality/exceptions/${selected.id}/transition`, "POST", { status })}
-                        >
-                          Move to {statusLabel(status)}
-                        </Button>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
-              </div>
-            </>
+            <QualityExceptionInspectSheet
+              selected={selected}
+              canManage={data.capabilities.canManage}
+              error={error}
+              pending={pending}
+              onMutate={mutate}
+            />
           ) : null}
         </SheetContent>
       </Sheet>

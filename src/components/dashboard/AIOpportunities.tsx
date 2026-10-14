@@ -8,7 +8,7 @@ import type { Opportunity } from "@/lib/mock/dashboard";
 
 export function AIOpportunities({ items }: { items: Opportunity[] }) {
   return (
-    <DashboardPanel title="Follow-up opportunities" subtitle="Deterministic commercial signals — not autonomous recommendations">
+    <DashboardPanel title="Follow-up opportunities" subtitle="Commercial signals ranked for follow-up">
       {items.length === 0 ? (
         <EmptyState
           className="w-full border-0 bg-transparent px-0 py-6"

@@ -16,18 +16,20 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
+import { ProcurementDetailSheet } from "@/components/procurement/ProcurementDetailSheet";
+import { ProcurementWorkspaceSimple } from "@/components/procurement/ProcurementWorkspaceSimple";
+import {
+  formatDay,
+  formatQty,
+  riskTone,
+  rowStatusLabel,
+  rowStatusTone,
+} from "@/components/procurement/procurement-display";
+import { useProcurementActions } from "@/components/procurement/use-procurement-actions";
+import { useLayoutMode } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { MATERIAL_RISKS, type MaterialRisk } from "@/lib/materials/types";
-import {
-  PROCUREMENT_VIEWS,
-  type ProcurementRecommendation,
-  type ProcurementRequisitionDetail,
-  type ProcurementRowStatus,
-  type ProcurementSnapshot,
-  type ProcurementViewId,
-} from "@/lib/procurement/types";
-import type { StatusTone } from "@/types/status";
-
+import { PROCUREMENT_VIEWS, type ProcurementSnapshot, type ProcurementViewId } from "@/lib/procurement/types";
 const VIEW_LABEL: Record<ProcurementViewId, string> = {
   all: "All",
   critical: "Critical",
@@ -36,40 +38,29 @@ const VIEW_LABEL: Record<ProcurementViewId, string> = {
   rejected: "Rejected",
 };
 
-const riskTone: Record<MaterialRisk, StatusTone> = {
-  CRITICAL: "danger",
-  HIGH: "danger",
-  MEDIUM: "warning",
-  LOW: "warning",
-  OK: "success",
-};
-
-const rowStatusTone: Record<ProcurementRowStatus, StatusTone> = {
-  RECOMMENDATION: "info",
-  MONITOR: "neutral",
-  DRAFT: "warning",
-  REVIEWED: "success",
-  REJECTED: "neutral",
-};
-
-const rowStatusLabel: Record<ProcurementRowStatus, string> = {
-  RECOMMENDATION: "Recommendation",
-  MONITOR: "Monitor",
-  DRAFT: "Draft",
-  REVIEWED: "Reviewed",
-  REJECTED: "Rejected",
-};
-
-function formatQty(value: number): string {
-  return value.toLocaleString("en-KE", { maximumFractionDigits: 3 });
-}
-
-function formatDay(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
-
 export function ProcurementWorkspace({
+  data,
+  canReview,
+  initialRequisitionId,
+}: {
+  data: ProcurementSnapshot;
+  canReview: boolean;
+  initialRequisitionId?: string;
+}) {
+  const { simple } = useLayoutMode();
+  if (simple) {
+    return <ProcurementWorkspaceSimple data={data} canReview={canReview} initialRequisitionId={initialRequisitionId} />;
+  }
+  return (
+    <ProcurementWorkspaceFull
+      data={data}
+      canReview={canReview}
+      initialRequisitionId={initialRequisitionId}
+    />
+  );
+}
+
+function ProcurementWorkspaceFull({
   data,
   canReview,
   initialRequisitionId,
@@ -84,10 +75,7 @@ export function ProcurementWorkspace({
   const compact = useCompactLayout();
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortKey, setSortKey] = useState<"priority" | "material" | "shortage" | "due">("priority");
-  const [selectedRow, setSelectedRow] = useState<ProcurementRecommendation | null>(null);
-  const [detail, setDetail] = useState<ProcurementRequisitionDetail | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { selectedRow, detail, busy, error, openRow, closeRow, createDraft, createRfq, review } = useProcurementActions();
 
   const href = (patch: Record<string, string | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -111,95 +99,6 @@ export function ProcurementWorkspace({
     });
     return rows;
   }, [data.rows, sortKey]);
-
-  const openRow = (row: ProcurementRecommendation) => {
-    setSelectedRow(row);
-    setDetail(null);
-    setError(null);
-    if (row.requisitionId) void loadDetail(row.requisitionId);
-  };
-
-  const loadDetail = async (id: string) => {
-    try {
-      const result = await fetch(`/api/procurement/requisitions/${id}`);
-      const payload = (await result.json()) as { requisition?: ProcurementRequisitionDetail; message?: string };
-      if (!result.ok || !payload.requisition) {
-        setError(payload.message ?? "Unable to load requisition.");
-        return;
-      }
-      setDetail(payload.requisition);
-    } catch {
-      setError("Unable to load requisition.");
-    }
-  };
-
-  const createDraft = async (productId: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await fetch("/api/procurement/requisitions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productId }),
-      });
-      const payload = (await result.json()) as { requisition?: ProcurementRequisitionDetail; message?: string };
-      if (!result.ok || !payload.requisition) {
-        setError(payload.message ?? "Unable to create requisition draft.");
-        return;
-      }
-      setDetail(payload.requisition);
-      router.refresh();
-    } catch {
-      setError("Unable to create requisition draft.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const createRfq = async (productId: string, requisitionId?: string) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await fetch("/api/procurement-rfqs", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "from-procurement", productId, requisitionId }),
-      });
-      const payload = (await result.json()) as { rfq?: { id: string }; message?: string };
-      if (!result.ok || !payload.rfq) {
-        setError(payload.message ?? "Unable to create RFQ draft.");
-        return;
-      }
-      router.push(`/rfqs/${payload.rfq.id}`);
-    } catch {
-      setError("Unable to create RFQ draft.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const review = async (id: string, decision: "review" | "reject") => {
-    setBusy(true);
-    setError(null);
-    try {
-      const result = await fetch(`/api/procurement/requisitions/${id}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ decision }),
-      });
-      const payload = (await result.json()) as { requisition?: ProcurementRequisitionDetail; message?: string };
-      if (!result.ok || !payload.requisition) {
-        setError(payload.message ?? "Unable to update requisition.");
-        return;
-      }
-      setDetail(payload.requisition);
-      router.refresh();
-    } catch {
-      setError("Unable to update requisition.");
-    } finally {
-      setBusy(false);
-    }
-  };
 
   const filters = (
     <>
@@ -398,11 +297,7 @@ export function ProcurementWorkspace({
       <Sheet
         open={selectedRow !== null || Boolean(initialRequisitionId)}
         onOpenChange={(open) => {
-          if (!open) {
-            setSelectedRow(null);
-            setDetail(null);
-            setError(null);
-          }
+          if (!open) closeRow();
         }}
       >
         <SheetContent
@@ -410,7 +305,7 @@ export function ProcurementWorkspace({
           className={compact ? "max-h-[85vh] overflow-y-auto sm:max-w-none" : "overflow-y-auto sm:max-w-lg"}
         >
           {selectedRow ? (
-            <ProcurementDetail
+            <ProcurementDetailSheet
               row={selectedRow}
               detail={detail}
               canReview={canReview}
@@ -444,179 +339,5 @@ function SortHead({
         {label}
       </button>
     </th>
-  );
-}
-
-function ProcurementDetail({
-  row,
-  detail,
-  canReview,
-  busy,
-  error,
-  onCreateDraft,
-  onCreateRfq,
-  onReview,
-}: {
-  row: ProcurementRecommendation;
-  detail: ProcurementRequisitionDetail | null;
-  canReview: boolean;
-  busy: boolean;
-  error: string | null;
-  onCreateDraft: () => void;
-  onCreateRfq: () => void;
-  onReview: (decision: "review" | "reject") => void;
-}) {
-  const active = detail ?? null;
-  const status = active?.status ?? row.rowStatus;
-
-  return (
-    <>
-      <SheetHeader>
-        <SheetTitle>{active ? "Requisition" : row.name}</SheetTitle>
-        <SheetDescription>
-          {active ? `${active.materialSku} · ${active.materialUnit}` : `${row.sku} · ${row.unit}`}
-        </SheetDescription>
-      </SheetHeader>
-      <div className="space-y-4 px-4 pb-6 text-sm">
-        <div className="flex flex-wrap gap-2">
-          <StatusBadge tone={riskTone[row.risk]}>{row.risk}</StatusBadge>
-          <StatusBadge tone={rowStatusTone[status as ProcurementRowStatus] ?? "neutral"}>
-            {rowStatusLabel[status as ProcurementRowStatus] ?? status}
-          </StatusBadge>
-        </div>
-
-        {active ? (
-          <dl className="grid grid-cols-2 gap-3">
-            <Metric label="Material" value={active.materialName} />
-            <Metric label="Requested quantity" value={`${formatQty(active.quantity)} ${active.materialUnit}`} />
-            <Metric label="Created by" value={active.createdByName} />
-            <Metric label="Created at" value={formatDay(active.createdAt)} />
-            {active.reviewedByName ? <Metric label="Reviewed by" value={active.reviewedByName} /> : null}
-            {active.reviewedAt ? <Metric label="Reviewed at" value={formatDay(active.reviewedAt)} /> : null}
-          </dl>
-        ) : null}
-
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Why</p>
-          <dl className="mt-2 grid grid-cols-2 gap-3">
-            <Metric label="Requirement" value={formatQty(active?.grossRequirement ?? row.grossRequirement)} />
-            <Metric label="Available" value={formatQty(active?.available ?? row.available)} />
-            <Metric label="Incoming" value={formatQty(active?.incoming ?? row.incoming)} />
-            <Metric label="Projected" value={formatQty(active?.projectedAvailable ?? row.projectedAvailable)} />
-            <Metric label="Shortage" value={formatQty(active?.netRequirement ?? row.netRequirement)} />
-          </dl>
-        </section>
-
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Production impact</p>
-          {(active?.affectedOrders ?? row.affectedOrders).length === 0 ? (
-            <p className="mt-2 text-muted-foreground">None</p>
-          ) : (
-            <ul className="mt-2 space-y-2">
-              {(active?.affectedOrders ?? row.affectedOrders).map((order) => (
-                <li key={order.id} className="rounded-lg border border-border px-3 py-2">
-                  <p className="font-medium">{order.orderNumber}</p>
-                  <p className="text-xs text-muted-foreground">{order.productName}</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Qty {formatQty(order.requiredQuantity)} · due {formatDay(order.dueDate)} · {order.priority.toLowerCase()}
-                  </p>
-                  <Link href="/operations" className="mt-1 inline-block text-xs hover:underline">
-                    View in Operations Planner
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Recommendation</p>
-          <p className="mt-2 leading-relaxed text-muted-foreground">{active?.reason ?? row.reason}</p>
-        </section>
-        <section className="border-t border-border pt-3">
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Supplier options</p>
-          {active ? (
-            <>
-              <p className="mt-2 text-sm">
-                <span className="font-medium">{active.supplierRecommendation.title}:</span> {active.supplierRecommendation.reason}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">{active.supplierComparisonNote}</p>
-              {active.supplierOptions.length === 0 ? (
-                <p className="mt-2 text-muted-foreground">No supplier intelligence is available for this material yet.</p>
-              ) : (
-                <ul className="mt-2 space-y-2">
-                  {active.supplierOptions.slice(0, 3).map((option) => (
-                    <li key={option.supplierId} className="rounded-lg border border-border px-3 py-2">
-                      <p className="font-medium">
-                        {option.supplierName} <span className="text-xs text-muted-foreground">({option.supplierCode})</span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        Lead time: {option.leadTimeDays !== null ? `${option.leadTimeDays} days` : "Not available"} · Price: {option.lastKnownPrice}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </>
-          ) : (
-            <p className="mt-2 text-muted-foreground">Supplier comparison will appear after opening a requisition draft.</p>
-          )}
-          <Button asChild size="sm" variant="outline" className="mt-3 min-h-11 sm:min-h-7">
-            <Link href={`/suppliers?material=${row.productId}`}>Compare suppliers</Link>
-          </Button>
-        </section>
-
-        {row.rowStatus === "MONITOR" ? (
-          <p className="text-sm text-muted-foreground">Low risk — monitor only. No requisition draft is suggested automatically.</p>
-        ) : null}
-
-        {!active && row.rowStatus === "RECOMMENDATION" ? (
-          <div className="space-y-2">
-            <Button type="button" className="min-h-11 w-full sm:min-h-9" disabled={busy} onClick={onCreateDraft}>
-              Create requisition draft
-            </Button>
-            <Button type="button" variant="outline" className="min-h-11 w-full sm:min-h-9" disabled={busy} onClick={onCreateRfq}>
-              Create RFQ
-            </Button>
-          </div>
-        ) : null}
-
-        {active ? (
-          <Button type="button" variant="outline" className="min-h-11 w-full sm:min-h-9" disabled={busy} onClick={onCreateRfq}>
-            Create RFQ
-          </Button>
-        ) : null}
-
-        {active?.status === "DRAFT" && canReview ? (
-          <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-            <Button type="button" size="sm" className="min-h-11 sm:min-h-7" disabled={busy} onClick={() => onReview("review")}>
-              Mark reviewed
-            </Button>
-            <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-7" disabled={busy} onClick={() => onReview("reject")}>
-              Reject
-            </Button>
-          </div>
-        ) : null}
-
-        {active && active.status !== "DRAFT" ? (
-          <p className="rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-            {active.status === "REVIEWED"
-              ? "This requisition was reviewed. No purchase order or supplier communication is created."
-              : "This requisition was rejected. It cannot be executed or re-reviewed."}
-          </p>
-        ) : null}
-
-        {error ? <p className="text-xs text-danger">{error}</p> : null}
-      </div>
-    </>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-[11px] tracking-wide text-muted-foreground uppercase">{label}</dt>
-      <dd className="mt-0.5 font-medium tabular-nums">{value}</dd>
-    </div>
   );
 }

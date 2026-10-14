@@ -1,7 +1,9 @@
 import Link from "next/link";
 
 import { ChartSurface } from "@/components/charts/ChartSurface";
+import { funnelStageBarClasses } from "@/lib/charts/tokens";
 import type { FunnelStage } from "@/lib/charts/types";
+import { cn } from "@/lib/utils";
 
 export function FunnelChart({
   title,
@@ -32,8 +34,8 @@ export function FunnelChart({
               </div>
               <div className="mt-1 h-1.5 overflow-hidden rounded-sm bg-muted">
                 <div
-                  className="h-full bg-chart-1 duration-150"
-                  style={{ width: `${Math.max(4, (stage.count / max) * 100)}%`, opacity: 1 - index * 0.08 }}
+                  className={cn("h-full duration-150", funnelStageBarClasses[index % funnelStageBarClasses.length])}
+                  style={{ width: `${Math.max(4, (stage.count / max) * 100)}%` }}
                 />
               </div>
             </>

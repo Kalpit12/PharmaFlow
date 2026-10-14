@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { ChartSurface } from "@/components/charts/ChartSurface";
+import { groupedBarPrimaryClass, groupedBarSecondaryClass } from "@/lib/charts/tokens";
 import type { GroupedBarRow } from "@/lib/charts/types";
 import { cn } from "@/lib/utils";
 
@@ -45,9 +46,9 @@ export function GroupedBarChart({
                 </p>
               </div>
               <div className="mt-1.5 flex h-2 gap-0.5 overflow-hidden rounded-sm bg-muted">
-                <div className="h-full bg-chart-6" style={{ width: `${(row.primary / max) * 100}%` }} title={`${primaryLabel}: ${formatQty(row.primary)}`} />
+                <div className={cn("h-full", groupedBarPrimaryClass)} style={{ width: `${(row.primary / max) * 100}%` }} title={`${primaryLabel}: ${formatQty(row.primary)}`} />
                 {row.secondary != null ? (
-                  <div className="h-full bg-chart-2" style={{ width: `${(row.secondary / max) * 100}%` }} title={`${secondaryLabel}: ${formatQty(row.secondary)}`} />
+                  <div className={cn("h-full", groupedBarSecondaryClass)} style={{ width: `${(row.secondary / max) * 100}%` }} title={`${secondaryLabel}: ${formatQty(row.secondary)}`} />
                 ) : null}
               </div>
             </>
@@ -67,11 +68,11 @@ export function GroupedBarChart({
       </ul>
       <ul className="mt-3 flex flex-wrap gap-4 text-[11px] text-muted-foreground">
         <li className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-chart-6" aria-hidden />
+          <span className={cn("size-2 rounded-sm", groupedBarPrimaryClass)} aria-hidden />
           {primaryLabel}
         </li>
         <li className="flex items-center gap-1.5">
-          <span className="size-2 rounded-sm bg-chart-2" aria-hidden />
+          <span className={cn("size-2 rounded-sm", groupedBarSecondaryClass)} aria-hidden />
           {secondaryLabel}
         </li>
       </ul>

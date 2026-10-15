@@ -16,6 +16,7 @@ import {
 import { getOperationsPlanner, resolvePlanningWindow } from "../src/lib/server/operations";
 import type { TenantContext } from "../src/lib/server/errors";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -35,10 +36,11 @@ export async function runPhase34Verify(prisma: PrismaClient) {
   assert(computeImpactScope({ batchCount: 2, orderCount: 2, customerCount: 2, hasKnownLinks: true }) === "SIGNIFICANT_IMPACT", "Significant scope");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
-  assert(tenant && tenantB, "Demo tenants exist");
-  const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: "MANAGER" };
-  const ctxB: TenantContext = { tenantId: tenantB.id, userId: null, role: "MANAGER" };
+  const tenantB = await getIsolationTenant(prisma);
+  const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
+  assert(tenant && tenantB && user, "Demo tenants and user exist");
+  const ctxA: TenantContext = { tenantId: tenant.id, userId: user.id, role: "MANAGER" };
+  const ctxB: TenantContext = { tenantId: tenantB.id, userId: user.id, role: "MANAGER" };
 
   const snapshot = await getTraceabilitySnapshot(ctxA, resolveTraceabilityFilters({}));
   assert(snapshot.kpis.length >= 4, "Traceability KPI strip");

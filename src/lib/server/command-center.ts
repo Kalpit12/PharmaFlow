@@ -20,6 +20,7 @@ import { countSupplierPerformanceAttention } from "@/lib/server/supplier-perform
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
 import { getTenant } from "@/lib/server/services/tenant";
 import { buildCommandCenterAnalytics } from "@/lib/server/command-center-analytics";
+import { getPlannerMaterialDelaySignals } from "@/lib/server/planner-integrations";
 import { getPlanningOutlook } from "@/lib/server/scenarios";
 
 const SEVERITY_RANK: Record<DailySeverity, number> = {
@@ -90,7 +91,7 @@ export function toCompactCommandContext(snapshot: CommandCenterSnapshot): Compac
 
 export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<CommandCenterSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, daily, execution, operations, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, planningOutlook, productionExecution] = await Promise.all([
+  const [dashboard, daily, execution, operations, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, planningOutlook, productionExecution, materialDelays] = await Promise.all([
     getDashboardData(ctx).catch(() => null),
     getDailyReviewSnapshot(ctx),
     getExecutionSnapshot(ctx),
@@ -107,6 +108,7 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
       href: "/scenarios",
     })),
     getProductionExecutionSignals(ctx),
+    getPlannerMaterialDelaySignals(ctx).catch(() => []),
   ]);
   const intelligence = daily.intelligence;
 
@@ -207,6 +209,20 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
       nextStep: "Review in Execution",
       href: "/execution",
       sortDue: item.createdAt,
+    });
+  }
+
+  for (const row of materialDelays.slice(0, 4)) {
+    addSignal({
+      id: row.id,
+      severity: row.severity === "CRITICAL" ? "CRITICAL" : row.severity === "HIGH" ? "HIGH" : "MEDIUM",
+      domain: "materials",
+      title: row.message,
+      explanation: `Production order ${row.orderNumber} — open materials and procurement to recover schedule.`,
+      entity: row.batchNumber ?? row.orderNumber,
+      nextStep: "Review materials plan",
+      href: row.materialsHref,
+      sortDue: String(row.delayDays).padStart(4, "0"),
     });
   }
 

@@ -17,6 +17,7 @@ import { proposeAction } from "../src/lib/server/actions";
 import { proposeWorkflow } from "../src/lib/server/workflows";
 import { listCommunications } from "../src/lib/server/communications";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -31,7 +32,7 @@ export async function runPhase17Verify(prisma: PrismaClient) {
   assert(!/\/api\/ai/.test(workspaceSource), "Daily Review explain does not use the mutating /api/ai orchestrator");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");
 

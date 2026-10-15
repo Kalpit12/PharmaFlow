@@ -12,6 +12,7 @@ import {
 } from "@/lib/receiving/types";
 import type { InventoryClassId } from "@/lib/reports/types";
 import { requirePermission } from "@/lib/auth/authorization";
+import { writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 import { formatCount } from "@/lib/server/money";
@@ -407,6 +408,24 @@ export async function receivePurchaseOrderGoods(
     },
     { timeout: 15_000 }
   );
+
+  await writeAuditLog(ctx, {
+    action: "INVENTORY_RECEIVED",
+    entityType: "PURCHASE_ORDER",
+    entityId: result.purchaseOrderId,
+    newValue: `${result.poNumber} · ${result.receivedNow} units · ${result.status}`,
+    reason: result.discrepancies.length > 0 ? result.discrepancies.join("; ") : null,
+  });
+
+  const { syncIncomingReceiptsForPurchaseOrder } = await import("@/lib/server/supply-timeline");
+  const { maybeTriggerSupplyTimelineReplan } = await import("@/lib/server/planner-integrations");
+  const sync = await syncIncomingReceiptsForPurchaseOrder(ctx, result.purchaseOrderId);
+  if (sync.changed) {
+    await maybeTriggerSupplyTimelineReplan(
+      ctx,
+      `${result.poNumber} receipt ${result.receivedNow} units — ${sync.summary}`
+    ).catch(() => null);
+  }
 
   return result;
 }

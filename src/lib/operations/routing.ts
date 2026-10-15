@@ -9,14 +9,23 @@ import {
   segregationTransitionRequiresClean,
   syntheticSegregationRuleId,
 } from "@/lib/operations/changeover-segregation";
+import { appendMaxHoldIssues } from "@/lib/operations/gmp-schedule-validation";
 import { appendDueDateFeasibilityIssues } from "@/lib/operations/schedule-feasibility";
 import { PRIORITY_RANK, type PlannerPriority } from "@/lib/operations/schedule";
+import {
+  canScheduleOnWorkstation,
+  gmpCleanMinutesBeforeJob,
+  type WorkstationGmpProfile,
+} from "@/lib/operations/workstation-gmp";
 
 export type RoutingWorkstation = {
   id: string;
   code: string;
   capacityHoursPerDay: number;
   calendar?: WorkCalendar;
+  gmp?: WorkstationGmpProfile;
+  /** Smallest max campaign length (batches) before forced major clean on this line. */
+  maxCampaignBatches?: number | null;
 };
 
 export type QualifiedResource = {
@@ -40,14 +49,19 @@ export type RoutableOperation = {
   workstationId: string | null;
   plannedStart: Date | null;
   plannedEnd: Date | null;
+  isQcHold?: boolean;
+  maxHoldHours?: number | null;
 };
 
 export type RoutingOrder = {
   id: string;
   orderNumber: string;
   priority: PlannerPriority;
+  customerPriority?: PlannerPriority | null;
   dueDate: Date;
   createdAt: Date;
+  earliestStartAt?: Date | null;
+  fastTrack?: boolean;
   materialReadyAt?: Date | null;
   materialBlocked?: boolean;
   operations: RoutableOperation[];
@@ -83,32 +97,54 @@ export type RoutingIssue = {
     | "CYCLIC_DEPENDENCY"
     | "INVALID_DURATION"
     | "MATERIAL_UNAVAILABLE"
-    | "PAST_DUE";
+    | "PAST_DUE"
+    | "MAX_HOLD_EXCEEDED"
+    | "WORKSTATION_GMP";
   detail: string;
 };
 
 type ResourceState = {
   availableAt: Date;
   lastFamily: string | null;
+  batchesSinceClean: number;
 };
+
+const DEFAULT_CAMPAIGN_MAJOR_CLEAN_MINUTES = 120;
 
 export type PlanningWeights = {
   priorityWeight: number;
   dueDateWeight: number;
   changeoverWeight: number;
   utilizationWeight: number;
+  leadTimeWeight: number;
+  onTimeCountWeight: number;
+  customerPriorityWeight: number;
+  similarJobsWeight: number;
+  eligibilityWeight: number;
 };
 
 const DAY_MS = 86_400_000;
 
 function orderUrgencyScore(order: RoutingOrder, now: Date, weights: PlanningWeights): number {
   const priority = (3 - PRIORITY_RANK[order.priority]) / 3;
+  const customer =
+    order.customerPriority != null ? (3 - PRIORITY_RANK[order.customerPriority]) / 3 : priority;
   const daysUntilDue = (order.dueDate.getTime() - now.getTime()) / DAY_MS;
   const due = 1 / (1 + Math.max(0, daysUntilDue));
-  return weights.priorityWeight * priority + weights.dueDateWeight * due;
+  let score =
+    weights.priorityWeight * priority +
+    weights.dueDateWeight * due +
+    weights.customerPriorityWeight * customer;
+  if (order.earliestStartAt && order.earliestStartAt.getTime() > now.getTime()) {
+    const daysUntilEligible = (order.earliestStartAt.getTime() - now.getTime()) / DAY_MS;
+    score += weights.eligibilityWeight * (1 / (1 + daysUntilEligible));
+  }
+  return score;
 }
 
 function compareOrders(a: RoutingOrder, b: RoutingOrder, weights?: PlanningWeights, now?: Date): number {
+  if (a.fastTrack && !b.fastTrack) return -1;
+  if (b.fastTrack && !a.fastTrack) return 1;
   if (weights && now) {
     const score = orderUrgencyScore(b, now, weights) - orderUrgencyScore(a, now, weights);
     if (score !== 0) return score;
@@ -190,7 +226,15 @@ export function buildOperationSchedule(input: {
     resourceState.set(workstation.id, {
       availableAt: alignToCalendar(input.windowStart, calendar),
       lastFamily: null,
+      batchesSinceClean: 0,
     });
+  }
+
+  const operationMeta = new Map<string, { maxHoldHours: number | null }>();
+  for (const order of input.orders) {
+    for (const operation of order.operations) {
+      operationMeta.set(operation.id, { maxHoldHours: operation.maxHoldHours ?? null });
+    }
   }
 
   const result: ScheduledOperation[] = [];
@@ -275,6 +319,7 @@ export function buildOperationSchedule(input: {
           if (state && lockedEnd.getTime() > state.availableAt.getTime()) {
             state.availableAt = lockedEnd;
             state.lastFamily = locked.changeoverFamily;
+            state.batchesSinceClean += 1;
           }
           continue;
         }
@@ -294,6 +339,22 @@ export function buildOperationSchedule(input: {
           );
         }
 
+        if (operation.isQcHold) {
+          const qcStart = predecessorReady;
+          const qcEnd = new Date(qcStart.getTime() + Math.max(0, operation.durationMinutes) * 60_000);
+          const qcScheduled: ScheduledOperation = {
+            ...operation,
+            workstationId: null,
+            plannedStart: qcStart,
+            plannedEnd: qcEnd,
+            changeoverMinutes: 0,
+            appliedChangeoverRuleId: null,
+          };
+          result.push(qcScheduled);
+          resultById.set(qcScheduled.id, qcScheduled);
+          continue;
+        }
+
         const candidates = operation.resources
           .filter((resource) => workstationById.has(resource.workstationId))
           .map((resource) => {
@@ -307,16 +368,41 @@ export function buildOperationSchedule(input: {
               state.lastFamily,
               operation.changeoverFamily
             );
-            const changeoverMinutes = rule?.durationMinutes ?? 0;
+            let changeoverMinutes = rule?.durationMinutes ?? 0;
+            const sameFamily =
+              state.lastFamily != null &&
+              operation.changeoverFamily != null &&
+              state.lastFamily === operation.changeoverFamily;
+            if (
+              sameFamily &&
+              workstation.maxCampaignBatches != null &&
+              workstation.maxCampaignBatches > 0 &&
+              state.batchesSinceClean >= workstation.maxCampaignBatches
+            ) {
+              changeoverMinutes += DEFAULT_CAMPAIGN_MAJOR_CLEAN_MINUTES;
+            }
             const runMinutes = Math.ceil(
               Math.max(0, operation.durationMinutes) * (100 / Math.max(1, resource.efficiencyPercent))
             );
-            const totalMinutes =
-              operation.setupMinutes + changeoverMinutes + runMinutes + operation.teardownMinutes;
             const start = alignToCalendar(later(state.availableAt, predecessorReady), calendar);
+            let gmpCleanMinutes = 0;
+            if (workstation.gmp) {
+              if (!canScheduleOnWorkstation(workstation.gmp, start)) {
+                return null;
+              }
+              gmpCleanMinutes = gmpCleanMinutesBeforeJob(workstation.gmp, start);
+              if (!Number.isFinite(gmpCleanMinutes)) return null;
+            }
+            const totalMinutes =
+              operation.setupMinutes +
+              gmpCleanMinutes +
+              changeoverMinutes +
+              runMinutes +
+              operation.teardownMinutes;
             const end = addWorkingMinutesOnCalendar(start, totalMinutes, calendar);
-            return { resource, start, end, rule, changeoverMinutes };
+            return { resource, start, end, rule, changeoverMinutes: changeoverMinutes + gmpCleanMinutes };
           })
+          .filter((row): row is NonNullable<typeof row> => row != null)
           .sort((a, b) => {
             const weights = input.weights;
             if (!weights) {
@@ -379,18 +465,32 @@ export function buildOperationSchedule(input: {
         };
         result.push(scheduled);
         resultById.set(scheduled.id, scheduled);
+        const wsState = resourceState.get(selected.resource.workstationId)!;
+        const continuingCampaign =
+          wsState.lastFamily != null &&
+          operation.changeoverFamily != null &&
+          wsState.lastFamily === operation.changeoverFamily;
         resourceState.set(selected.resource.workstationId, {
           availableAt: selected.end,
           lastFamily: operation.changeoverFamily,
+          batchesSinceClean: continuingCampaign ? wsState.batchesSinceClean + 1 : 1,
         });
       }
     }
   }
 
+  const withHold = appendMaxHoldIssues({
+    orders: input.orders,
+    dependencies: input.dependencies,
+    operations: result,
+    operationMeta,
+    issues,
+  });
+
   const feasibilityIssues = appendDueDateFeasibilityIssues({
     orders: input.orders,
     operations: result,
-    issues,
+    issues: withHold,
   });
 
   return { operations: result, issues: feasibilityIssues };

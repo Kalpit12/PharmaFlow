@@ -3,7 +3,10 @@ import Credentials from "next-auth/providers/credentials";
 
 import { authConfig } from "@/auth.config";
 import { isTenantAccessible } from "@/lib/auth/identity";
+import { assertProductionAuthConfig } from "@/lib/server/env";
 import { getPrisma } from "@/lib/server/db";
+
+assertProductionAuthConfig();
 import { verifyPassword } from "@/lib/server/password";
 
 class InactiveAccountError extends CredentialsSignin {

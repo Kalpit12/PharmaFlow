@@ -1,13 +1,15 @@
 import { PrismaClient } from "@prisma/client";
 
-import { seedDemoTenantFoundation } from "./seed-foundation";
 import { ensureApsDemoData } from "./seed-aps";
+import { ensureVerifyPrerequisites } from "./ensure-verify-prerequisites";
+import { seedDemoTenantFoundation } from "./seed-foundation";
 
 const prisma = new PrismaClient();
 
 async function main() {
   await seedDemoTenantFoundation(prisma);
   await ensureApsDemoData(prisma);
+  await ensureVerifyPrerequisites(prisma);
 }
 
 main()

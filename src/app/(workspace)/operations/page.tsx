@@ -1,12 +1,16 @@
 import { redirect } from "next/navigation";
-import { Suspense } from "react";
 
-import { OperationsPlanner } from "@/components/operations/OperationsPlanner";
+import { can } from "@/lib/auth/authorization";
+import { OperationsWorkspace } from "@/components/operations/OperationsWorkspace";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { WorkspacePage } from "@/components/layout/WorkspacePage";
 import { ServerError } from "@/lib/server/errors";
-import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
-import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
+import { getPlannerEngineSnapshot } from "@/lib/server/aps-plan";
+import { getPlantModelSnapshot } from "@/lib/server/plant-model";
+import { getOperationsGanttSnapshot } from "@/lib/server/operations-gantt";
+import { getPlannerDashboardPageData } from "@/lib/server/planner-dashboards";
+import { getPlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
+import { getProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 
 export const dynamic = "force-dynamic";
@@ -14,49 +18,50 @@ export const dynamic = "force-dynamic";
 export default async function OperationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ start?: string; weeks?: string }>;
+  searchParams: Promise<{ dashboard?: string }>;
 }) {
-  const params = await searchParams;
-  let data;
   try {
     const ctx = await getAuthenticatedTenantContext();
-    const materials = await getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null);
-    data = await getOperationsPlanner(ctx, resolvePlanningWindow(params), materials);
-  } catch (error) {
-    if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
-    console.error("Operations planner failed", error);
+    const params = await searchParams;
+    const canGlobalRules = can(ctx.role, "production.global_rules");
+    const [plant, orders, planner, gantt, integrations, dashboard] = await Promise.all([
+      getPlantModelSnapshot(ctx),
+      getProductionOrdersSnapshot(ctx),
+      getPlannerEngineSnapshot(ctx),
+      getOperationsGanttSnapshot(ctx, 2),
+      getPlannerIntegrationSnapshot(ctx),
+      getPlannerDashboardPageData(ctx, params.dashboard),
+    ]);
+
     return (
       <WorkspacePage width="full">
         <PageHeader
           context="Operations"
-          title="Production Planning"
-          description="Plan finite workstation capacity against priority, material availability and due dates."
+          title="Operations planner"
+          description="Gantt schedule, plant model, orders, and propose → accept engine (SkyPlanner-aligned rebuild)."
         />
-        <p className="text-sm text-muted-foreground">Unable to load the planner. Try again later.</p>
+        <OperationsWorkspace
+          plant={plant}
+          orders={orders}
+          planner={planner}
+          gantt={gantt}
+          integrations={integrations}
+          dashboard={dashboard}
+          canGlobalRules={canGlobalRules}
+        />
+      </WorkspacePage>
+    );
+  } catch (error) {
+    if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
+    console.error("Operations workspace failed", error);
+    return (
+      <WorkspacePage width="full">
+        <PageHeader context="Operations" title="Operations planner" description="Configure production resources and orders." />
+        <p className="text-sm text-muted-foreground">
+          Unable to load operations data. If you recently pulled schema changes, run{" "}
+          <code className="text-xs">npm run db:deploy:direct</code> then <code className="text-xs">npm run db:generate</code>.
+        </p>
       </WorkspacePage>
     );
   }
-
-  return (
-    <WorkspacePage width="full">
-      <PageHeader
-        context="Operations"
-        title="Production Planning"
-        description="Plan finite workstation capacity against priority, material availability and due dates."
-        metadata={data.disclaimer}
-        relatedPath="/operations"
-        actions={
-          <a
-            href="/scenarios?capacity=-20"
-            className="inline-flex min-h-11 items-center justify-center rounded-sm border border-border bg-background px-3 text-sm font-medium transition-colors hover:bg-muted sm:min-h-8"
-          >
-            Run scenario
-          </a>
-        }
-      />
-      <Suspense>
-        <OperationsPlanner data={data} />
-      </Suspense>
-    </WorkspacePage>
-  );
 }

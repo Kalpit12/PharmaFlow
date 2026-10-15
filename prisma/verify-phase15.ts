@@ -26,6 +26,7 @@ import { proposeAction } from "../src/lib/server/actions";
 import { proposeWorkflow } from "../src/lib/server/workflows";
 import { ServerError } from "../src/lib/server/errors";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -38,7 +39,7 @@ export async function runPhase15Verify(prisma: PrismaClient) {
   assert(!engineSource.includes("fetch("), "Procurement engine is deterministic in-memory");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && empty && user, "Tenants required");

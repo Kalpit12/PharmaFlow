@@ -1,5 +1,6 @@
 import { Prisma, type InventoryClass, type PrismaClient } from "@prisma/client";
 
+import { getIsolationTenant } from "./verify-tenants";
 function utcDay(offset: number): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset, 8, 0, 0));
@@ -36,18 +37,25 @@ async function ensureProduct(
 export async function ensureReportingDemoData(prisma: PrismaClient) {
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
   if (!tenant) return;
+  const tenantId = tenant.id;
 
-  const warehouseCount = await prisma.warehouse.count({ where: { tenantId: tenant.id } });
-  if (warehouseCount === 0) {
-    const fg = await prisma.warehouse.create({
-      data: { tenantId: tenant.id, name: "Nairobi finished goods", code: "NRB-FG" },
+  const hasReportingLots = await prisma.inventoryLot.findFirst({
+    where: { tenantId, batchCode: "FG-AMOX-EXP" },
+    select: { id: true },
+  });
+
+  async function warehouse(code: string, name: string) {
+    const existing = await prisma.warehouse.findUnique({
+      where: { tenantId_code: { tenantId, code } },
     });
-    const rm = await prisma.warehouse.create({
-      data: { tenantId: tenant.id, name: "Raw material store", code: "NRB-RM" },
-    });
-    const pkg = await prisma.warehouse.create({
-      data: { tenantId: tenant.id, name: "Packaging store", code: "NRB-PK" },
-    });
+    if (existing) return existing;
+    return prisma.warehouse.create({ data: { tenantId, name, code } });
+  }
+
+  if (!hasReportingLots) {
+    const fg = await warehouse("NRB-FG", "Nairobi finished goods");
+    const rm = await warehouse("NRB-RM", "Raw material store");
+    const pkg = await warehouse("NRB-PK", "Packaging store");
 
     const amox = await prisma.product.findUnique({ where: { tenantId_sku: { tenantId: tenant.id, sku: "AMOX-500-CAP" } } });
     const para = await prisma.product.findUnique({ where: { tenantId_sku: { tenantId: tenant.id, sku: "PARA-500-TAB" } } });
@@ -120,12 +128,13 @@ export async function ensureReportingDemoData(prisma: PrismaClient) {
         receivedAt: utcDay(lot.receivedOffset),
         expiryDate: lot.expiryOffset === null ? null : utcDay(lot.expiryOffset),
       })),
+      skipDuplicates: true,
     });
   }
 
   await ensureReportingDepth(prisma);
 
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   if (!tenantB) return;
   if ((await prisma.warehouse.count({ where: { tenantId: tenantB.id } })) > 0) return;
   const productB = await prisma.product.findFirst({ where: { tenantId: tenantB.id } });
@@ -232,8 +241,14 @@ async function ensureReportingDepth(prisma: PrismaClient) {
   );
   if (Number(existingSnapshots[0]?.n ?? 0) > 0) return;
 
+  const inventoryLots = await prisma.inventoryLot.findMany({
+    where: { tenantId: tenant.id },
+    select: { productId: true, class: true, quantity: true, unitValue: true },
+  });
+  if (inventoryLots.length === 0) return;
+
   const grouped = new Map<string, { productId: string; class: InventoryClass; quantity: number; value: Prisma.Decimal }>();
-  for (const lot of lots) {
+  for (const lot of inventoryLots) {
     const current = grouped.get(lot.productId) ?? {
       productId: lot.productId,
       class: lot.class,

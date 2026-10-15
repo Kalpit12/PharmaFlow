@@ -1,5 +1,60 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { getIsolationTenant } from "./verify-tenants";
+
+/** Phase 2 — validated batch sizes on demo SKUs (idempotent). */
+export async function ensureOperationsPhase2DemoData(prisma: PrismaClient) {
+  const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
+  if (!tenant) return;
+
+  const batchBySku: Record<string, number> = {
+    "AMOX-500-CAP": 12000,
+    "PARA-500-TAB": 8000,
+    "FERRO-FOLIC-TAB": 6000,
+    "AZITH-500-TAB": 10000,
+    "COUGH-SYR-100": 2000,
+  };
+
+  for (const [sku, validatedBatchSize] of Object.entries(batchBySku)) {
+    await prisma.product.updateMany({
+      where: { tenantId: tenant.id, sku },
+      data: { validatedBatchSize },
+    });
+  }
+
+  const prospectExists = await prisma.productionOrder.findFirst({
+    where: { tenantId: tenant.id, orderNumber: { startsWith: "PRP-" } },
+    select: { id: true },
+  });
+  if (prospectExists) return;
+
+  const amox = await prisma.product.findFirst({
+    where: { tenantId: tenant.id, sku: "AMOX-500-CAP" },
+    select: { id: true, validatedBatchSize: true },
+  });
+  if (!amox) return;
+
+  const year = new Date().getUTCFullYear();
+  await prisma.productionOrder.create({
+    data: {
+      tenantId: tenant.id,
+      orderNumber: `PRP-${year}-001`,
+      productId: amox.id,
+      quantity: 15000,
+      priority: "HIGH",
+      status: "UNSCHEDULED",
+      orderKind: "PROSPECT",
+      scheduleDirection: "JIT",
+      dueDate: utcDay(14, 16),
+      durationMinutes: 480,
+      validatedBatchSize: amox.validatedBatchSize,
+      wholeBatchCount: 2,
+      partialBatchRemainder: 3000,
+      reserveCapacity: true,
+      isLocked: false,
+    },
+  });
+}
 function utcDay(offset: number, hour = 8): Date {
   const now = new Date();
   const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset, hour, 0, 0));
@@ -268,7 +323,12 @@ export async function ensureOperationsDemoData(prisma: PrismaClient) {
     });
   }
 
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const { ensurePlantModelDemoData } = await import("./seed-plant-model");
+  await ensurePlantModelDemoData(prisma);
+
+  await ensureOperationsPhase2DemoData(prisma);
+
+  const tenantB = await getIsolationTenant(prisma);
   if (!tenantB) return;
   const bCount = await prisma.workstation.count({ where: { tenantId: tenantB.id } });
   if (bCount > 0) return;

@@ -161,7 +161,17 @@ const weighted = buildOperationSchedule({
   workstations,
   changeovers: [],
   windowStart: start,
-  weights: { priorityWeight: 5, dueDateWeight: 95, changeoverWeight: 0, utilizationWeight: 0 },
+  weights: {
+    priorityWeight: 5,
+    dueDateWeight: 95,
+    changeoverWeight: 0,
+    utilizationWeight: 0,
+    leadTimeWeight: 0,
+    onTimeCountWeight: 0,
+    customerPriorityWeight: 0,
+    similarJobsWeight: 0,
+    eligibilityWeight: 0,
+  },
 });
 const soonLow = weighted.operations.find((row) => row.id === "soon-low")!;
 const lateNormal = weighted.operations.find((row) => row.id === "late-normal")!;

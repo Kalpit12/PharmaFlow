@@ -30,6 +30,8 @@ export function executionActionLabel(action: ExecutionAuditAction): string {
   switch (action) {
     case "PRODUCTION_RELEASE":
       return "Released";
+    case "PRODUCTION_LINE_CLEARANCE":
+      return "Line clearance signed";
     case "PRODUCTION_START":
       return "Started";
     case "PRODUCTION_PAUSE":

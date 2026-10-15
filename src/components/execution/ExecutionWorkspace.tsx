@@ -169,7 +169,10 @@ export function ExecutionWorkspace({ data }: { data: ExecutionSnapshot }) {
     try {
       let url = "";
       let body: Record<string, string> = {};
-      if (item.kind === "ACTION") {
+      if (item.kind === "SCHEDULE_PLAN") {
+        url = `/api/schedule-plans/${id}/${decision === "approve" ? "accept" : "reject"}`;
+        body = {};
+      } else if (item.kind === "ACTION") {
         url = `/api/actions/${id}`;
         body = { decision };
       } else if (item.kind === "WORKFLOW") {

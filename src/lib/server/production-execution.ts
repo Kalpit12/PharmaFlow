@@ -1,4 +1,5 @@
 import { can, requirePermission } from "@/lib/auth/authorization";
+import { resolvePlannerAccess } from "@/lib/auth/planner-access";
 import {
   allowedActions,
   buildExecutionAttention,
@@ -24,6 +25,7 @@ import type { TenantContext } from "@/lib/server/errors";
 import { ServerError } from "@/lib/server/errors";
 import { computeOrderMaterialReadiness } from "@/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
+import { filterOpenStationJobs, sortStationQueue } from "@/lib/production-execution/shop-floor";
 import { listRecentShopFloorEvents } from "@/lib/server/production-operation-events";
 
 export type ProductionExecutionFilters = {
@@ -93,7 +95,13 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       },
       operations: {
         orderBy: { sequence: "asc" },
-        select: { id: true, operationCode: true, status: true, sequence: true },
+        select: {
+          id: true,
+          operationCode: true,
+          status: true,
+          sequence: true,
+          routingOperation: { select: { requiresLineClearance: true } },
+        },
       },
     },
     orderBy: [{ plannedEnd: "asc" }, { orderNumber: "asc" }],
@@ -184,6 +192,9 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       order.operations.find((operation) => operation.status === "SCHEDULED") ??
       order.operations[0] ??
       null;
+    const firstOperation = order.operations[0] ?? null;
+    const requiresLineClearance = firstOperation?.routingOperation?.requiresLineClearance ?? false;
+    const lineClearanceComplete = historyRows.some((row) => row.action === "PRODUCTION_LINE_CLEARANCE");
 
     return {
       id: order.id,
@@ -219,10 +230,18 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       isReleased: history.some((row) => row.action === "PRODUCTION_RELEASE"),
       isPaused: executionState === "PAUSED",
       canRelease: canExecute && actions.canRelease,
-      canStart: canExecute && actions.canStart,
+      canStart:
+        canExecute && actions.canStart && (!requiresLineClearance || lineClearanceComplete),
       canPause: canExecute && actions.canPause,
       canResume: canExecute && actions.canResume,
       canComplete: canExecute && actions.canComplete,
+      requiresLineClearance,
+      lineClearanceComplete,
+      canSignLineClearance:
+        canExecute &&
+        requiresLineClearance &&
+        !lineClearanceComplete &&
+        (executionState === "RELEASED" || executionState === "WAITING"),
       history,
       activeOperationId: activeOperation?.id ?? null,
       activeOperationCode: activeOperation?.operationCode ?? null,
@@ -241,7 +260,12 @@ export async function getProductionExecutionSnapshot(
   options?: { includeMaterials?: boolean }
 ): Promise<ProductionExecutionSnapshot> {
   requirePermission(ctx, "production.read");
-  const allOrders = await loadExecutionOrders(ctx, options);
+  const access = await resolvePlannerAccess(ctx);
+  let allOrders = await loadExecutionOrders(ctx, options);
+  if (access.scopedWorkstationIds?.length) {
+    const allowed = new Set(access.scopedWorkstationIds);
+    allOrders = allOrders.filter((row) => row.workstationId && allowed.has(row.workstationId));
+  }
   const query = filters.query?.toLowerCase();
   const filtered = allOrders.filter((row) => {
     if (!matchesView(row, filters.view)) return false;
@@ -322,14 +346,9 @@ export async function getProductionExecutionSnapshot(
     nextTask,
     shopFloorMode: Boolean(filters.workstationId),
     stationQueue: filters.workstationId
-      ? filtered
-          .filter(
-            (row) =>
-              row.executionState === "IN_PROGRESS" ||
-              row.executionState === "RELEASED" ||
-              row.executionState === "WAITING"
-          )
-          .slice(0, 8)
+      ? sortStationQueue(
+          filterOpenStationJobs(allOrders.filter((row) => row.workstationId === filters.workstationId))
+        ).slice(0, 12)
       : [],
     performance: [
       {
@@ -428,6 +447,44 @@ export async function releaseProductionOrder(ctx: TenantContext, orderId: string
   return { orderId: order.id, executionState: "RELEASED" as const, message: "Production order released.", idempotent: false };
 }
 
+async function orderRequiresLineClearance(orderId: string, tenantId: string): Promise<boolean> {
+  const first = await getPrisma().productionOperation.findFirst({
+    where: { productionOrderId: orderId, tenantId },
+    orderBy: { sequence: "asc" },
+    include: { routingOperation: { select: { requiresLineClearance: true } } },
+  });
+  return first?.routingOperation?.requiresLineClearance ?? false;
+}
+
+export async function signProductionLineClearance(
+  ctx: TenantContext,
+  orderId: string,
+  input?: { signatureLabel?: string | null }
+) {
+  requirePermission(ctx, "production.execute");
+  const order = await loadOrderForMutation(ctx, orderId);
+  const history = await loadExecutionHistory(ctx, order.id);
+  const state = currentStateFrom(order, history);
+  const requires = await orderRequiresLineClearance(order.id, ctx.tenantId);
+  if (!requires) {
+    throw new ServerError("This order does not require line clearance.", "INTERNAL");
+  }
+  if (history.some((row) => row.action === "PRODUCTION_LINE_CLEARANCE")) {
+    return { orderId: order.id, message: "Line clearance already recorded.", idempotent: true };
+  }
+  if (state !== "RELEASED" && state !== "WAITING") {
+    throw new ServerError("Release the order before signing line clearance.", "INTERNAL");
+  }
+  const label = input?.signatureLabel?.trim() || ctx.userId;
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_LINE_CLEARANCE",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: `Signed by ${label}`,
+  });
+  return { orderId: order.id, message: "Line clearance recorded.", idempotent: false };
+}
+
 export async function startProductionOrder(ctx: TenantContext, orderId: string, reason?: string | null) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
@@ -452,9 +509,27 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
   if (order.workstation && !order.workstation.active) {
     throw new ServerError("Workstation is inactive.", "FORBIDDEN");
   }
+  if (await orderRequiresLineClearance(order.id, ctx.tenantId)) {
+    if (!history.some((row) => row.action === "PRODUCTION_LINE_CLEARANCE")) {
+      throw new ServerError("Complete line clearance before starting this batch.", "FORBIDDEN");
+    }
+  }
+  const prisma = getPrisma();
+  if (order.workstationId) {
+    const otherActive = await prisma.productionOrder.count({
+      where: {
+        tenantId: ctx.tenantId,
+        id: { not: order.id },
+        workstationId: order.workstationId,
+        status: "IN_PROGRESS",
+      },
+    });
+    if (otherActive > 0) {
+      throw new ServerError("Another job is already in progress on this workstation.", "FORBIDDEN");
+    }
+  }
 
   const now = new Date();
-  const prisma = getPrisma();
   await prisma.productionOrder.update({
     where: { id: order.id },
     data: { status: "IN_PROGRESS", isLocked: true },
@@ -475,6 +550,12 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
     newValue: change.newValue,
     reason: reason?.trim() || null,
   });
+
+  const { emitPlannerWebhook } = await import("@/lib/server/planner-webhooks");
+  await emitPlannerWebhook(ctx, "PRODUCTION_JOB_STARTED", {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+  }).catch(() => undefined);
 
   return { orderId: order.id, executionState: "IN_PROGRESS" as const, message: "Production started.", idempotent: false };
 }
@@ -580,6 +661,13 @@ export async function completeProductionOrder(
     newValue: `${change.newValue}${input?.producedQuantity != null ? ` · QTY: ${input.producedQuantity}` : ""}`,
     reason: input?.reason?.trim() || null,
   });
+
+  const { emitPlannerWebhook } = await import("@/lib/server/planner-webhooks");
+  await emitPlannerWebhook(ctx, "PRODUCTION_JOB_COMPLETED", {
+    orderId: order.id,
+    orderNumber: order.orderNumber,
+    producedQuantity: input?.producedQuantity ?? order.batch?.producedQuantity ?? null,
+  }).catch(() => undefined);
 
   return { orderId: order.id, executionState: "COMPLETED" as const, message: "Production completed.", idempotent: false };
 }

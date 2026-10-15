@@ -12,6 +12,7 @@ import { percentChange } from "../src/lib/server/money";
 import { getReportingSnapshot, resolveReportFilters, toCompactReportContext } from "../src/lib/server/reports";
 import { getSupplierPerformanceReportMetrics } from "../src/lib/server/supplier-performance";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -27,7 +28,7 @@ export async function runPhase26Verify(prisma: PrismaClient) {
   assert(!/\bredis\b|bullmq|power.?bi|newrelic/i.test(sources), "No new infrastructure");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && empty && manager, "Tenants and manager required");

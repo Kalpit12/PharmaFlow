@@ -16,6 +16,7 @@ import {
 } from "../src/lib/server/procurement-rfqs";
 import { getReceivingDetail, receivePurchaseOrderGoods } from "../src/lib/server/receiving";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -52,7 +53,7 @@ export async function runPhase24Verify(prisma: PrismaClient) {
   assert(!/openai/i.test(sources), "Phase 24 receiving performs ZERO OpenAI calls");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Tenants and manager required");
 

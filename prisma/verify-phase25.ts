@@ -13,6 +13,7 @@ import {
   resolveSupplierPerformanceFilters,
 } from "../src/lib/server/supplier-performance";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -59,7 +60,7 @@ export async function runPhase25Verify(prisma: PrismaClient) {
   assert(strong.score !== null && strong.score >= 70, "Deterministic scoring");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Tenants and manager required");
 

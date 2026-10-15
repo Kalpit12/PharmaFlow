@@ -16,6 +16,7 @@ import { computeOrderMaterialReadiness } from "../src/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "../src/lib/server/materials";
 import type { TenantContext } from "../src/lib/server/errors";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -205,7 +206,7 @@ export async function runPhase32Verify(prisma: PrismaClient) {
 
   // Tenant isolation via server snapshot
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   assert(tenant && tenantB, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: null };
   const ctxB: TenantContext = { tenantId: tenantB.id, userId: null, role: null };

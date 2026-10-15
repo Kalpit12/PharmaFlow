@@ -1,4 +1,11 @@
-export const EXECUTION_KINDS = ["ACTION", "WORKFLOW", "REQUISITION", "COMMUNICATION", "PURCHASE_ORDER"] as const;
+export const EXECUTION_KINDS = [
+  "ACTION",
+  "WORKFLOW",
+  "REQUISITION",
+  "COMMUNICATION",
+  "PURCHASE_ORDER",
+  "SCHEDULE_PLAN",
+] as const;
 export type ExecutionKind = (typeof EXECUTION_KINDS)[number];
 
 export const EXECUTION_DOMAINS = [

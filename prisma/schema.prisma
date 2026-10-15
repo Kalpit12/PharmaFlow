@@ -29,6 +29,53 @@ enum UserRole {
   VIEWER
 }
 
+enum PlannerAccessRole {
+  OPERATOR
+  SUPERVISOR
+  PLANNER
+  HEAD_PLANNER
+  QA
+  SALES
+  EXECUTIVE
+}
+
+enum PlannerAssistantDraftStatus {
+  DRAFT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum PlantEmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+enum PlannerWebhookEventType {
+  SCHEDULE_PLAN_ACCEPTED
+  PRODUCTION_JOB_STARTED
+  PRODUCTION_JOB_COMPLETED
+  PRODUCTION_ORDER_LATE
+  BATCH_MATERIAL_DELAYED
+}
+
+enum PlannerWidgetType {
+  KPI_STRIP
+  CAPACITY_LOAD_FACTOR
+  WORKSTATION_UTILIZATION
+  BOTTLENECK
+  OTIF
+  SCHEDULE_ADHERENCE
+  LATE_JOBS
+  JOBS_STARTED_COMPLETED
+  CHANGEOVER_HOURS
+  OEE_BY_WORKSTATION
+  JOB_REPORT
+  TIMELOG_REPORT
+  ORDER_ITEM_REPORT
+}
+
 enum ProductStatus {
   ACTIVE
   DISCONTINUED
@@ -145,6 +192,22 @@ enum ProductionPriority {
   CRITICAL
 }
 
+enum ProductionScheduleDirection {
+  FORWARD
+  JIT
+}
+
+enum ProductionOrderKind {
+  FIRM
+  PROSPECT
+}
+
+enum ProductionCampaignStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
 enum ProductionOrderStatus {
   UNSCHEDULED
   SCHEDULED
@@ -189,6 +252,23 @@ enum WorkstationKind {
   PACKAGING_LINE
   CLEAN_ROOM
   SUBCONTRACT
+}
+
+enum WorkstationQualificationStatus {
+  QUALIFIED
+  DUE
+  EXPIRED
+}
+
+enum WorkstationCleanStatus {
+  CLEAN
+  DIRTY
+}
+
+enum ChangeoverLevel {
+  NONE
+  MINOR
+  MAJOR
 }
 
 enum ProductionOperationEventType {
@@ -365,8 +445,16 @@ model Tenant {
   actions                      Action[]
   workflows                    Workflow[]
   communicationDrafts          CommunicationDraft[]
+  plantSites                   PlantSite[]
+  plantDepartments             PlantDepartment[]
+  plantRooms                   PlantRoom[]
+  workstationGroups            WorkstationGroup[]
+  productionTools              ProductionTool[]
+  productionToolWorkstations   ProductionToolWorkstation[]
   workstations                 Workstation[]
   productionOrders             ProductionOrder[]
+  productionCampaigns          ProductionCampaign[]
+  productionOrderAttachments   ProductionOrderAttachment[]
   productRoutings              ProductRouting[]
   routingOperations            RoutingOperation[]
   routingOperationResources    RoutingOperationResource[]
@@ -402,6 +490,17 @@ model Tenant {
   qualityCorrectiveActions     QualityCorrectiveAction[]
   qualityExceptionEvents       QualityExceptionEvent[]
   auditLogs                    AuditLog[]
+  plannerDashboards            PlannerDashboard[]
+  tenantApiKeys                TenantApiKey[]
+  plannerWebhookSubscriptions  PlannerWebhookSubscription[]
+  plannerWebhookDeliveries     PlannerWebhookDeliveryLog[]
+  plannerAssistantDrafts       PlannerAssistantDraft[]
+  plantEmployeeGroups          PlantEmployeeGroup[]
+  plantEmployees               PlantEmployee[]
+  plantEmployeeGroupMembers    PlantEmployeeGroupMember[]
+  plantEmployeeLeaves          PlantEmployeeLeave[]
+  plantEmployeeOperationSkills PlantEmployeeOperationSkill[]
+  productSubAssemblies         ProductSubAssembly[]
 }
 
 model User {
@@ -412,10 +511,15 @@ model User {
   passwordHash String?
   role         UserRole
   status       UserStatus @default(ACTIVE)
+  plannerAccessRole PlannerAccessRole?
+  plantDepartmentId String?
   createdAt    DateTime   @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime   @updatedAt @db.Timestamptz(6)
 
   tenant                          Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  plantDepartment                 PlantDepartment?              @relation(fields: [plantDepartmentId], references: [id], onDelete: SetNull)
+  plannerDashboards               PlannerDashboard[]
+  plannerAssistantDrafts          PlannerAssistantDraft[]
   actionsCreated                  Action[]                      @relation("ActionCreatedBy")
   actionsApproved                 Action[]                      @relation("ActionApprovedBy")
   workflowsCreated                Workflow[]                    @relation("WorkflowCreatedBy")
@@ -441,6 +545,109 @@ model User {
 
   @@index([tenantId])
   @@index([tenantId, status])
+  @@index([plantDepartmentId])
+}
+
+model PlannerDashboard {
+  id        String   @id @default(uuid())
+  tenantId  String
+  userId    String
+  name      String
+  isDefault Boolean  @default(false)
+  dateFrom  DateTime? @db.Timestamptz(6)
+  dateTo    DateTime? @db.Timestamptz(6)
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant  Tenant                  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user    User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  widgets PlannerDashboardWidget[]
+
+  @@index([tenantId, userId])
+}
+
+model PlannerAssistantDraft {
+  id        String                      @id @default(uuid())
+  tenantId  String
+  userId    String
+  intent    String
+  summary   String
+  payload   Json
+  status    PlannerAssistantDraftStatus @default(DRAFT)
+  createdAt DateTime                    @default(now()) @db.Timestamptz(6)
+  expiresAt DateTime                    @db.Timestamptz(6)
+  decidedAt DateTime?                   @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, createdAt])
+}
+
+model TenantApiKey {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  keyPrefix  String
+  keyHash    String   @unique
+  scopes     Json
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now()) @db.Timestamptz(6)
+  lastUsedAt DateTime? @db.Timestamptz(6)
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, active])
+}
+
+model PlannerWebhookSubscription {
+  id          String   @id @default(uuid())
+  tenantId    String
+  label       String
+  endpointUrl String
+  secret      String
+  events      Json
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant     Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  deliveries PlannerWebhookDeliveryLog[]
+
+  @@index([tenantId, active])
+}
+
+model PlannerWebhookDeliveryLog {
+  id             String   @id @default(uuid())
+  tenantId       String
+  subscriptionId String
+  eventType      String
+  payload        Json
+  status         String   @default("PENDING")
+  responseCode   Int?
+  errorMessage   String?
+  createdAt      DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant       Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  subscription PlannerWebhookSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@index([subscriptionId])
+}
+
+model PlannerDashboardWidget {
+  id          String             @id @default(uuid())
+  dashboardId String
+  widgetType  PlannerWidgetType
+  sortOrder   Int                @default(0)
+  createdAt   DateTime           @default(now()) @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @db.Timestamptz(6)
+
+  dashboard PlannerDashboard @relation(fields: [dashboardId], references: [id], onDelete: Cascade)
+
+  @@unique([dashboardId, widgetType])
+  @@index([dashboardId, sortOrder])
 }
 
 model Region {
@@ -471,10 +678,12 @@ model Product {
   manufacturer String?
   dosageForm   String?
   safetyStock  Int           @default(0)
+  validatedBatchSize Int?
   createdAt    DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
 
   tenant                  Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productionCampaigns     ProductionCampaign[]
   orderItems              OrderItem[]
   rfqItems                RfqItem[]
   productionOrders        ProductionOrder[]
@@ -490,6 +699,8 @@ model Product {
   batchInputLots          ProductionBatchInputLot[]
   qualityExceptions       QualityException[]
   routings                ProductRouting[]
+  subAssembliesAsParent   ProductSubAssembly[] @relation("SubAssemblyParent")
+  subAssembliesAsComponent ProductSubAssembly[] @relation("SubAssemblyComponent")
 
   @@unique([tenantId, sku])
   @@index([tenantId])
@@ -505,11 +716,13 @@ model Customer {
   phone     String?
   regionId  String?
   status    CustomerStatus @default(ACTIVE)
+  defaultPriority ProductionPriority @default(NORMAL)
   createdAt DateTime       @default(now()) @db.Timestamptz(6)
   updatedAt DateTime       @updatedAt @db.Timestamptz(6)
 
   tenant              Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   region              Region?              @relation(fields: [regionId], references: [id], onDelete: SetNull)
+  productionOrders    ProductionOrder[]
   orders              Order[]
   rfqs                Rfq[]
   communicationDrafts CommunicationDraft[]
@@ -723,6 +936,204 @@ model CommunicationDraft {
   @@index([tenantId, customerId])
 }
 
+model PlantSite {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  timezone  String   @default("Africa/Nairobi")
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  departments  PlantDepartment[]
+  rooms        PlantRoom[]
+  workstations Workstation[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model PlantDepartment {
+  id        String   @id @default(uuid())
+  tenantId  String
+  siteId    String
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         PlantSite     @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  rooms        PlantRoom[]
+  workstations Workstation[]
+  users        User[]
+  employees    PlantEmployee[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, siteId])
+}
+
+model PlantEmployeeGroup {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant    Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  members   PlantEmployeeGroupMember[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model PlantEmployee {
+  id           String              @id @default(uuid())
+  tenantId     String
+  departmentId String?
+  code         String
+  name         String
+  status       PlantEmployeeStatus @default(ACTIVE)
+  createdAt    DateTime            @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime            @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant                        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  department   PlantDepartment?              @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  groupLinks   PlantEmployeeGroupMember[]
+  leaves       PlantEmployeeLeave[]
+  skills       PlantEmployeeOperationSkill[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, status])
+}
+
+model PlantEmployeeGroupMember {
+  id         String @id @default(uuid())
+  tenantId   String
+  groupId    String
+  employeeId String
+
+  tenant   Tenant             @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  group    PlantEmployeeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  employee PlantEmployee      @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, employeeId])
+  @@index([tenantId, employeeId])
+}
+
+model PlantEmployeeLeave {
+  id         String   @id @default(uuid())
+  tenantId   String
+  employeeId String
+  startDate  DateTime @db.Date
+  endDate    DateTime @db.Date
+  reason     String?
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee PlantEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, employeeId])
+  @@index([tenantId, startDate, endDate])
+}
+
+model PlantEmployeeOperationSkill {
+  id            String @id @default(uuid())
+  tenantId      String
+  employeeId    String
+  operationCode String
+
+  tenant   Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  employee PlantEmployee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, operationCode])
+  @@index([tenantId, operationCode])
+}
+
+model ProductSubAssembly {
+  id                 String  @id @default(uuid())
+  tenantId           String
+  parentProductId    String
+  componentProductId String
+  quantityPerBatch   Decimal @db.Decimal(18, 6)
+  sequence           Int     @default(0)
+
+  tenant           Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parentProduct    Product @relation("SubAssemblyParent", fields: [parentProductId], references: [id], onDelete: Cascade)
+  componentProduct Product @relation("SubAssemblyComponent", fields: [componentProductId], references: [id], onDelete: Cascade)
+
+  @@unique([parentProductId, componentProductId])
+  @@index([tenantId, parentProductId])
+}
+
+model PlantRoom {
+  id           String   @id @default(uuid())
+  tenantId     String
+  siteId       String
+  departmentId String?
+  name         String
+  code         String
+  sharedCapacity Boolean @default(false)
+  createdAt    DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site         PlantSite        @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  department   PlantDepartment? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  workstations Workstation[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, siteId])
+}
+
+model WorkstationGroup {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  code      String
+  createdAt DateTime @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workstations Workstation[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model ProductionTool {
+  id                String    @id @default(uuid())
+  tenantId          String
+  name              String
+  code              String
+  broken            Boolean   @default(false)
+  maintenanceUntil  DateTime? @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @db.Timestamptz(6)
+  updatedAt         DateTime  @updatedAt @db.Timestamptz(6)
+
+  tenant       Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workstations ProductionToolWorkstation[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+}
+
+model ProductionToolWorkstation {
+  id            String @id @default(uuid())
+  tenantId      String
+  toolId        String
+  workstationId String
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tool        ProductionTool @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  workstation Workstation    @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+
+  @@unique([toolId, workstationId])
+  @@index([tenantId, workstationId])
+}
+
 model Workstation {
   id                  String          @id @default(uuid())
   tenantId            String
@@ -731,10 +1142,24 @@ model Workstation {
   kind                WorkstationKind @default(PRODUCTION_LINE)
   capacityHoursPerDay Int
   active              Boolean         @default(true)
+  siteId              String?
+  departmentId        String?
+  roomId              String?
+  groupId             String?
+  efficiencyCoefficient Decimal       @default(1) @db.Decimal(4, 2)
+  qualificationStatus WorkstationQualificationStatus @default(QUALIFIED)
+  calibrationDueDate  DateTime?       @db.Date
+  cleanStatus         WorkstationCleanStatus @default(CLEAN)
+  cleanHoldExpiresAt  DateTime?       @db.Timestamptz(6)
+  allowedParallelJobs Int             @default(1)
   createdAt           DateTime @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 
   tenant               Tenant                     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  site                 PlantSite?                 @relation(fields: [siteId], references: [id], onDelete: SetNull)
+  department           PlantDepartment?           @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  room                 PlantRoom?                 @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  group                WorkstationGroup?          @relation(fields: [groupId], references: [id], onDelete: SetNull)
   productionOrders     ProductionOrder[]
   routingResources     RoutingOperationResource[]
   productionOperations ProductionOperation[]
@@ -743,10 +1168,13 @@ model Workstation {
   calendarExceptions   WorkstationCalendarException[]
   schedulePlanOrders   SchedulePlanOrder[]
   schedulePlanOperations SchedulePlanOperation[]
+  toolLinks            ProductionToolWorkstation[]
 
   @@unique([tenantId, code])
   @@index([tenantId])
   @@index([tenantId, active])
+  @@index([tenantId, siteId])
+  @@index([tenantId, groupId])
 }
 
 model WorkstationShift {
@@ -788,6 +1216,13 @@ model PlanningPolicy {
   dueDateWeight     Int           @default(35)
   changeoverWeight  Int           @default(15)
   utilizationWeight Int           @default(10)
+  leadTimeWeight           Int     @default(25)
+  onTimeCountWeight        Int     @default(30)
+  customerPriorityWeight   Int     @default(20)
+  similarJobsWeight        Int     @default(15)
+  eligibilityWeight        Int     @default(10)
+  considerMaterials        Boolean @default(true)
+  considerEligibility      Boolean @default(true)
   freezeMinutes        Int           @default(480)
   autopilotMode        AutopilotMode @default(OFF)
   useGlobalOptimizer   Boolean       @default(true)
@@ -852,36 +1287,86 @@ model IntegrationWebhookDelivery {
   @@unique([tenantId, connectorId, idempotencyKey])
 }
 
+model ProductionCampaign {
+  id        String                   @id @default(uuid())
+  tenantId  String
+  productId String
+  name      String
+  code      String
+  status    ProductionCampaignStatus @default(DRAFT)
+  createdAt DateTime                 @default(now()) @db.Timestamptz(6)
+  updatedAt DateTime                 @updatedAt @db.Timestamptz(6)
+
+  tenant Tenant            @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  orders  ProductionOrder[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId, productId])
+}
+
 model ProductionOrder {
   id              String                @id @default(uuid())
   tenantId        String
   orderNumber     String
   productId       String
+  customerId      String?
   workstationId   String?
+  campaignId      String?
   quantity        Int
   priority        ProductionPriority    @default(NORMAL)
   status          ProductionOrderStatus @default(UNSCHEDULED)
+  orderKind       ProductionOrderKind   @default(FIRM)
+  scheduleDirection ProductionScheduleDirection @default(FORWARD)
+  earliestStartAt DateTime?             @db.Timestamptz(6)
   dueDate         DateTime              @db.Timestamptz(6)
   plannedStart    DateTime?             @db.Timestamptz(6)
   plannedEnd      DateTime?             @db.Timestamptz(6)
+  feasibleEndAt   DateTime?             @db.Timestamptz(6)
   durationMinutes Int
+  validatedBatchSize Int?
+  wholeBatchCount    Int?
+  partialBatchRemainder Int            @default(0)
+  reserveCapacity Boolean               @default(false)
   isLocked        Boolean               @default(false)
+  fastTrack       Boolean               @default(false)
   createdAt       DateTime              @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime              @updatedAt @db.Timestamptz(6)
 
   tenant            Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product           Product               @relation(fields: [productId], references: [id], onDelete: Restrict)
+  customer          Customer?             @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  campaign          ProductionCampaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   workstation       Workstation?          @relation(fields: [workstationId], references: [id], onDelete: SetNull)
   batch             ProductionBatch?
   operations        ProductionOperation[]
   schedulePlanOrders SchedulePlanOrder[]
   qualityExceptions QualityException[]
+  attachments       ProductionOrderAttachment[]
 
   @@unique([tenantId, orderNumber])
   @@index([tenantId])
   @@index([tenantId, status])
   @@index([tenantId, dueDate])
+  @@index([tenantId, orderKind])
   @@index([workstationId])
+  @@index([customerId])
+}
+
+model ProductionOrderAttachment {
+  id                String   @id @default(uuid())
+  tenantId          String
+  productionOrderId String
+  label             String
+  fileName          String
+  contentType       String   @default("application/pdf")
+  storageKey        String
+  createdAt         DateTime @default(now()) @db.Timestamptz(6)
+
+  tenant          Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  productionOrder ProductionOrder @relation(fields: [productionOrderId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, productionOrderId])
 }
 
 model ProductRouting {
@@ -914,6 +1399,10 @@ model RoutingOperation {
   setupMinutes       Int      @default(0)
   teardownMinutes    Int      @default(0)
   changeoverFamily   String?
+  minCompletionPercent Int    @default(0)
+  maxHoldHours       Int?
+  requiresLineClearance Boolean @default(false)
+  isQcHold           Boolean  @default(false)
   createdAt          DateTime @default(now()) @db.Timestamptz(6)
   updatedAt          DateTime @updatedAt @db.Timestamptz(6)
 
@@ -1127,6 +1616,8 @@ model ChangeoverRule {
   fromFamily      String
   toFamily        String
   durationMinutes Int
+  level           ChangeoverLevel @default(MINOR)
+  maxCampaignBatches Int?
   reason          String?
   createdAt       DateTime @default(now()) @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @db.Timestamptz(6)

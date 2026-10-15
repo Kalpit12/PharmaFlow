@@ -14,6 +14,7 @@ import {
 import type { TenantContext } from "../src/lib/server/errors";
 import { getForecastSnapshot, toCompactForecastContext } from "../src/lib/server/forecasting";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -40,7 +41,7 @@ export async function runPhase20Verify(prisma: PrismaClient) {
   assert(a === b, "Deterministic output");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");
 

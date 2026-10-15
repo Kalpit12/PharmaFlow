@@ -23,6 +23,7 @@ export type ExecutionViewId = (typeof EXECUTION_VIEWS)[number];
 
 export const EXECUTION_AUDIT_ACTIONS = [
   "PRODUCTION_RELEASE",
+  "PRODUCTION_LINE_CLEARANCE",
   "PRODUCTION_START",
   "PRODUCTION_PAUSE",
   "PRODUCTION_RESUME",
@@ -88,6 +89,9 @@ export type ExecutionOrderRow = {
   canPause: boolean;
   canResume: boolean;
   canComplete: boolean;
+  requiresLineClearance: boolean;
+  lineClearanceComplete: boolean;
+  canSignLineClearance: boolean;
   history: ExecutionHistoryEntry[];
   activeOperationId: string | null;
   activeOperationCode: string | null;

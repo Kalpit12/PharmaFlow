@@ -23,6 +23,7 @@ export default async function TraceabilityPage({
     data = await getTraceabilitySnapshot(ctx, resolveTraceabilityFilters(params));
   } catch (error) {
     if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
+    if (error instanceof ServerError && error.code === "FORBIDDEN") redirect("/daily-review");
     return (
       <WorkspacePage>
         <PageHeader

@@ -9,7 +9,9 @@ import {
   type CommunicationTypeName,
   type ModelCommunicationDraft,
 } from "@/lib/ai/communications";
+import { requirePermission } from "@/lib/auth/authorization";
 import { canApprove } from "@/lib/server/actions";
+import { formatStateChange, writeAuditLog } from "@/lib/server/audit";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 
@@ -73,6 +75,7 @@ export async function proposeCommunication(
   ctx: TenantContext,
   input: ModelCommunicationDraft
 ): Promise<ProposeCommunicationResult> {
+  requirePermission(ctx, "communications.create");
   if (!isCommunicationType(input.type)) return { status: "skipped" };
   if (isUnsafeCommunicationText(`${input.subject}\n${input.body}`)) return { status: "skipped" };
   const userId = requireUser(ctx);
@@ -142,10 +145,18 @@ export async function proposeCommunication(
     },
   });
 
+  await writeAuditLog(ctx, {
+    action: "COMMUNICATION_DRAFT_CREATED",
+    entityType: "COMMUNICATION_DRAFT",
+    entityId: created.id,
+    newValue: `${input.type} · ${customer.name}`,
+  });
+
   return { status: "created", draft: toView(created) };
 }
 
 export async function listCommunications(ctx: TenantContext) {
+  requirePermission(ctx, "communications.read");
   const rows = await getPrisma().communicationDraft.findMany({
     where: { tenantId: ctx.tenantId },
     include: { customer: { select: { name: true } } },
@@ -160,6 +171,7 @@ export async function listCommunications(ctx: TenantContext) {
 }
 
 export async function getCommunication(ctx: TenantContext, id: string) {
+  requirePermission(ctx, "communications.read");
   const row = await getPrisma().communicationDraft.findFirst({
     where: { id, tenantId: ctx.tenantId },
     include: { customer: { select: { name: true } } },
@@ -173,6 +185,7 @@ export async function updateCommunication(
   id: string,
   input: { subject?: string; body?: string; status?: string }
 ) {
+  requirePermission(ctx, "communications.read");
   requireUser(ctx);
   const existing = await getPrisma().communicationDraft.findFirst({
     where: { id, tenantId: ctx.tenantId },
@@ -206,5 +219,24 @@ export async function updateCommunication(
     data: { subject, body, status, reviewedAt, approvedAt },
     include: { customer: { select: { name: true } } },
   });
+
+  if (status !== existing.status) {
+    const change = formatStateChange("STATUS", existing.status, status);
+    await writeAuditLog(ctx, {
+      action: status === "APPROVED" ? "COMMUNICATION_APPROVED" : "COMMUNICATION_STATUS_CHANGED",
+      entityType: "COMMUNICATION_DRAFT",
+      entityId: existing.id,
+      oldValue: change.oldValue,
+      newValue: change.newValue,
+    });
+  } else if (subject !== existing.subject || body !== existing.body) {
+    await writeAuditLog(ctx, {
+      action: "COMMUNICATION_DRAFT_UPDATED",
+      entityType: "COMMUNICATION_DRAFT",
+      entityId: existing.id,
+      newValue: `Reviewed · ${existing.customer.name}`,
+    });
+  }
+
   return toView(updated);
 }

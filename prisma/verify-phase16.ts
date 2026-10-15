@@ -14,6 +14,7 @@ import { getReportingSnapshot, resolveReportFilters } from "../src/lib/server/re
 import { getMaterialSupplierSnapshot, getSupplierSnapshot, resolveSupplierFilters } from "../src/lib/server/suppliers";
 import { proposeWorkflow } from "../src/lib/server/workflows";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -24,7 +25,7 @@ export async function runPhase16Verify(prisma: PrismaClient) {
   assert(!/openai/i.test(serverSource + uiSource), "Phase 16 performs ZERO OpenAI calls");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Tenants required");
 

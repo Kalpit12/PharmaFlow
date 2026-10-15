@@ -409,6 +409,13 @@ export async function approvePurchaseOrder(ctx: TenantContext, id: string): Prom
     newValue: change.newValue,
   });
 
+  const { syncIncomingReceiptsForPurchaseOrder } = await import("@/lib/server/supply-timeline");
+  const { maybeTriggerSupplyTimelineReplan } = await import("@/lib/server/planner-integrations");
+  const sync = await syncIncomingReceiptsForPurchaseOrder(ctx, id);
+  if (sync.changed) {
+    await maybeTriggerSupplyTimelineReplan(ctx, `${po.poNumber} approved — ${sync.summary}`).catch(() => null);
+  }
+
   return loadDetail(ctx, id);
 }
 

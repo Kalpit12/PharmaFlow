@@ -17,6 +17,7 @@ import { proposeAction } from "../src/lib/server/actions";
 import { proposeWorkflow } from "../src/lib/server/workflows";
 import { ensureReportingDemoData } from "./seed-reports";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -36,7 +37,7 @@ export async function runPhase12_6Verify(prisma: PrismaClient) {
 
   await ensureReportingDemoData(prisma);
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const empty = await prisma.tenant.findUnique({ where: { slug: "tenant-c-empty" } });
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && empty && user, "Tenants required");
@@ -57,7 +58,10 @@ export async function runPhase12_6Verify(prisma: PrismaClient) {
   assert(emptyReport.findings[0] === "Nothing requires immediate attention.", "Empty findings");
   assert(overview.history.length >= 2, "Demo snapshots exist");
   assert(overview.historyNote !== "Historical trend unavailable", "History uses stored snapshots");
-  assert(emptyReport.historyNote === "Historical trend unavailable", "Empty tenant has no snapshots");
+  assert(
+    emptyReport.historyNote.startsWith("Historical trend unavailable"),
+    "Empty tenant has no snapshots"
+  );
   assert(overview.suppliers.length > 0, "Demo suppliers");
   assert(overviewB.suppliers.length === 0, "Isolation tenant has no MediCrest suppliers");
   assert(overview.production.statuses.some((row) => row.id === "AT_RISK"), "Production status distribution");

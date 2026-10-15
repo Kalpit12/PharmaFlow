@@ -8,6 +8,7 @@ import {
   proposeCommunication,
   updateCommunication,
 } from "../src/lib/server/communications";
+import { getIsolationTenant } from "./verify-tenants";
 import { ServerError, type TenantContext } from "../src/lib/server/errors";
 import { proposeWorkflow } from "../src/lib/server/workflows";
 
@@ -40,7 +41,7 @@ export async function runPhase11Verify(prisma: PrismaClient) {
   );
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenant and user required");
 

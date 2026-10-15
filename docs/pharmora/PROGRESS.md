@@ -432,6 +432,18 @@ Not implemented:
 
 **Phase 12.5 is FROZEN pending QA.** Do not start Phase 13.
 
+## Operations Planner rebuild (SkyPlanner-aligned)
+
+Status: **Operations Planner Phases 1–10 complete.** **SkyPlanner full parity: Phases 11–22** (see `docs/pharmora/OPERATIONS-PLANNER-SKYPLANNER-PARITY.md` — nothing deferred).
+
+- `/operations` — Gantt, Dashboard, plant, orders, engine, integrations, Data import, API & webhooks, Assistant (beta).
+- **Phase 11:** personnel + sub-products, plant UI, routing DAG preview, extended CSV.
+- **Phase 12:** engine actions (bulldozer, unscheduled-only, workstation scope, fast track, unschedule), extended global rules.
+- Verify: `verify-planner-phase11.ts`, `verify-planner-engine-phase12.ts`, `run-planner-phase11-verify.ts`, plus assistant, phase9, access, dashboard, integrations, shop-floor scripts.
+- Design: `docs/pharmora/OPERATIONS-PLANNER-REBUILD.md`.
+- Phase 6: material-delay signals (Command Center / Daily Review), PO → OPEN incoming receipts, supply autopilot hook on approve/receive, schedule proposals in Execution queue.
+- Apply migrations with Neon **direct** host if pooler hangs: `npm run db:deploy:direct`, then `npm run db:generate`.
+
 ## Phase 12.6
 
 Status: **COMPLETE**
@@ -1238,9 +1250,109 @@ Status: **COMPLETE**
 - Phase 28 complete (Production Execution). Phases 29–38 remain as previously verified.
 - Shop-floor path: Operations (plan) → `/execution/production` (execute) → Reports / Batches.
 
+## Phase 39 — Integration readiness & production hardening
+
+Status: **COMPLETE** (pilot prep; full `db:verify` and browser QA environment-dependent)
+
+**Goal:** Controlled pilot launch — verification gaps, security, audit, integration documentation, production config guards. No new product features or infrastructure.
+
+**Changes:**
+
+- **Verification prerequisites** — `prisma/ensure-verify-prerequisites.ts` additively seeds commercial/isolation fixtures required by `npm run db:verify` on **DEMO** tenants only (no wipe). Wired into `prisma db seed` and `npm run db:seed:verify`. Root cause of “Expected demo customers” was slim `seed-foundation` vs legacy verifier expectations, not an app regression.
+- **Verifier messaging** — `prisma/verify.ts` prerequisite failures distinguish missing DEMO fixtures from application failures; `prisma/verify-pilot-hardening.ts` checks traceability permission + audit wiring.
+- **Traceability** — `getTraceabilitySnapshot` enforces `traceability.read`; `/traceability` redirects FORBIDDEN to `/daily-review`.
+- **Audit** — `INVENTORY_RECEIVED` on PO receive; communication draft create / update / approve status changes write `AuditLog` (no credentials in payloads).
+- **Communications permissions** — `communications.read` / `communications.create` enforced in server services.
+- **Production env** — `src/lib/server/env.ts` + `assertProductionAuthConfig()` at Auth.js load (requires `AUTH_SECRET` ≥32 chars and `DATABASE_URL` in production only).
+
+**Integration readiness (existing, documented):**
+
+- **ERP / schedule export** — `GET /api/integrations/production-schedule`, `POST /api/integrations/production-orders` (tenant session, `production.read` / schedule permissions); JSON export only, no outbound side effects unless connector sync is explicitly invoked.
+- **SAP B1 / MES webhooks** — `POST /api/integrations/webhooks/sap-b1`, `/mes` with connector records and idempotency (see Operations APS docs in this file); requires configured `IntegrationConnector`, tenant-scoped.
+- **OpenAI** — optional via `AI_PROVIDER=openai` + `OPENAI_API_KEY`; deterministic workspaces remain usable when disabled or failing (`AI_PROVIDER=mock` recommended for demo deploys).
+
+**Tests (Oct 2026 this pass):**
+
+- `npx tsc --noEmit` — **PASS**
+- `npx next build` — **PASS**
+- `npm run db:seed:verify` — **PASS** on medicrest DEMO (skipped `tenant-b-isolation` mutations when that tenant is not DEMO — production-safe)
+- `npm run db:verify` — **BLOCKED** this pass (Neon unreachable) / previously failed on prerequisites before fixtures
+- Browser QA — **BLOCKED** (Playwright Chromium download timeout)
+
+**Deployment prerequisites:** `DATABASE_URL`, `AUTH_SECRET`, migrate deploy, DEMO seed + `db:seed:verify` on verification DBs only, set `AI_PROVIDER=mock` unless Explain endpoints are required.
+
+**Remaining launch blockers:** Full verifier green on a reachable DEMO database with both `medicrest` and DEMO `tenant-b-isolation`; Playwright binaries installed; optional: align non-DEMO isolation tenant policy for CI.
+
+## Phase 41 — Release blocker remediation
+
+Status: **COMPLETE** (verification improved; browser QA still blocked)
+
+**Root causes confirmed:**
+
+- **Neon mid-run disconnect (Phase 40):** transient `Can't reach database server` after ~11–22 min — consistent with long-lived serverless/pooler sessions, not application logic failure.
+- **Isolation fixtures:** `tenant-b-isolation` is **ACTIVE** on the connected DB; fixtures must not mutate it. **`tenant-b-demo-isolation`** (DEMO) holds isolation test data instead.
+- **Phase 34 verify failure:** `getTraceabilitySnapshot` now requires authenticated context (Phase 39); verifier used `userId: null` → `Authentication required`.
+
+**Fixes (minimal):**
+
+- `prisma/verify-tenants.ts` — `getIsolationTenant()` prefers DEMO legacy slug, else **`tenant-b-demo-isolation`**; never mutates non-DEMO legacy tenant.
+- `prisma/ensure-verify-prerequisites.ts` — seeds isolation on demo slug when legacy is non-DEMO.
+- All phase verifiers + seeds use `getIsolationTenant`.
+- `prisma/verify-db.ts` — verify-only Prisma client (modest pool, longer timeouts); `pingDatabase` between heavy phase groups in `verify.ts`.
+- `verify-phase34.ts` — uses demo `userId` for traceability reads.
+- `npm run verify:tenant-isolation`, `npm run verify:from-phase34`.
+
+**Tests (Oct 2026 this pass):**
+
+| Command | Result |
+|---------|--------|
+| `npx tsc --noEmit` | **PASS** |
+| `npx next build` | **PASS** |
+| `npm run db:seed:verify` | **PASS** (uses `tenant-b-demo-isolation`; legacy ACTIVE unchanged) |
+| `npm run verify:tenant-isolation` | **PASS** (slug: `tenant-b-demo-isolation`) |
+| `npm run verify:pilot-hardening` | **PASS** |
+| `npm run db:verify` | **PARTIAL** — phases **10–33 PASS** (~22 min), then **FAIL** at phase 34 (fixed); **`verify:from-phase34`** **PASS** (34–39 + pilot) |
+| Browser QA | **BLOCKED** — Chromium not installed locally (`NOT_INSTALLED`); no download retry |
+
+**Operator actions:** Run full `npm run db:verify` once on stable Neon/local Postgres after Phase 41 merge to confirm single-suite green; install Playwright Chromium then `npm run qa:phase38` (or per-route QA). Keep `AI_PROVIDER=openai` only if Explain endpoints are in scope for pilot.
+
+## Phase 40 — Launch verification & release gate
+
+Status: **COMPLETE** (verification pass; not all gates green)
+
+**Oct 2026 verification run (this pass):**
+
+| Gate | Result |
+|------|--------|
+| `npx tsc --noEmit` | **PASS** |
+| `npx next build` | **PASS** |
+| `npm run db:seed:verify` | **PASS** (medicrest DEMO; `tenant-b-isolation` skipped — not DEMO) |
+| `npm run verify:pilot-hardening` | **PASS** |
+| `npm run db:verify` | **FAIL** — passed Phases 10–15 then **Neon connection lost** mid-suite (~11.5 min); earlier failure fixed: stale `historyNote` assert in Phase 12.6 + reporting lots not seeded when foundation warehouses already exist |
+| Browser QA (Playwright) | **BLOCKED** — Chromium not installed locally (`NOT_INSTALLED`); no download retry this pass |
+
+**Minimal fixes (launch blockers only):**
+
+- `prisma/verify-phase12_6.ts` — empty-tenant `historyNote` uses `startsWith("Historical trend unavailable")` (matches reporting copy).
+- `prisma/seed-reports.ts` — idempotent reporting lots (`FG-AMOX-EXP` gate) + snapshots from live inventory when missing.
+- `prisma/ensure-verify-prerequisites.ts` — ensures reporting demo data + `tenant-c-empty` DEMO tenant; still **never** mutates non-DEMO `tenant-b-isolation`.
+- `scripts/run-pilot-hardening-verify.mjs`, `npm run verify:pilot-hardening`.
+
+**Environment (operator):** `DATABASE_URL` and `AUTH_SECRET` configured; `AI_PROVIDER=openai` (Explain/intelligence may call OpenAI — deterministic workspaces remain usable on provider failure).
+
+**`tenant-b-isolation` policy:** Full cross-tenant dashboard assertions require a **DEMO** isolation tenant with Ibuprofen fixture (`ensure-verify-prerequisites` creates it only when status is DEMO). A non-DEMO tenant with that slug is left unchanged (production-safe); medicrest isolation tests still run; tenant-B revenue/product checks may be weak until a dedicated DEMO isolation DB or slug is used for CI.
+
+**Release decisions (this pass):**
+
+- **A. Local build readiness** — **PASS**
+- **B. Demo-environment readiness** — **BLOCKED** (full `db:verify` not completed; browser QA not run)
+- **C. Controlled pilot readiness** — **FAIL** (incomplete verifier + no browser regression)
+- **D. Production readiness** — **NOT RUN / FAIL** (pilot gates not green; ERP/MES webhooks operator-owned)
+
 ## Next
 
-- Phase 39 — Integrations (when explicitly requested).
+- Re-run `npm run db:verify` on stable Neon (or local Postgres) to completion; install Playwright Chromium once, then `npm run qa:phase38` (or per-route QA scripts).
+- Post-pilot: external connector credentials and monitored webhook endpoints (operator-owned).
 
 ## Stack
 

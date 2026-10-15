@@ -10,6 +10,7 @@ import type {
   TraceabilityEntityType,
   TraceabilitySnapshot,
 } from "@/lib/traceability/types";
+import { requirePermission } from "@/lib/auth/authorization";
 import { REALIZED_ORDER_STATUSES } from "@/lib/server/analytics";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
@@ -198,6 +199,7 @@ export async function getTraceabilitySnapshot(
   ctx: TenantContext,
   filters: TraceabilityFilters
 ): Promise<TraceabilitySnapshot> {
+  requirePermission(ctx, "traceability.read");
   const prisma = getPrisma();
   const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { name: true, status: true } });
   const graph = await loadTraceabilityGraph(ctx);

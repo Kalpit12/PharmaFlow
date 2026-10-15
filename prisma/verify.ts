@@ -2,7 +2,8 @@ import { Prisma } from "@prisma/client";
 
 import { periodTotals, REALIZED_ORDER_STATUSES } from "../src/lib/server/analytics";
 import { trailingDays } from "../src/lib/server/dates";
-import { getPrisma } from "../src/lib/server/db";
+import { createVerifyPrisma } from "./verify-db";
+import { getIsolationTenant, pingDatabase } from "./verify-tenants";
 import { formatCount, formatKes } from "../src/lib/server/money";
 import { getDashboardData } from "../src/lib/server/dashboard";
 import { runAITool } from "../src/lib/server/ai-data";
@@ -34,8 +35,16 @@ import { runPhase36Verify } from "./verify-phase36";
 import { runPhase37Verify } from "./verify-phase37";
 import { runPhase38Verify } from "./verify-phase38";
 import { runPhase39Verify } from "./verify-phase39";
+import { runPilotHardeningVerify } from "./verify-pilot-hardening";
 
-const prisma = getPrisma();
+const prisma = createVerifyPrisma();
+
+function failPrerequisite(detail: string): never {
+  throw new Error(
+    `${detail} This indicates missing DEMO verification prerequisites, not an application regression. ` +
+      "On a DEMO database, run `npm run db:seed` or `npm run db:seed:verify`. Do not run verify against production."
+  );
+}
 
 function ctx(tenantId: string): TenantContext {
   return { tenantId, userId: null, role: null };
@@ -46,8 +55,7 @@ async function main() {
   if (!tenant) throw new Error("Missing demo tenant medicrest");
   if (tenant.status !== "DEMO") throw new Error("Demo tenant must be status DEMO");
 
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
-  if (!tenantB) throw new Error("Missing isolation tenant tenant-b-isolation");
+  const tenantB = await getIsolationTenant(prisma);
 
   const [users, products, customers, regions, orders, rfqs, opportunities, activities] = await Promise.all([
     prisma.user.count({ where: { tenantId: tenant.id } }),
@@ -60,17 +68,17 @@ async function main() {
     prisma.activity.count({ where: { tenantId: tenant.id } }),
   ]);
 
-  if (users < 1) throw new Error("Expected at least one user");
-  if (products < 5) throw new Error("Expected demo products");
-  if (customers < 4) throw new Error("Expected demo customers");
-  if (regions !== 6) throw new Error("Expected six regions");
+  if (users < 1) failPrerequisite("Expected at least one demo user.");
+  if (products < 5) failPrerequisite(`Expected at least 5 demo products (found ${products}).`);
+  if (customers < 4) failPrerequisite(`Expected at least 4 demo customers (found ${customers}).`);
+  if (regions !== 6) failPrerequisite(`Expected six demo regions (found ${regions}).`);
   if (orders.length < 1 || orders.some((order) => order.items.length === 0)) {
-    throw new Error("Orders must include items");
+    failPrerequisite("Orders must include line items.");
   }
   if (rfqs.length < 1 || rfqs.some((rfq) => rfq.items.length === 0)) {
-    throw new Error("RFQs must include items");
+    failPrerequisite("RFQs must include line items.");
   }
-  if (opportunities < 1 || activities < 1) throw new Error("Expected opportunities and activities");
+  if (opportunities < 1 || activities < 1) failPrerequisite("Expected opportunities and activities.");
   if (!orders.some((order) => order.status === "CANCELLED")) {
     throw new Error("Seed should include a cancelled order for exclusion checks");
   }
@@ -162,6 +170,7 @@ async function main() {
   await runPhase13Verify(prisma);
   await runPhase14Verify(prisma);
   await runPhase15Verify(prisma);
+  await pingDatabase(prisma);
   await runPhase16Verify(prisma);
   await runPhase17Verify(prisma);
   await runPhase18Verify(prisma);
@@ -177,6 +186,7 @@ async function main() {
   console.log("Phase 25 verification passed.");
   await runPhase26Verify(prisma);
   console.log("Phase 26 verification passed.");
+  await pingDatabase(prisma);
   await runPhase28Verify(prisma);
   await runPhase32Verify(prisma);
   await runPhase33Verify(prisma);
@@ -186,6 +196,7 @@ async function main() {
   await runPhase37Verify(prisma);
   await runPhase38Verify(prisma);
   await runPhase39Verify(prisma);
+  await runPilotHardeningVerify(prisma);
 }
 
 main()

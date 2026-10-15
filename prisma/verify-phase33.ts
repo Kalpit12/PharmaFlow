@@ -24,6 +24,7 @@ import {
 import type { TenantContext } from "../src/lib/server/errors";
 import { getOperationsPlanner, resolvePlanningWindow } from "../src/lib/server/operations";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -106,7 +107,7 @@ export async function runPhase33Verify(prisma: PrismaClient) {
   assert(multiLot[0]?.lotCode === "L1, L2" && multiLot[0]?.quantityUsed === 15, "Multiple input lots are retained");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   assert(tenant && tenantB, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: null, role: "MANAGER" };
   const ctxB: TenantContext = { tenantId: tenantB.id, userId: null, role: "MANAGER" };

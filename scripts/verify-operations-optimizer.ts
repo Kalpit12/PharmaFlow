@@ -69,7 +69,17 @@ const input = {
   workstations,
   changeovers: [],
   windowStart: start,
-  weights: { priorityWeight: 40, dueDateWeight: 60, changeoverWeight: 10, utilizationWeight: 10 },
+  weights: {
+    priorityWeight: 40,
+    dueDateWeight: 60,
+    changeoverWeight: 10,
+    utilizationWeight: 10,
+    leadTimeWeight: 25,
+    onTimeCountWeight: 30,
+    customerPriorityWeight: 20,
+    similarJobsWeight: 15,
+    eligibilityWeight: 10,
+  },
 };
 
 const forward = buildOperationSchedule(input);

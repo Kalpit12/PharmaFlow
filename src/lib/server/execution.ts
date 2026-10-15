@@ -9,6 +9,7 @@ import type {
   ExecutionSnapshot,
 } from "@/lib/execution/types";
 import { canApprove, listActions } from "@/lib/server/actions";
+import { can } from "@/lib/auth/authorization";
 import { getBatchesSnapshot } from "@/lib/server/batches";
 import { listCommunications } from "@/lib/server/communications";
 import { getPrisma } from "@/lib/server/db";
@@ -92,10 +93,19 @@ async function listRecentRequisitions(ctx: TenantContext) {
   }));
 }
 
+function schedulePlanSummaryText(summary: unknown): string {
+  if (summary && typeof summary === "object" && "text" in summary) {
+    const text = (summary as { text: unknown }).text;
+    if (typeof text === "string" && text.trim()) return text;
+  }
+  return "Finite-capacity schedule change proposal.";
+}
+
 export async function getExecutionSnapshot(ctx: TenantContext): Promise<ExecutionSnapshot> {
   const tenant = await getTenant(ctx);
   const approve = canApprove(ctx.role);
-  const [actions, workflows, pendingRequisitions, recentRequisitions, communications, pendingPurchaseOrders, batchSnapshot] =
+  const canSchedule = can(ctx.role, "production.schedule");
+  const [actions, workflows, pendingRequisitions, recentRequisitions, communications, pendingPurchaseOrders, batchSnapshot, pendingSchedulePlans, recentSchedulePlans] =
     await Promise.all([
     listActions(ctx),
     listWorkflows(ctx),
@@ -104,6 +114,16 @@ export async function getExecutionSnapshot(ctx: TenantContext): Promise<Executio
     listCommunications(ctx),
     listPendingPurchaseOrders(ctx),
     getBatchesSnapshot(ctx, { view: "all" }).catch(() => null),
+    getPrisma().schedulePlan.findMany({
+      where: { tenantId: ctx.tenantId, status: { in: ["DRAFT", "PROPOSED"] } },
+      orderBy: { createdAt: "desc" },
+      take: 3,
+    }),
+    getPrisma().schedulePlan.findMany({
+      where: { tenantId: ctx.tenantId, status: { in: ["ACCEPTED", "REJECTED"] } },
+      orderBy: { updatedAt: "desc" },
+      take: 8,
+    }),
   ]);
 
   const items: ExecutionItem[] = [];
@@ -389,6 +409,54 @@ export async function getExecutionSnapshot(ctx: TenantContext): Promise<Executio
       safetyNote: "Batch remains on quality hold until explicitly released or rejected.",
       preparedSummary: row.holdReason ?? "Review hold reason",
       impactSummary: `Batch: ${row.batchNumber}`,
+    });
+  }
+
+  for (const row of pendingSchedulePlans) {
+    const summaryText = schedulePlanSummaryText(row.summary);
+    items.push({
+      id: `schedule-plan:${row.id}`,
+      kind: "SCHEDULE_PLAN",
+      domain: "operations",
+      priority: row.source === "AUTOPILOT" ? "HIGH" : "CRITICAL",
+      title: `Schedule proposal · ${row.name}`,
+      reason: summaryText,
+      recommendedAction: "Accept or reject schedule plan",
+      status: "NEEDS_REVIEW",
+      sourceStatus: row.status,
+      targetLabel: row.source.replace(/_/g, " "),
+      createdAt: row.createdAt.toISOString(),
+      createdByName: row.source === "AUTOPILOT" ? "Autopilot" : "Planner",
+      sourceHref: "/operations",
+      executable: true,
+      canDecide: canSchedule,
+      safetyNote:
+        "Accepting publishes proposed start/end times to production orders and operations. Locked jobs stay fixed. Reject keeps the live schedule unchanged.",
+      preparedSummary: summaryText,
+      impactSummary: `Plan v${row.version} · ${row.source.replace(/_/g, " ").toLowerCase()}`,
+    });
+  }
+
+  for (const row of recentSchedulePlans) {
+    items.push({
+      id: `schedule-plan-history:${row.id}`,
+      kind: "SCHEDULE_PLAN",
+      domain: "operations",
+      priority: "LOW",
+      title: `Schedule plan · ${row.name}`,
+      reason: row.status === "ACCEPTED" ? "Accepted and published to shop floor." : "Proposal rejected.",
+      recommendedAction: row.status === "ACCEPTED" ? "View Gantt" : "View planner",
+      status: row.status === "ACCEPTED" ? "EXECUTED" : "REJECTED",
+      sourceStatus: row.status,
+      targetLabel: row.source.replace(/_/g, " "),
+      createdAt: (row.acceptedAt ?? row.updatedAt).toISOString(),
+      createdByName: "—",
+      sourceHref: "/operations",
+      executable: false,
+      canDecide: false,
+      safetyNote: "Closed schedule plans cannot be re-run from Execution.",
+      preparedSummary: schedulePlanSummaryText(row.summary),
+      impactSummary: `Plan v${row.version}`,
     });
   }
 

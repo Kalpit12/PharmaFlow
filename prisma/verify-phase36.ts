@@ -12,6 +12,7 @@ import { runPhase35Verify } from "./verify-phase35";
 import type { TenantContext } from "../src/lib/server/errors";
 import { ServerError } from "../src/lib/server/errors";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -41,7 +42,7 @@ export async function runPhase36Verify(prisma: PrismaClient) {
   assert(canProcurementApprove("MANAGER") && !canProcurementApprove("PROCUREMENT"), "Procurement approval limited");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   assert(tenant && tenantB && manager, "Demo tenants and manager exist");
 

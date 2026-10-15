@@ -15,6 +15,11 @@ export async function POST(request: Request) {
       priority?: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
       dueDate?: string;
       durationMinutes?: number;
+      customerId?: string;
+      earliestStartAt?: string;
+      scheduleDirection?: "FORWARD" | "JIT";
+      reserveCapacity?: boolean;
+      campaignId?: string;
     };
     if (!body.productId || typeof body.productId !== "string") {
       return NextResponse.json({ message: "Product is required." }, { status: 400 });
@@ -32,6 +37,11 @@ export async function POST(request: Request) {
       priority: body.priority,
       dueDate: body.dueDate,
       durationMinutes: body.durationMinutes,
+      customerId: body.customerId,
+      earliestStartAt: body.earliestStartAt,
+      scheduleDirection: body.scheduleDirection,
+      reserveCapacity: body.reserveCapacity,
+      campaignId: body.campaignId,
     });
     return NextResponse.json({ order });
   } catch (error) {

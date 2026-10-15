@@ -17,6 +17,7 @@ import {
   toCompactProcurementRfqContext,
 } from "../src/lib/server/procurement-rfqs";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -31,7 +32,7 @@ export async function runPhase22Verify(prisma: PrismaClient) {
   assert(!/openai/i.test(sources), "Phase 22 RFQ calculations perform ZERO OpenAI calls");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const manager = await prisma.user.findFirst({ where: { tenantId: tenant?.id, role: "MANAGER" } });
   const staff = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && manager && staff, "Tenants and users required");

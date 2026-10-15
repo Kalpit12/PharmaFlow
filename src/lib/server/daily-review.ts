@@ -19,6 +19,7 @@ import { countSupplierPerformanceAttention } from "@/lib/server/supplier-perform
 import { getSupplierDataGapCount, getSupplierSnapshot, resolveSupplierFilters } from "@/lib/server/suppliers";
 import { getTenant } from "@/lib/server/services/tenant";
 import { getIntelligenceSnapshot } from "@/lib/server/intelligence";
+import { getPlannerMaterialDelaySignals } from "@/lib/server/planner-integrations";
 
 const SEVERITY_RANK: Record<DailySeverity, number> = {
   CRITICAL: 5,
@@ -42,7 +43,7 @@ function healthStatus(rank: number, limited = false): DomainHealthStatus {
 
 export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyReviewSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, intelligence] =
+  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, intelligence, materialDelays] =
     await Promise.all([
     getDashboardData(ctx).catch(() => null),
     getOperationsPlanner(ctx, resolvePlanningWindow({ weeks: "1" })).catch(() => null),
@@ -56,6 +57,7 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     countAwaitingReceipt(ctx).catch(() => 0),
     countSupplierPerformanceAttention(ctx).catch(() => 0),
     getIntelligenceSnapshot(ctx),
+    getPlannerMaterialDelaySignals(ctx).catch(() => []),
   ]);
 
   const attention: DailyAttentionItem[] = [];
@@ -107,6 +109,21 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
       targetId: criticalUnscheduled[0]?.id ?? null,
       href: "/operations",
       actionLabel: "Open production plan",
+    });
+  }
+
+  for (const row of materialDelays.slice(0, 6)) {
+    attention.push({
+      id: row.id,
+      domain: "materials",
+      severity: row.severity,
+      title: row.message,
+      summary: `${row.orderNumber} · ${row.delayDays} day material impact on the production plan.`,
+      reason: "Net material requirement exceeds dated supply for this batch.",
+      targetType: "production",
+      targetId: row.orderId,
+      href: row.href,
+      actionLabel: "Open in Operations",
     });
   }
 

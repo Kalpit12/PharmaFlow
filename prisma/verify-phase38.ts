@@ -38,6 +38,7 @@ import {
 import type { TenantContext } from "../src/lib/server/errors";
 import { formatCount } from "../src/lib/server/money";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -122,7 +123,7 @@ export async function runPhase38Verify(prisma: PrismaClient) {
   assert(assumptions.find((row) => row.id === "workforce")?.supported === false, "Unsupported workforce assumption disclosed");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenants exist");
   const ctxA: TenantContext = { tenantId: tenant.id, userId: user.id, role: "MANAGER" };

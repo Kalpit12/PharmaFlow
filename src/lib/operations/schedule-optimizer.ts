@@ -50,12 +50,45 @@ export function scoreScheduleObjective(input: {
   orders: RoutingOrder[];
   operations: ScheduledOperation[];
   issues: RoutingIssue[];
+  weights?: PlanningWeights;
 }): number {
+  const weights = input.weights ?? {
+    priorityWeight: 40,
+    dueDateWeight: 35,
+    changeoverWeight: 15,
+    utilizationWeight: 10,
+    leadTimeWeight: 25,
+    onTimeCountWeight: 30,
+    customerPriorityWeight: 20,
+    similarJobsWeight: 15,
+    eligibilityWeight: 10,
+  };
   const tardiness = totalTardinessMinutes(input.orders, input.operations);
   const changeover = input.operations.reduce((sum, row) => sum + row.changeoverMinutes, 0);
   const issuePenalty = input.issues.length * 10_000;
   const unscheduled = input.operations.filter((row) => !row.plannedStart).length * 5_000;
-  return tardiness * 10 + changeover + issuePenalty + unscheduled;
+  const lateOrderCount = input.orders.filter((order) => {
+    const end = input.operations
+      .filter((op) => op.orderId === order.id && op.plannedEnd)
+      .map((op) => op.plannedEnd!.getTime())
+      .reduce((max, t) => Math.max(max, t), 0);
+    return end > order.dueDate.getTime();
+  }).length;
+  const leadSpanMinutes = input.orders.reduce((sum, order) => {
+    const ops = input.operations.filter((op) => op.orderId === order.id && op.plannedStart && op.plannedEnd);
+    if (ops.length === 0) return sum;
+    const start = Math.min(...ops.map((op) => op.plannedStart!.getTime()));
+    const end = Math.max(...ops.map((op) => op.plannedEnd!.getTime()));
+    return sum + Math.ceil((end - start) / 60_000);
+  }, 0);
+  return (
+    tardiness * Math.max(1, weights.dueDateWeight) +
+    changeover * Math.max(1, weights.changeoverWeight) +
+    lateOrderCount * Math.max(1, weights.onTimeCountWeight) * 60 +
+    leadSpanMinutes * Math.max(1, weights.leadTimeWeight) +
+    issuePenalty +
+    unscheduled
+  );
 }
 
 function cloneOrders(orders: RoutingOrder[]): RoutingOrder[] {
@@ -100,7 +133,12 @@ export function optimizeOperationSchedule(
   const maxIterations = options?.maxIterations ?? 240;
   let bestOrders = cloneOrders(input.orders);
   let best = buildOperationSchedule({ ...input, orders: bestOrders });
-  let bestScore = scoreScheduleObjective({ orders: bestOrders, operations: best.operations, issues: best.issues });
+  let bestScore = scoreScheduleObjective({
+    orders: bestOrders,
+    operations: best.operations,
+    issues: best.issues,
+    weights: input.weights,
+  });
   let iterations = 0;
   let improved = false;
   let stall = 0;
@@ -132,6 +170,7 @@ export function optimizeOperationSchedule(
       orders: candidateOrders,
       operations: candidate.operations,
       issues: candidate.issues,
+      weights: input.weights,
     });
     if (score < bestScore) {
       bestScore = score;

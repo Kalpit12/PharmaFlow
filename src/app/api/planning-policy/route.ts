@@ -26,6 +26,13 @@ export async function PATCH(request: Request) {
       dueDateWeight?: number;
       changeoverWeight?: number;
       utilizationWeight?: number;
+      leadTimeWeight?: number;
+      onTimeCountWeight?: number;
+      customerPriorityWeight?: number;
+      similarJobsWeight?: number;
+      eligibilityWeight?: number;
+      considerMaterials?: boolean;
+      considerEligibility?: boolean;
       freezeMinutes?: number;
       autopilotMode?: AutopilotMode;
       useGlobalOptimizer?: boolean;

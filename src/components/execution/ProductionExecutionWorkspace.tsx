@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -22,7 +22,9 @@ import {
 } from "@/components/ui/sheet";
 import { useLayoutMode, usePreferences } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
+import { ShopFloorStationQueue } from "@/components/execution/ShopFloorStationQueue";
 import { cn } from "@/lib/utils";
+import { SHOP_FLOOR_PAUSE_REASONS } from "@/lib/production-execution/shop-floor";
 import {
   EXECUTION_VIEWS,
   type ExecutionOrderRow,
@@ -88,7 +90,11 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
   const compact = useCompactLayout();
   const { simple } = useLayoutMode();
   const { setLayoutMode } = usePreferences();
-  const boardCompact = compact || simple;
+  const shopMode = Boolean(searchParams.get("workstation")) || searchParams.get("mode") === "shop";
+  useEffect(() => {
+    if (shopMode) setLayoutMode("simple");
+  }, [shopMode, setLayoutMode]);
+  const boardCompact = compact || simple || shopMode;
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("order"));
   const selected =
     data.orders.find((row) => row.id === selectedId) ??
@@ -140,6 +146,9 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
             <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
               <Link href="/operations">Planning</Link>
             </Button>
+            <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
+              <Link href="/execution/production/board">TV board</Link>
+            </Button>
             <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setLayoutMode("advanced")}>
               Full board
             </Button>
@@ -185,24 +194,17 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
         }))}
       />
 
-      {data.shopFloorMode && data.stationQueue.length > 0 ? (
-        <section aria-label="Station queue" className={cn("min-w-0 work-surface p-3", !simple && "md:hidden")}>
-          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Station queue</p>
-          <ul className="mt-2 space-y-2">
-            {data.stationQueue.map((row, index) => (
-              <li key={row.id}>
-                <button
-                  type="button"
-                  className="flex min-h-12 w-full flex-col rounded-lg border border-border px-3 py-2 text-left"
-                  onClick={() => setSelectedId(row.id)}
-                >
-                  <span className="text-[10px] font-semibold text-muted-foreground">#{index + 1}</span>
-                  <span className="text-sm font-medium">{row.orderNumber}</span>
-                  <span className="text-xs text-muted-foreground">{row.productName}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
+      {data.shopFloorMode ? (
+        <section aria-label="Station queue" className="min-w-0 work-surface p-4">
+          <p className="text-[11px] tracking-wide text-muted-foreground uppercase">Station queue (scheduled order)</p>
+          <div className="mt-3">
+            <ShopFloorStationQueue
+              queue={data.stationQueue}
+              canExecute={data.capabilities.canExecute}
+              onRefresh={() => router.refresh()}
+              onSelect={setSelectedId}
+            />
+          </div>
         </section>
       ) : null}
 
@@ -463,6 +465,7 @@ function ExecutionDetail({
   onComplete: () => void;
 }) {
   const [producedQuantity, setProducedQuantity] = useState(String(row.producedQuantity ?? row.plannedQuantity));
+  const [pauseReason, setPauseReason] = useState<string>(SHOP_FLOOR_PAUSE_REASONS[0].id);
   const [downtimeReason, setDowntimeReason] = useState("");
   const [scrapQty, setScrapQty] = useState("1");
   const [scrapReason, setScrapReason] = useState("");
@@ -501,7 +504,7 @@ function ExecutionDetail({
     });
   }
 
-  async function mutate(path: "release" | "start" | "pause" | "resume" | "complete") {
+  async function mutate(path: "release" | "start" | "pause" | "resume" | "complete" | "line-clearance") {
     setError(null);
     setMessage(null);
     startTransition(async () => {
@@ -509,7 +512,9 @@ function ExecutionDetail({
         const body =
           path === "complete"
             ? { producedQuantity: row.batchId ? Number(producedQuantity) : undefined }
-            : {};
+            : path === "pause"
+              ? { reason: pauseReason }
+              : {};
         const response = await fetch(`/api/production-orders/${row.id}/${path}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -659,7 +664,17 @@ function ExecutionDetail({
                 />
               </label>
             ) : null}
+            {row.requiresLineClearance ? (
+              <p className="text-xs text-muted-foreground">
+                Line clearance: {row.lineClearanceComplete ? "Signed" : "Required before start"}
+              </p>
+            ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
+              {row.canSignLineClearance ? (
+                <Button className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => mutate("line-clearance")}>
+                  Sign line clearance
+                </Button>
+              ) : null}
               {row.canRelease ? (
                 <Button className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => mutate("release")}>
                   Release
@@ -671,9 +686,22 @@ function ExecutionDetail({
                 </Button>
               ) : null}
               {row.canPause ? (
-                <Button className="min-h-11 sm:min-h-8" variant="secondary" disabled={pending} onClick={() => mutate("pause")}>
-                  Pause
-                </Button>
+                <>
+                  <select
+                    className="min-h-11 rounded-md border border-input bg-background px-2 text-sm sm:min-h-8"
+                    value={pauseReason}
+                    onChange={(event) => setPauseReason(event.target.value)}
+                  >
+                    {SHOP_FLOOR_PAUSE_REASONS.map((reason) => (
+                      <option key={reason.id} value={reason.id}>
+                        {reason.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button className="min-h-11 sm:min-h-8" variant="secondary" disabled={pending} onClick={() => mutate("pause")}>
+                    Pause
+                  </Button>
+                </>
               ) : null}
               {row.canResume ? (
                 <Button className="min-h-11 sm:min-h-8" disabled={pending} onClick={() => mutate("resume")}>

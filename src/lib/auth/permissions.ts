@@ -6,6 +6,7 @@ export type Permission =
   | "command_center.read"
   | "production.read"
   | "production.schedule"
+  | "production.global_rules"
   | "production.execute"
   | "inventory.read"
   | "inventory.receive"
@@ -36,6 +37,7 @@ export const ALL_PERMISSIONS: Permission[] = [
   "command_center.read",
   "production.read",
   "production.schedule",
+  "production.global_rules",
   "production.execute",
   "inventory.read",
   "inventory.receive",
@@ -62,6 +64,8 @@ export const ALL_PERMISSIONS: Permission[] = [
 ];
 
 const READ_PERMISSIONS: Permission[] = ALL_PERMISSIONS.filter((permission) => permission.endsWith(".read"));
+
+const OPERATOR_PERMISSIONS: Permission[] = ["production.read", "production.execute"];
 
 const OPERATIONS_PERMISSIONS: Permission[] = [
   "dashboard.read",
@@ -106,6 +110,7 @@ const SALES_PERMISSIONS: Permission[] = [
   "dashboard.read",
   "reports.read",
   "command_center.read",
+  "production.read",
   "sales.read",
   "sales.manage",
   "communications.read",
@@ -133,6 +138,7 @@ const VIEWER_PERMISSIONS: Permission[] = [
 const MANAGER_PERMISSIONS: Permission[] = [
   ...READ_PERMISSIONS.filter((permission) => permission !== "users.manage"),
   "production.schedule",
+  "production.global_rules",
   "production.execute",
   "inventory.receive",
   "procurement.create",
@@ -148,7 +154,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
   ADMIN: ALL_PERMISSIONS,
   MANAGER: MANAGER_PERMISSIONS,
   OPERATIONS: OPERATIONS_PERMISSIONS,
-  OPERATOR: OPERATIONS_PERMISSIONS,
+  OPERATOR: OPERATOR_PERMISSIONS,
   PROCUREMENT: PROCUREMENT_PERMISSIONS,
   QUALITY: QUALITY_PERMISSIONS,
   SALES: SALES_PERMISSIONS,
@@ -161,11 +167,15 @@ export const APPROVAL_AUTHORITY: Array<{ capability: string; permission: Permiss
   { capability: "Quality decisions", permission: "quality.manage", roles: ["ADMIN", "MANAGER", "QUALITY"] },
   { capability: "Batch quality actions", permission: "batches.quality_action", roles: ["ADMIN", "MANAGER", "QUALITY"] },
   { capability: "User administration", permission: "users.manage", roles: ["ADMIN"] },
+  {
+    capability: "Planner global rules & autopilot",
+    permission: "production.global_rules",
+    roles: ["ADMIN", "MANAGER"],
+  },
 ];
 
 export function resolveRoleForPermissions(role: string | null): UserRole | null {
   if (!role) return null;
-  if (role === "OPERATOR") return "OPERATIONS";
   if (role in ROLE_PERMISSIONS) return role as UserRole;
   return null;
 }

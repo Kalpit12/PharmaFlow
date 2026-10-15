@@ -5,6 +5,7 @@ import { parseModelWorkflow, WORKFLOW_REGISTRY, isWorkflowType } from "../src/li
 import { decideWorkflow, proposeWorkflow } from "../src/lib/server/workflows";
 import { ServerError, type TenantContext } from "../src/lib/server/errors";
 
+import { getIsolationTenant } from "./verify-tenants";
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
 }
@@ -38,7 +39,7 @@ export async function runPhase10Verify(prisma: PrismaClient) {
   assert(canApprove("MANAGER") && canApprove("ADMIN") && !canApprove("VIEWER") && !canApprove("OPERATOR"), "Approval roles match Phase 9");
 
   const tenant = await prisma.tenant.findUnique({ where: { slug: "medicrest" } });
-  const tenantB = await prisma.tenant.findUnique({ where: { slug: "tenant-b-isolation" } });
+  const tenantB = await getIsolationTenant(prisma);
   const user = await prisma.user.findFirst({ where: { tenantId: tenant?.id } });
   assert(tenant && tenantB && user, "Demo tenant, isolation tenant, and user required");
 

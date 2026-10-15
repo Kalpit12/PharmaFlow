@@ -23,6 +23,7 @@ import {
   type ScheduleConflict,
   type ScheduledOrder,
 } from "@/lib/operations/schedule";
+import { planningWeightsFromPolicy } from "@/lib/operations/planner-policy-weights";
 import { buildOperationSchedule } from "@/lib/operations/routing";
 import { computeScheduleAdherence } from "@/lib/operations/schedule-adherence";
 import {
@@ -64,6 +65,7 @@ export type OperationsKpi = {
 export type OperationsOrder = {
   id: string;
   orderNumber: string;
+  orderKind: "FIRM" | "PROSPECT";
   productName: string;
   productId: string;
   workstationId: string | null;
@@ -105,6 +107,7 @@ export type OperationsOrder = {
       changeoverMinutes: number;
       plannedStart: string | null;
       plannedEnd: string | null;
+      isQcHold: boolean;
     }>;
   };
 };
@@ -290,12 +293,7 @@ export async function getOperationsPlanner(
     changeovers: changeoverRows,
     windowStart: window.start,
     freezeUntil: new Date(policy.freezeUntil),
-    weights: {
-      priorityWeight: policy.priorityWeight,
-      dueDateWeight: policy.dueDateWeight,
-      changeoverWeight: policy.changeoverWeight,
-      utilizationWeight: policy.utilizationWeight,
-    },
+    weights: planningWeightsFromPolicy(policy),
   });
   const plannedOperationsByOrder = new Map<string, typeof operationPlan.operations>();
   for (const operation of operationPlan.operations) {
@@ -356,9 +354,11 @@ export async function getOperationsPlanner(
       (a, b) => a.sequence - b.sequence
     );
     const route = sourceOrder?.operations[0]?.routingOperation?.routing;
+    const sourceKind = sourceOrder?.orderKind ?? "FIRM";
     return {
       id: row.id,
       orderNumber: row.orderNumber,
+      orderKind: sourceKind,
       productName: row.productName,
       productId: productIds.get(row.id) ?? "",
       workstationId: row.workstationId,
@@ -406,6 +406,7 @@ export async function getOperationsPlanner(
             changeoverMinutes: operation.changeoverMinutes,
             plannedStart: operation.plannedStart?.toISOString() ?? null,
             plannedEnd: operation.plannedEnd?.toISOString() ?? null,
+            isQcHold: source?.routingOperation?.isQcHold ?? false,
           };
         }),
       },
@@ -560,61 +561,16 @@ export type CreateProductionOrderInput = {
   priority?: "CRITICAL" | "HIGH" | "NORMAL" | "LOW";
   dueDate: string;
   durationMinutes?: number;
+  customerId?: string | null;
+  earliestStartAt?: string | null;
+  scheduleDirection?: "FORWARD" | "JIT";
+  reserveCapacity?: boolean;
+  campaignId?: string | null;
 };
 
 export async function createProductionOrder(ctx: TenantContext, input: CreateProductionOrderInput) {
-  requirePermission(ctx, "production.schedule");
-  const prisma = getPrisma();
-  const product = await prisma.product.findFirst({
-    where: { id: input.productId, tenantId: ctx.tenantId, status: "ACTIVE" },
-  });
-  if (!product) throw new ServerError("Product not found.", "NOT_FOUND");
-  if (!Number.isInteger(input.quantity) || input.quantity <= 0) {
-    throw new ServerError("Quantity must be a positive whole number.", "INTERNAL");
-  }
-  const dueDate = parseScheduleDate(input.dueDate, "Due date");
-  const durationMinutes = input.durationMinutes ?? 480;
-  const year = new Date().getUTCFullYear();
-  const orderCount = await prisma.productionOrder.count({ where: { tenantId: ctx.tenantId } });
-  const orderNumber = `PRO-${year}-${String(orderCount + 1).padStart(3, "0")}`;
-  const batchCount = await prisma.productionBatch.count({ where: { tenantId: ctx.tenantId } });
-  const batchNumber = `LAB-${year}-${String(batchCount + 1).padStart(3, "0")}`;
-
-  const order = await prisma.$transaction(async (tx) => {
-    const created = await tx.productionOrder.create({
-      data: {
-        tenantId: ctx.tenantId,
-        orderNumber,
-        productId: product.id,
-        quantity: input.quantity,
-        priority: input.priority ?? "NORMAL",
-        status: "UNSCHEDULED",
-        dueDate,
-        durationMinutes,
-        isLocked: false,
-      },
-    });
-    await tx.productionBatch.create({
-      data: {
-        tenantId: ctx.tenantId,
-        productionOrderId: created.id,
-        batchNumber,
-        plannedQuantity: created.quantity,
-        qualityStatus: "PENDING_REVIEW",
-      },
-    });
-    await instantiateOperationsForOrder(tx, ctx.tenantId, created);
-    return created;
-  });
-
-  await writeAuditLog(ctx, {
-    action: "PRODUCTION_ORDER_CREATED",
-    entityType: "PRODUCTION_ORDER",
-    entityId: order.id,
-    newValue: orderNumber,
-  });
-
-  return { id: order.id, orderNumber, batchNumber };
+  const { createProductionOrderPhase2 } = await import("@/lib/server/production-orders-phase2");
+  return createProductionOrderPhase2(ctx, input);
 }
 
 export type ScheduleUpdateInput = {
@@ -895,12 +851,7 @@ export async function autoScheduleProductionOrder(ctx: TenantContext, orderId: s
       changeovers: changeoverRows,
       windowStart,
       freezeUntil,
-      weights: {
-        priorityWeight: policy.priorityWeight,
-        dueDateWeight: policy.dueDateWeight,
-        changeoverWeight: policy.changeoverWeight,
-        utilizationWeight: policy.utilizationWeight,
-      },
+      weights: planningWeightsFromPolicy(policy),
     });
     const scheduled = result.operations.filter((operation) => operation.orderId === order.id);
     const rolledStart = scheduled.reduce<Date | null>(

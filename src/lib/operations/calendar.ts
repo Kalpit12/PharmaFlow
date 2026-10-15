@@ -9,25 +9,31 @@ export type WorkCalendarException = {
   intervals: WorkInterval[];
 };
 
+import {
+  PLANT_TIME_ZONE,
+  addPlantDays,
+  atPlantMinute,
+  plantMinuteOfDay,
+  plantWeekday,
+  plantYmd,
+  startOfPlantDay,
+} from "@/lib/operations/plant-time";
+
 export type WorkCalendar = {
   label: string;
-  timeZone: "UTC";
+  timeZone: typeof PLANT_TIME_ZONE;
   weekly: Record<number, WorkInterval[]>;
   exceptions: WorkCalendarException[];
 };
 
 const DAY_MS = 86_400_000;
 
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
-
 function isoDay(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return plantYmd(date);
 }
 
-function atMinute(day: Date, minute: number): Date {
-  return new Date(startOfUtcDay(day).getTime() + minute * 60_000);
+function atMinute(dayAnchor: Date, minute: number): Date {
+  return atPlantMinute(startOfPlantDay(dayAnchor), minute);
 }
 
 function normalizeIntervals(intervals: WorkInterval[]): WorkInterval[] {
@@ -65,19 +71,19 @@ function weekdayLabel(weekly: Record<number, WorkInterval[]>): string {
       ? `${clockLabelFromMinute(first.startMinute)}–${clockLabelFromMinute(last.endMinute)}`
       : "no shifts";
   if (working.length === 5 && working.every((day, index) => day === index + 1)) {
-    return `Mon–Fri · ${span} UTC`;
+    return `Mon–Fri · ${span} EAT`;
   }
   if (working.length === 0) return "No working days";
   const names = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  return `${working.map((day) => names[day]).join(", ")} · ${span} UTC`;
+  return `${working.map((day) => names[day]).join(", ")} · ${span} EAT`;
 }
 
 export function createStandardWorkCalendar(capacityHoursPerDay: number): WorkCalendar {
   const endMinute = 8 * 60 + Math.max(0, capacityHoursPerDay) * 60;
   const shift = normalizeIntervals([{ startMinute: 8 * 60, endMinute: Math.min(1_440, endMinute) }]);
   return {
-    label: `Mon–Fri · 08:00–${clockLabelFromMinute(Math.min(1_440, endMinute))} UTC`,
-    timeZone: "UTC",
+    label: `Mon–Fri · 08:00–${clockLabelFromMinute(Math.min(1_440, endMinute))} EAT`,
+    timeZone: PLANT_TIME_ZONE,
     weekly: {
       0: [],
       1: shift,
@@ -132,7 +138,7 @@ export function buildWorkCalendar(input: {
 
   return {
     label: input.label ?? weekdayLabel(weekly),
-    timeZone: "UTC",
+    timeZone: PLANT_TIME_ZONE,
     weekly,
     exceptions: (input.exceptions ?? []).map((row) => ({
       date: row.date.slice(0, 10),
@@ -144,7 +150,7 @@ export function buildWorkCalendar(input: {
 
 export function intervalsForDay(day: Date, calendar: WorkCalendar): WorkInterval[] {
   const exception = calendar.exceptions.find((row) => row.date === isoDay(day));
-  return normalizeIntervals(exception ? exception.intervals : calendar.weekly[day.getUTCDay()] ?? []);
+  return normalizeIntervals(exception ? exception.intervals : calendar.weekly[plantWeekday(day)] ?? []);
 }
 
 export function availableMinutesForDay(day: Date, calendar: WorkCalendar): number {
@@ -152,7 +158,7 @@ export function availableMinutesForDay(day: Date, calendar: WorkCalendar): numbe
 }
 
 export function isWorkingAt(date: Date, calendar: WorkCalendar): boolean {
-  const minute = date.getUTCHours() * 60 + date.getUTCMinutes();
+  const minute = plantMinuteOfDay(date);
   return intervalsForDay(date, calendar).some(
     (interval) => minute >= interval.startMinute && minute < interval.endMinute
   );
@@ -168,7 +174,7 @@ export function alignToCalendar(from: Date, calendar: WorkCalendar): Date {
       if (cursor.getTime() <= start.getTime()) return start;
       if (cursor.getTime() < end.getTime()) return cursor;
     }
-    cursor = new Date(startOfUtcDay(cursor).getTime() + DAY_MS);
+    cursor = addPlantDays(startOfPlantDay(cursor), 1);
   }
   throw new Error("Work calendar has no available interval in the next 370 days.");
 }
@@ -184,7 +190,7 @@ export function addWorkingMinutesOnCalendar(from: Date, minutes: number, calenda
       return cursor.getTime() >= start && cursor.getTime() < end;
     });
     if (!active) {
-      cursor = alignToCalendar(new Date(startOfUtcDay(cursor).getTime() + DAY_MS), calendar);
+      cursor = alignToCalendar(addPlantDays(startOfPlantDay(cursor), 1), calendar);
       continue;
     }
     const end = atMinute(cursor, active.endMinute);
@@ -201,9 +207,9 @@ export function availableWorkingMinutes(from: Date, to: Date, calendar: WorkCale
   if (to.getTime() <= from.getTime()) return 0;
   let total = 0;
   for (
-    let day = startOfUtcDay(from);
+    let day = startOfPlantDay(from);
     day.getTime() < to.getTime();
-    day = new Date(day.getTime() + DAY_MS)
+    day = addPlantDays(day, 1)
   ) {
     for (const interval of intervalsForDay(day, calendar)) {
       const start = Math.max(from.getTime(), atMinute(day, interval.startMinute).getTime());
@@ -218,9 +224,9 @@ export function workingMinutesByDay(from: Date, to: Date, calendar: WorkCalendar
   const result = new Map<string, number>();
   if (to.getTime() <= from.getTime()) return result;
   for (
-    let day = startOfUtcDay(from);
+    let day = startOfPlantDay(from);
     day.getTime() < to.getTime();
-    day = new Date(day.getTime() + DAY_MS)
+    day = addPlantDays(day, 1)
   ) {
     let total = 0;
     for (const interval of intervalsForDay(day, calendar)) {

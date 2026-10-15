@@ -9,6 +9,11 @@ export function ganttLeftPctFromTime(at: Date, windowStart: Date, windowEnd: Dat
   return ((at.getTime() - windowStart.getTime()) / span) * 100;
 }
 
+/** Stable % for inline styles so SSR and hydration match. */
+export function ganttPctForStyle(pct: number): number {
+  return Math.round(pct * 100000) / 100000;
+}
+
 export function ganttBarLayout(
   startIso: string,
   endIso: string,

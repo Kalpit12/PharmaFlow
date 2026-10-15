@@ -2,8 +2,10 @@ import type { AutopilotMode, Prisma } from "@prisma/client";
 
 import { buildWorkCalendar, type WorkCalendar } from "@/lib/operations/calendar";
 import { buildOrderMaterialConstraints } from "@/lib/operations/material-constraints";
+import { resolveQualifiedResources } from "@/lib/operations/routing-resources";
 import {
   buildProposedOrderChanges,
+  countMovedScheduledOperations,
   rollupOrderFromOperations,
   summarizeProposal,
   type ProposalSummary,
@@ -66,12 +68,15 @@ export type ScheduleProposalView = {
   source: string;
   name: string;
   movedOrders: number;
+  /** Operation-level moves (canonical for Gantt / engine). */
+  movedJobs: number;
   lockedOrders: number;
   blockedOrders: number;
   lateOrders: number;
   totalChangeoverMinutes: number;
   summary: string;
   freezeUntil: string | null;
+  lockBreakdown?: import("@/lib/operations/plan-proposal-metrics").LockBreakdown;
   orders: Array<{
     orderNumber: string;
     previousStart: string | null;
@@ -183,7 +188,7 @@ function buildOrderOperationDependencies(
   });
 }
 
-function freezeUntilFromPolicy(freezeMinutes: number, now = new Date()): Date {
+export function freezeUntilFromPolicy(freezeMinutes: number, now = new Date()): Date {
   return new Date(now.getTime() + Math.max(0, freezeMinutes) * 60_000);
 }
 
@@ -233,8 +238,26 @@ export type PlannerEngineSnapshot = {
 
 export async function getPlannerEngineSnapshot(ctx: TenantContext): Promise<PlannerEngineSnapshot> {
   requirePermission(ctx, "production.read");
+  const { resolvePlanningWindow } = await import("@/lib/server/operations");
+  const { getPlanSnapshot } = await import("@/lib/server/plan-snapshot");
   const [policy, proposal] = await Promise.all([getOrCreatePlanningPolicy(ctx), getActiveProposal(ctx)]);
-  return { policy, proposal };
+  if (!proposal) return { policy, proposal: null };
+  const window = resolvePlanningWindow({ weeks: "2" });
+  const snapshot = await getPlanSnapshot(ctx, { start: window.start, end: window.end }, { planId: proposal.id });
+  if (!snapshot.proposal) return { policy, proposal };
+  return {
+    policy,
+    proposal: {
+      ...proposal,
+      movedJobs: snapshot.proposal.jobsMoved,
+      movedOrders: snapshot.proposal.movedOrders,
+      lockedOrders: snapshot.proposal.lockedOrders,
+      blockedOrders: snapshot.proposal.blockedOrders,
+      lateOrders: snapshot.proposal.lateOrders,
+      totalChangeoverMinutes: snapshot.proposal.totalChangeoverMinutes,
+      lockBreakdown: snapshot.proposal.lockBreakdown,
+    },
+  };
 }
 
 export async function getOrCreatePlanningPolicy(ctx: TenantContext): Promise<PlanningPolicyView> {
@@ -406,6 +429,7 @@ async function mapProposal(planId: string, tenantId: string): Promise<SchedulePr
     source: plan.source,
     name: plan.name,
     movedOrders: summary.movedOrders ?? 0,
+    movedJobs: (summary as { movedJobs?: number }).movedJobs ?? summary.movedOrders ?? 0,
     lockedOrders: summary.lockedOrders ?? 0,
     blockedOrders: summary.blockedOrders ?? 0,
     lateOrders: summary.lateOrders ?? 0,
@@ -487,6 +511,7 @@ export async function proposeSchedule(
   });
 
   const calendars = await loadWorkstationCalendars(ctx.tenantId, workstationRows);
+  const workstationIdByCode = new Map(workstationRows.map((row) => [row.code, row.id]));
   const materials = await getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null);
   const materialConstraints = buildOrderMaterialConstraints(
     materials?.materials ?? [],
@@ -527,16 +552,18 @@ export async function proposeSchedule(
           setupMinutes: operation.setupMinutes,
           teardownMinutes: operation.teardownMinutes,
           changeoverFamily: operation.changeoverFamily,
-          resources:
-            operation.routingOperation?.resources.map((resource) => ({
-              workstationId: resource.workstationId,
-              efficiencyPercent: resource.efficiencyPercent,
-              preferred: resource.preferred,
-              resourceRole: resource.resourceRole,
-            })) ??
-            (operation.workstationId
-              ? [{ workstationId: operation.workstationId, efficiencyPercent: 100, preferred: true }]
-              : []),
+          resources: resolveQualifiedResources({
+            operationCode: operation.operationCode,
+            routingResources:
+              operation.routingOperation?.resources.map((resource) => ({
+                workstationId: resource.workstationId,
+                efficiencyPercent: resource.efficiencyPercent,
+                preferred: resource.preferred,
+                resourceRole: resource.resourceRole,
+              })) ?? [],
+            workstationId: operation.workstationId,
+            workstationIdByCode,
+          }),
           locked: committed,
           workstationId: operation.workstationId,
           plannedStart: operation.plannedStart,
@@ -603,7 +630,22 @@ export async function proposeSchedule(
     operations: scheduled.operations,
     freezeUntil,
   });
-  const summary = summarizeProposal({ orders: changes, operations: scheduled.operations, freezeUntil });
+  const beforeScheduleOps = routingOrders.flatMap((order) =>
+    order.operations.map((operation) => ({
+      id: operation.id,
+      locked: operation.locked,
+      plannedStart: operation.plannedStart,
+      plannedEnd: operation.plannedEnd,
+      workstationId: operation.workstationId,
+    }))
+  );
+  const movedJobs = countMovedScheduledOperations(beforeScheduleOps, scheduled.operations);
+  const summary = summarizeProposal({
+    orders: changes,
+    operations: scheduled.operations,
+    freezeUntil,
+    movedJobs,
+  });
   const source = policy.autopilotMode === "OFF" ? "AUTO_SCHEDULE" : "AUTOPILOT";
   const created = await prisma.$transaction(async (tx) => {
     await tx.schedulePlan.updateMany({
@@ -909,6 +951,93 @@ export async function acceptSchedulePlan(
   if (!view) throw new ServerError("Accepted plan could not be loaded.", "INTERNAL");
   void syncAllActiveConnectors(ctx).catch(() => undefined);
   return view;
+}
+
+export async function proposeGanttOperationMove(
+  ctx: TenantContext,
+  input: { operationId: string; workstationId: string; proposedStart: string }
+): Promise<ScheduleProposalView> {
+  requirePermission(ctx, "production.schedule");
+  const proposedStart = new Date(input.proposedStart);
+  if (Number.isNaN(proposedStart.getTime())) {
+    throw new ServerError("Proposed start is not a valid date.", "INTERNAL");
+  }
+  const prisma = getPrisma();
+  const anchor = await prisma.productionOperation.findFirst({
+    where: { id: input.operationId, tenantId: ctx.tenantId },
+    include: {
+      routingOperation: { include: { resources: true } },
+      productionOrder: {
+        include: {
+          operations: { include: { routingOperation: { include: { resources: true } } }, orderBy: { sequence: "asc" } },
+        },
+      },
+    },
+  });
+  if (!anchor) throw new ServerError("Operation not found.", "NOT_FOUND");
+  const order = anchor.productionOrder;
+  if (order.isLocked) throw new ServerError("Locked orders cannot be moved from the Gantt.", "FORBIDDEN");
+  if (anchor.isLocked || anchor.status === "IN_PROGRESS" || anchor.status === "COMPLETED") {
+    throw new ServerError("This operation cannot be moved.", "FORBIDDEN");
+  }
+  const qualified = anchor.routingOperation?.resources.some((resource) => resource.workstationId === input.workstationId);
+  if (!qualified) throw new ServerError("Target workstation is not qualified for this step.", "FORBIDDEN");
+
+  const shiftMs = proposedStart.getTime() - (anchor.plannedStart?.getTime() ?? proposedStart.getTime());
+  await prisma.productionOperation.updateMany({
+    where: { productionOrderId: order.id, tenantId: ctx.tenantId },
+    data: { isLocked: false },
+  });
+  for (const operation of order.operations) {
+    const nextStart = operation.plannedStart ? new Date(operation.plannedStart.getTime() + shiftMs) : proposedStart;
+    const nextEnd = operation.plannedEnd
+      ? new Date(operation.plannedEnd.getTime() + shiftMs)
+      : new Date(nextStart.getTime() + operation.durationMinutes * 60_000);
+    const wsId = operation.id === anchor.id ? input.workstationId : operation.workstationId;
+    await prisma.productionOperation.update({
+      where: { id: operation.id },
+      data: {
+        workstationId: wsId,
+        plannedStart: nextStart,
+        plannedEnd: nextEnd,
+        isLocked: true,
+      },
+    });
+  }
+
+  const shiftedOps = await prisma.productionOperation.findMany({
+    where: { productionOrderId: order.id, tenantId: ctx.tenantId },
+    orderBy: { sequence: "asc" },
+  });
+  const rolled = rollupOrderFromOperations(
+    shiftedOps.map((operation) => ({
+      id: operation.id,
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      sequence: operation.sequence,
+      durationMinutes: operation.durationMinutes,
+      setupMinutes: operation.setupMinutes,
+      teardownMinutes: operation.teardownMinutes,
+      changeoverFamily: operation.changeoverFamily,
+      resources: [],
+      locked: true,
+      workstationId: operation.workstationId,
+      plannedStart: operation.plannedStart,
+      plannedEnd: operation.plannedEnd,
+      changeoverMinutes: 0,
+      appliedChangeoverRuleId: null,
+    }))
+  );
+  await prisma.productionOrder.update({
+    where: { id: order.id },
+    data: {
+      workstationId: rolled.workstationId,
+      plannedStart: rolled.plannedStart,
+      plannedEnd: rolled.plannedEnd,
+    },
+  });
+
+  return proposeRescheduleAll(ctx, proposedStart.toISOString());
 }
 
 export async function proposeGanttOrderMove(

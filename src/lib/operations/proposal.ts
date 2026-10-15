@@ -27,6 +27,7 @@ export type ProposedOrderChange = {
 
 export type ProposalSummary = {
   movedOrders: number;
+  movedJobs: number;
   lockedOrders: number;
   blockedOrders: number;
   lateOrders: number;
@@ -78,11 +79,6 @@ export function buildProposedOrderChanges(input: {
   return input.orders.map((order) => {
     const operations = operationsByOrder.get(order.id) ?? [];
     const rolled = rollupOrderFromOperations(operations);
-    const frozen =
-      order.isLocked ||
-      (Boolean(input.freezeUntil) &&
-        Boolean(order.previousStart) &&
-        order.previousStart!.getTime() < input.freezeUntil!.getTime());
     const changeMinutes =
       order.previousStart && rolled.plannedStart
         ? Math.round((rolled.plannedStart.getTime() - order.previousStart.getTime()) / 60_000)
@@ -99,17 +95,43 @@ export function buildProposedOrderChanges(input: {
       previousStart: order.previousStart,
       previousEnd: order.previousEnd,
       materialState: order.materialState,
-      isLocked: order.isLocked || frozen,
+      isLocked: order.isLocked,
       changeMinutes,
       deliveryDeltaMinutes,
     };
   });
 }
 
+export function countMovedScheduledOperations(
+  before: Array<{
+    id: string;
+    locked: boolean;
+    plannedStart: Date | null;
+    plannedEnd: Date | null;
+    workstationId: string | null;
+  }>,
+  after: ScheduledOperation[]
+): number {
+  const beforeById = new Map(before.map((row) => [row.id, row]));
+  let count = 0;
+  for (const op of after) {
+    if (op.locked || !op.plannedStart || !op.plannedEnd || !op.workstationId) continue;
+    const prev = beforeById.get(op.id);
+    if (!prev) continue;
+    const moved =
+      prev.workstationId !== op.workstationId ||
+      (prev.plannedStart?.getTime() ?? 0) !== op.plannedStart.getTime() ||
+      (prev.plannedEnd?.getTime() ?? 0) !== op.plannedEnd.getTime();
+    if (moved) count += 1;
+  }
+  return count;
+}
+
 export function summarizeProposal(input: {
   orders: ProposedOrderChange[];
   operations: ScheduledOperation[];
   freezeUntil?: Date | null;
+  movedJobs?: number;
 }): ProposalSummary {
   const movedOrders = input.orders.filter((order) => {
     if (order.isLocked || !order.proposedStart) return false;
@@ -134,8 +156,11 @@ export function summarizeProposal(input: {
     .filter(Boolean)
     .join(" · ");
 
+  const movedJobs = input.movedJobs ?? movedOrders;
+
   return {
     movedOrders,
+    movedJobs,
     lockedOrders,
     blockedOrders,
     lateOrders,

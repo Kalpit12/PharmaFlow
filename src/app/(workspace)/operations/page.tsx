@@ -18,7 +18,13 @@ export const dynamic = "force-dynamic";
 export default async function OperationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ dashboard?: string }>;
+  searchParams: Promise<{
+    view?: string;
+    dashboard?: string;
+    ganttZoom?: string;
+    ganttStart?: string;
+    ganttEnd?: string;
+  }>;
 }) {
   try {
     const ctx = await getAuthenticatedTenantContext();
@@ -28,18 +34,28 @@ export default async function OperationsPage({
       getPlantModelSnapshot(ctx),
       getProductionOrdersSnapshot(ctx),
       getPlannerEngineSnapshot(ctx),
-      getOperationsGanttSnapshot(ctx, 2),
+      getOperationsGanttSnapshot(ctx, {
+        zoom: params.ganttZoom,
+        start: params.ganttStart,
+        end: params.ganttEnd,
+      }),
       getPlannerIntegrationSnapshot(ctx),
       getPlannerDashboardPageData(ctx, params.dashboard),
     ]);
 
+    const isGantt = !params.view || params.view === "gantt";
+
     return (
-      <WorkspacePage width="full">
-        <PageHeader
-          context="Operations"
-          title="Operations planner"
-          description="Gantt schedule, plant model, orders, and propose → accept engine (SkyPlanner-aligned rebuild)."
-        />
+      <WorkspacePage width="full" className={isGantt ? "gap-0 px-0 py-0 sm:px-0 lg:px-0" : undefined}>
+        {isGantt ? null : (
+          <div className="px-4 pt-4 sm:px-6 lg:px-8">
+            <PageHeader
+              context="Operations"
+              title="Operations planner"
+              description="Plant model, orders, engine, and integrations."
+            />
+          </div>
+        )}
         <OperationsWorkspace
           plant={plant}
           orders={orders}
@@ -48,6 +64,7 @@ export default async function OperationsPage({
           integrations={integrations}
           dashboard={dashboard}
           canGlobalRules={canGlobalRules}
+          initialView={params.view}
         />
       </WorkspacePage>
     );

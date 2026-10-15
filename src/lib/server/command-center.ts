@@ -18,6 +18,7 @@ import { countAwaitingReceipt } from "@/lib/server/receiving";
 import { countPendingPurchaseOrders } from "@/lib/server/purchase-orders";
 import { countSupplierPerformanceAttention } from "@/lib/server/supplier-performance";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
+import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
 import { getTenant } from "@/lib/server/services/tenant";
 import { buildCommandCenterAnalytics } from "@/lib/server/command-center-analytics";
 import { getPlannerMaterialDelaySignals } from "@/lib/server/planner-integrations";
@@ -91,11 +92,13 @@ export function toCompactCommandContext(snapshot: CommandCenterSnapshot): Compac
 
 export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<CommandCenterSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, daily, execution, operations, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, planningOutlook, productionExecution, materialDelays] = await Promise.all([
+  const opsWindow = resolvePlanningWindow({ weeks: "1" });
+  const [dashboard, daily, execution, operations, planSnapshot, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, planningOutlook, productionExecution, materialDelays] = await Promise.all([
     getDashboardData(ctx).catch(() => null),
     getDailyReviewSnapshot(ctx),
     getExecutionSnapshot(ctx),
-    getOperationsPlanner(ctx, resolvePlanningWindow({ weeks: "1" })).catch(() => null),
+    getOperationsPlanner(ctx, opsWindow).catch(() => null),
+    getPlanSnapshot(ctx, { start: opsWindow.start, end: opsWindow.end }).catch(() => null),
     countProcurementRfqsAwaitingEvaluation(ctx).catch(() => 0),
     countPendingPurchaseOrders(ctx).catch(() => 0),
     countAwaitingReceipt(ctx).catch(() => 0),
@@ -114,8 +117,12 @@ export async function getCommandCenterSnapshot(ctx: TenantContext): Promise<Comm
 
   const metric = (id: string) => dashboard?.metrics.find((row) => row.id === id);
 
-  const utilization = operations?.kpis.find((row) => row.id === "utilization")?.value ?? "—";
-  const atRisk = operations?.kpis.find((row) => row.id === "risk")?.value ?? String(daily.context.productionAtRisk);
+  const utilization = planSnapshot
+    ? `${planSnapshot.avgCapacityPercent}%`
+    : operations?.kpis.find((row) => row.id === "utilization")?.value ?? "—";
+  const atRisk = planSnapshot
+    ? String(planSnapshot.ordersAtRisk)
+    : operations?.kpis.find((row) => row.id === "at-risk")?.value ?? String(daily.context.productionAtRisk);
 
   const health: CommandHealthMetric[] = [
     {

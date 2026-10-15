@@ -2,6 +2,7 @@
 
 import { PlannerDashboardBuilder } from "@/components/operations/PlannerDashboardBuilder";
 import { OperationsGanttWorkspace } from "@/components/operations/OperationsGanttWorkspace";
+import { OperationsPlannerShell, type PlannerShellView } from "@/components/operations/OperationsPlannerShell";
 import { PlannerAssistantWorkspace } from "@/components/operations/PlannerAssistantWorkspace";
 import { PlannerApiWorkspace } from "@/components/operations/PlannerApiWorkspace";
 import { PlannerDataImportWorkspace } from "@/components/operations/PlannerDataImportWorkspace";
@@ -9,13 +10,30 @@ import { PlannerIntegrationsWorkspace } from "@/components/operations/PlannerInt
 import { PlannerEngineWorkspace } from "@/components/operations/PlannerEngineWorkspace";
 import { PlantModelWorkspace } from "@/components/operations/PlantModelWorkspace";
 import { ProductionOrdersWorkspace } from "@/components/operations/ProductionOrdersWorkspace";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { PlannerEngineSnapshot } from "@/lib/server/aps-plan";
 import type { OperationsGanttSnapshot } from "@/lib/server/operations-gantt";
 import type { PlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 import type { PlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
 import type { PlantModelSnapshot } from "@/lib/server/plant-model";
 import type { ProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
+import { cn } from "@/lib/utils";
+
+const VIEWS: PlannerShellView[] = [
+  "gantt",
+  "dashboard",
+  "plant",
+  "orders",
+  "engine",
+  "integrations",
+  "import",
+  "api",
+  "assistant",
+];
+
+function parseView(value: string | undefined): PlannerShellView {
+  if (value && VIEWS.includes(value as PlannerShellView)) return value as PlannerShellView;
+  return "gantt";
+}
 
 export function OperationsWorkspace({
   plant,
@@ -25,6 +43,7 @@ export function OperationsWorkspace({
   integrations,
   dashboard,
   canGlobalRules,
+  initialView,
 }: {
   plant: PlantModelSnapshot;
   orders: ProductionOrdersSnapshot;
@@ -33,47 +52,26 @@ export function OperationsWorkspace({
   integrations: PlannerIntegrationSnapshot;
   dashboard: PlannerDashboardPageData;
   canGlobalRules: boolean;
+  initialView?: string;
 }) {
+  const view = parseView(initialView);
+
   return (
-    <Tabs defaultValue="gantt" className="min-w-0">
-      <TabsList>
-        <TabsTrigger value="gantt">Schedule (Gantt)</TabsTrigger>
-        <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-        <TabsTrigger value="plant">Plant model</TabsTrigger>
-        <TabsTrigger value="orders">Orders & prospects</TabsTrigger>
-        <TabsTrigger value="engine">Planner engine</TabsTrigger>
-        <TabsTrigger value="integrations">Integrations</TabsTrigger>
-        <TabsTrigger value="import">Data import</TabsTrigger>
-        <TabsTrigger value="api">API & webhooks</TabsTrigger>
-        <TabsTrigger value="assistant">Assistant</TabsTrigger>
-      </TabsList>
-      <TabsContent value="gantt" className="mt-4 min-w-0">
-        <OperationsGanttWorkspace data={gantt} />
-      </TabsContent>
-      <TabsContent value="dashboard" className="mt-4 min-w-0" id="dashboard">
-        <PlannerDashboardBuilder initial={dashboard} />
-      </TabsContent>
-      <TabsContent value="plant" className="mt-4 min-w-0">
-        <PlantModelWorkspace data={plant} />
-      </TabsContent>
-      <TabsContent value="orders" className="mt-4 min-w-0">
-        <ProductionOrdersWorkspace data={orders} />
-      </TabsContent>
-      <TabsContent value="engine" className="mt-4 min-w-0">
-        <PlannerEngineWorkspace initial={planner} canGlobalRules={canGlobalRules} />
-      </TabsContent>
-      <TabsContent value="integrations" className="mt-4 min-w-0">
-        <PlannerIntegrationsWorkspace data={integrations} />
-      </TabsContent>
-      <TabsContent value="import" className="mt-4 min-w-0">
-        <PlannerDataImportWorkspace />
-      </TabsContent>
-      <TabsContent value="api" className="mt-4 min-w-0">
-        <PlannerApiWorkspace canManage={canGlobalRules} />
-      </TabsContent>
-      <TabsContent value="assistant" className="mt-4 min-w-0">
-        <PlannerAssistantWorkspace />
-      </TabsContent>
-    </Tabs>
+    <OperationsPlannerShell activeView={view}>
+      {view === "gantt" ? (
+        <OperationsGanttWorkspace data={gantt} canGlobalRules={canGlobalRules} />
+      ) : (
+        <div className={cn("min-w-0 overflow-auto p-4 sm:p-6", view === "dashboard" && "p-4")}>
+          {view === "dashboard" ? <PlannerDashboardBuilder initial={dashboard} /> : null}
+          {view === "plant" ? <PlantModelWorkspace data={plant} /> : null}
+          {view === "orders" ? <ProductionOrdersWorkspace data={orders} /> : null}
+          {view === "engine" ? <PlannerEngineWorkspace initial={planner} canGlobalRules={canGlobalRules} /> : null}
+          {view === "integrations" ? <PlannerIntegrationsWorkspace data={integrations} /> : null}
+          {view === "import" ? <PlannerDataImportWorkspace /> : null}
+          {view === "api" ? <PlannerApiWorkspace canManage={canGlobalRules} /> : null}
+          {view === "assistant" ? <PlannerAssistantWorkspace /> : null}
+        </div>
+      )}
+    </OperationsPlannerShell>
   );
 }

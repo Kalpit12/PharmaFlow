@@ -6,6 +6,7 @@ import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
+import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
 import { maybeTriggerShopFloorReplan } from "@/lib/server/shop-floor-replan";
 
 export type PlannerIntegrationSnapshot = {
@@ -62,18 +63,19 @@ export async function getPlannerMaterialDelaySignals(ctx: TenantContext): Promis
 export async function getPlannerIntegrationSnapshot(ctx: TenantContext): Promise<PlannerIntegrationSnapshot> {
   requirePermission(ctx, "production.read");
   const window = resolvePlanningWindow({ weeks: "2" });
-  const [delays, operations, policy, proposal] = await Promise.all([
+  const [delays, planSnapshot, policy, proposal, operations] = await Promise.all([
     getPlannerMaterialDelaySignals(ctx),
-    getOperationsPlanner(ctx, window).catch(() => null),
+    getPlanSnapshot(ctx, { start: window.start, end: window.end }),
     getOrCreatePlanningPolicy(ctx),
     getActiveProposal(ctx),
+    getOperationsPlanner(ctx, window).catch(() => null),
   ]);
 
   return {
     materialDelays: delays,
-    capacityUtilization: operations?.kpis.find((row) => row.id === "utilization")?.value ?? null,
-    atRiskOrders: operations?.orders.filter((row) => row.displayStatus === "AT_RISK").length ?? 0,
-    lateOrders: operations?.planningHealth.pastDueFeasibilityIssues ?? 0,
+    capacityUtilization: `${planSnapshot.avgCapacityPercent}%`,
+    atRiskOrders: planSnapshot.ordersAtRisk,
+    lateOrders: planSnapshot.jobsLate,
     openProposalName: proposal?.name ?? null,
     scheduleAdherencePercent: operations?.planningHealth.scheduleAdherencePercent ?? null,
     autopilotMode: policy.autopilotMode,

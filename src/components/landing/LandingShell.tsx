@@ -6,7 +6,7 @@ import { PharmaflowLanding } from "./PharmaflowLanding";
 const sans = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-landing-sans",
-  weight: ["400", "500", "600", "700"],
+  weight: "variable",
 });
 
 const serif = Instrument_Serif({

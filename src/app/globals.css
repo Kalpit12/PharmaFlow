@@ -142,6 +142,16 @@
   --scrollbar-track: transparent;
   --scrollbar-thumb: color-mix(in srgb, var(--pharmora-border) 85%, var(--pharmora-text-muted));
   --scrollbar-thumb-hover: color-mix(in srgb, var(--pharmora-text-muted) 90%, var(--pharmora-text-secondary));
+
+  --planner-slate: #4b5563;
+  --planner-slate-border: #374151;
+  --planner-shift-green: color-mix(in srgb, #43c59e 28%, #ffffff);
+  --planner-canvas: #ffffff;
+  --planner-select-orange: #ff6a00;
+  --planner-select-orange-border: #cc5500;
+  --planner-late-red: #d9142b;
+  --planner-flow-red: #e11d48;
+  --planner-grid-line: var(--pharmora-border-hairline);
 }
 
 /* Dark graphite — the primary Pharmora identity. */
@@ -213,6 +223,16 @@
   --scrollbar-track: transparent;
   --scrollbar-thumb: color-mix(in srgb, var(--pharmora-text-muted) 55%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--pharmora-text-secondary) 70%, transparent);
+
+  --planner-slate: #4b5563;
+  --planner-slate-border: #374151;
+  --planner-shift-green: color-mix(in srgb, var(--pharmora-success) 22%, var(--pharmora-surface));
+  --planner-canvas: var(--pharmora-surface);
+  --planner-select-orange: #ff6a00;
+  --planner-select-orange-border: #cc5500;
+  --planner-late-red: #d9142b;
+  --planner-flow-red: #e11d48;
+  --planner-grid-line: var(--pharmora-border-hairline);
 }
 
 @layer base {

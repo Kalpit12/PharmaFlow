@@ -11,6 +11,7 @@ import { requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
+import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
 
 export type PlannerJobReportRow = {
   id: string;
@@ -95,7 +96,10 @@ export async function getOperationsDashboardSnapshot(
     weeks: "2",
     start: window.start.toISOString().slice(0, 10),
   });
-  const planner = await getOperationsPlanner(ctx, plannerWindow);
+  const [planner, planSnapshot] = await Promise.all([
+    getOperationsPlanner(ctx, plannerWindow),
+    getPlanSnapshot(ctx, { start: window.start, end: window.end }),
+  ]);
   const prisma = getPrisma();
   const now = new Date();
   const scope = options?.scopedWorkstationIds;
@@ -157,11 +161,14 @@ export async function getOperationsDashboardSnapshot(
   const scopedOrders = planner.orders.filter(
     (row) => inScope(row.workstationId, scope) || row.routing.operations.some((op) => inScope(op.workstationId, scope))
   );
-  const lateOpen = scopedOrders.filter((row) => row.displayStatus === "AT_RISK").length;
-  const startedInWindow = orderRows.filter(
-    (row) =>
-      row.status === "IN_PROGRESS" ||
-      (row.plannedStart && row.plannedStart >= window.start && row.plannedStart <= window.end)
+  const scopedOrderIds = new Set(scopedOrders.map((row) => row.id));
+  const lateOpen = planSnapshot.jobs.filter(
+    (job) =>
+      scopedOrderIds.has(job.orderId) &&
+      (job.status === "LATE" || job.status === "AT_RISK")
+  ).length;
+  const startedInWindow = planSnapshot.jobs.filter(
+    (job) => scopedOrderIds.has(job.orderId) && job.status === "RUNNING"
   ).length;
   const completedInWindow = orderRows.filter(
     (row) =>
@@ -172,7 +179,7 @@ export async function getOperationsDashboardSnapshot(
   ).length;
 
   const adherence = planner.planningHealth.scheduleAdherencePercent;
-  const changeoverHours = Math.round(planner.planningHealth.changeoverMinutesInWindow / 60);
+  const changeoverHours = Math.round(planSnapshot.changeoverMinutesInWindow / 60);
 
   const kpis = [
     {

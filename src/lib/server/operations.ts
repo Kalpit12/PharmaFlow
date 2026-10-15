@@ -15,6 +15,7 @@ import {
   type PlanningPolicyView,
   type ScheduleProposalView,
 } from "@/lib/server/aps-plan";
+import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
 import {
   buildSchedule,
   utilizationPercent,
@@ -24,6 +25,7 @@ import {
   type ScheduledOrder,
 } from "@/lib/operations/schedule";
 import { planningWeightsFromPolicy } from "@/lib/operations/planner-policy-weights";
+import { resolveQualifiedResources } from "@/lib/operations/routing-resources";
 import { buildOperationSchedule } from "@/lib/operations/routing";
 import { computeScheduleAdherence } from "@/lib/operations/schedule-adherence";
 import {
@@ -142,7 +144,9 @@ export type OperationsView = {
     scheduleAdherencePercent: number | null;
     changeoverMinutesInWindow: number;
     planningEventsLast7Days: number;
+    ordersWithUnscheduledSteps: number;
   };
+  routingIssuesByOperationId: Record<string, { kind: string; detail: string }>;
 };
 
 function startOfUtcDay(date: Date): Date {
@@ -205,6 +209,7 @@ export async function getOperationsPlanner(
     getActiveProposal(ctx),
   ]);
   const calendars = await loadWorkstationCalendars(ctx.tenantId, workstationRows);
+  const workstationIdByCode = new Map(workstationRows.map((row) => [row.code, row.id]));
 
   const workstations: PlannerWorkstation[] = workstationRows.map((row) => ({
     id: row.id,
@@ -272,13 +277,18 @@ export async function getOperationsPlanner(
           setupMinutes: operation.setupMinutes,
           teardownMinutes: operation.teardownMinutes,
           changeoverFamily: operation.changeoverFamily,
-          resources:
-            operation.routingOperation?.resources.map((resource) => ({
-              workstationId: resource.workstationId,
-              efficiencyPercent: resource.efficiencyPercent,
-              preferred: resource.preferred,
-              resourceRole: resource.resourceRole,
-            })) ?? [],
+          resources: resolveQualifiedResources({
+            operationCode: operation.operationCode,
+            routingResources:
+              operation.routingOperation?.resources.map((resource) => ({
+                workstationId: resource.workstationId,
+                efficiencyPercent: resource.efficiencyPercent,
+                preferred: resource.preferred,
+                resourceRole: resource.resourceRole,
+              })) ?? [],
+            workstationId: operation.workstationId,
+            workstationIdByCode,
+          }),
           locked:
             operation.isLocked ||
             (operation.plannedStart != null &&
@@ -302,12 +312,17 @@ export async function getOperationsPlanner(
     plannedOperationsByOrder.set(operation.orderId, group);
   }
   const routingIssuesByOrderNumber = new Map<string, number>();
+  const routingIssuesByOperationId: Record<string, { kind: string; detail: string }> = {};
   for (const issue of operationPlan.issues) {
     routingIssuesByOrderNumber.set(
       issue.orderNumber,
       (routingIssuesByOrderNumber.get(issue.orderNumber) ?? 0) + 1
     );
+    routingIssuesByOperationId[issue.operationId] = { kind: issue.kind, detail: issue.detail };
   }
+  const ordersWithUnscheduledSteps = new Set(
+    operationPlan.operations.filter((op) => !op.plannedStart || !op.plannedEnd).map((op) => op.orderId)
+  ).size;
 
   const names = new Map(workstationRows.map((row) => [row.id, row.name]));
   const quantities = new Map(orderRows.map((row) => [row.id, row.quantity]));
@@ -319,11 +334,12 @@ export async function getOperationsPlanner(
   );
 
   const workstationViews = workstations.map((ws) => {
-    const scheduledMinutes = planned.orders
-      .filter((order) => order.workstationId === ws.id && order.plannedStart && order.plannedEnd)
-      .reduce((sum, order) => {
-        const start = Math.max(order.plannedStart!.getTime(), window.start.getTime());
-        const end = Math.min(order.plannedEnd!.getTime(), window.end.getTime());
+    const scheduledMinutes = orderRows
+      .flatMap((order) => order.operations)
+      .filter((op) => op.workstationId === ws.id && op.plannedStart && op.plannedEnd)
+      .reduce((sum, op) => {
+        const start = Math.max(op.plannedStart!.getTime(), window.start.getTime());
+        const end = Math.min(op.plannedEnd!.getTime(), window.end.getTime());
         return sum + Math.max(0, (end - start) / 60000);
       }, 0);
     const calendar = ws.calendar ?? createStandardWorkCalendar(ws.capacityHoursPerDay);
@@ -399,7 +415,8 @@ export async function getOperationsPlanner(
             workstationId: operation.workstationId,
             workstationName: operation.workstationId ? names.get(operation.workstationId) ?? null : null,
             qualifiedWorkstationIds:
-              source?.routingOperation?.resources.map((resource) => resource.workstationId) ?? [],
+              source?.routingOperation?.resources.map((resource) => resource.workstationId) ??
+              (source?.workstationId ? [source.workstationId] : []),
             durationMinutes: operation.durationMinutes,
             setupMinutes: operation.setupMinutes,
             teardownMinutes: operation.teardownMinutes,
@@ -501,15 +518,36 @@ export async function getOperationsPlanner(
     },
   });
 
+  const planSnapshot = await getPlanSnapshot(
+    ctx,
+    { start: window.start, end: window.end },
+    { planId: proposal?.id ?? null }
+  );
+
   return {
     brand: tenant?.name ?? "Workspace",
     disclaimer: tenant?.status === "DEMO" ? "Demo workspace data" : "Workspace data",
     window: { start: window.start.toISOString(), end: window.end.toISOString(), weeks: window.weeks },
     kpis: [
       { id: "scheduled", label: "Orders scheduled", value: String(scheduled.length), hint: "In this window" },
-      { id: "at-risk", label: "Orders at risk", value: String(atRisk.length), hint: "Past due when planned" },
-      { id: "utilization", label: "Avg capacity", value: `${avgUtilization}%`, hint: "Finite-capacity utilization" },
-      { id: "material-shortage", label: "Material shortage", value: String(materialShortageOrders), hint: "Confirmed shortages" },
+      {
+        id: "at-risk",
+        label: "Orders at risk",
+        value: String(planSnapshot.ordersAtRisk),
+        hint: "Planned finish after due (canonical snapshot)",
+      },
+      {
+        id: "utilization",
+        label: "Avg capacity",
+        value: `${planSnapshot.avgCapacityPercent}%`,
+        hint: "DB schedule vs shift calendar in window",
+      },
+      {
+        id: "material-shortage",
+        label: "Material shortage",
+        value: String(planSnapshot.materialBlockedOrders),
+        hint: "Material-blocked orders (snapshot)",
+      },
       { id: "over-capacity", label: "Lines over capacity", value: String(overCapacityWorkstations), hint: "Daily load exceeded" },
       { id: "planned-qty", label: "Planned quantity", value: plannedQuantity.toLocaleString("en-GB"), hint: "Units in scope" },
       { id: "hours", label: "Production hours", value: `${productionHours}h`, hint: "Scheduled run time" },
@@ -523,8 +561,8 @@ export async function getOperationsPlanner(
       {
         id: "changeover",
         label: "Changeover time",
-        value: `${Math.round(changeoverMinutesInWindow / 60)}h`,
-        hint: "Planned cleaning/setup between families",
+        value: `${Math.round(planSnapshot.changeoverMinutesInWindow / 60)}h`,
+        hint: "Setup/changeover minutes on scheduled ops in window",
       },
       {
         id: "feasibility",
@@ -551,7 +589,9 @@ export async function getOperationsPlanner(
       scheduleAdherencePercent: adherence.adherencePercent,
       changeoverMinutesInWindow,
       planningEventsLast7Days,
+      ordersWithUnscheduledSteps,
     },
+    routingIssuesByOperationId,
   };
 }
 

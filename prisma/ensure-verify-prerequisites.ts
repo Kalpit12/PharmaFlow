@@ -279,6 +279,9 @@ export async function ensureVerifyPrerequisites(prisma: PrismaClient) {
   const { ensureOperationsDemoData } = await import("./seed-operations");
   await ensureOperationsDemoData(prisma);
 
+  const { ensureGanttSkyPlannerDemoSeed } = await import("./seed-gantt-demo");
+  await ensureGanttSkyPlannerDemoSeed(prisma);
+
   const { ensureReportingDemoData } = await import("./seed-reports");
   await ensureReportingDemoData(prisma);
 

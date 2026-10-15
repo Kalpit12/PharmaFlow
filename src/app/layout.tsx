@@ -11,12 +11,13 @@ import "./globals.css";
 const uiSans = IBM_Plex_Sans({
   variable: "--font-ui-sans",
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
+  weight: "variable",
 });
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  weight: "variable",
 });
 
 export const metadata: Metadata = {

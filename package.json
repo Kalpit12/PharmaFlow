@@ -6,7 +6,7 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "build": "node scripts/vercel-build.mjs",
     "start": "next start",
     "lint": "eslint",
@@ -44,6 +44,7 @@
     "verify:operations-integration": "tsx scripts/verify-operations-integration.ts",
     "verify:operations-optimizer": "tsx scripts/verify-operations-optimizer.ts",
     "verify:operations-gantt-move": "tsx scripts/verify-operations-gantt-move.ts",
+    "verify:gantt-shift-segments": "tsx scripts/verify-gantt-shift-segments.ts",
     "verify:operations-shop-floor-replan": "tsx scripts/verify-operations-shop-floor-replan.ts",
     "verify:operations-webhooks": "tsx scripts/verify-operations-webhooks.ts",
     "verify:operations-complete": "npm run verify:operations-routing && npm run verify:operations-partial && npm run verify:operations-plan && npm run verify:operations-delivery && npm run verify:operations-optimizer && npm run verify:operations-integration && npm run verify:operations-gantt-move && npm run verify:operations-shop-floor-replan && npm run verify:operations-webhooks && npm run verify:aps-control",

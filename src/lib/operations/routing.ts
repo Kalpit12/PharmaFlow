@@ -108,6 +108,7 @@ export type RoutingIssue = {
     | "INVALID_DURATION"
     | "MATERIAL_UNAVAILABLE"
     | "PAST_DUE"
+    | "SLIPPED_START"
     | "MAX_HOLD_EXCEEDED"
     | "WORKSTATION_GMP";
   detail: string;

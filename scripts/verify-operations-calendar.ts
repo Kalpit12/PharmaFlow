@@ -10,16 +10,17 @@ import {
 import { buildSchedule, type PlannerOrder, type PlannerWorkstation } from "../src/lib/operations/schedule";
 
 const calendar = createStandardWorkCalendar(8);
-const friday = new Date("2026-10-09T08:00:00.000Z");
+/** Friday 08:00 plant (EAT, UTC+3). */
+const friday = new Date("2026-10-09T05:00:00.000Z");
 
 assert.equal(
   addWorkingMinutesOnCalendar(friday, 600, calendar).toISOString(),
-  "2026-10-12T10:00:00.000Z",
+  "2026-10-12T07:00:00.000Z",
   "a ten-hour job skips the non-working weekend"
 );
 assert.equal(
   alignToCalendar(new Date("2026-10-10T09:00:00.000Z"), calendar).toISOString(),
-  "2026-10-12T08:00:00.000Z",
+  "2026-10-12T05:00:00.000Z",
   "weekend starts align to Monday shift start"
 );
 assert.equal(
@@ -44,7 +45,7 @@ const holidayCalendar = {
 };
 assert.equal(
   addWorkingMinutesOnCalendar(friday, 600, holidayCalendar).toISOString(),
-  "2026-10-13T10:00:00.000Z",
+  "2026-10-13T07:00:00.000Z",
   "calendar exceptions remove unavailable shifts"
 );
 
@@ -64,7 +65,7 @@ const orders: PlannerOrder[] = [
     durationMinutes: 600,
     priority: "HIGH",
     dueDate: new Date("2026-10-13T16:00:00.000Z"),
-    createdAt: new Date("2026-10-01T08:00:00.000Z"),
+    createdAt: new Date("2026-10-01T05:00:00.000Z"),
     isLocked: false,
     plannedStart: null,
     plannedEnd: null,
@@ -75,7 +76,7 @@ const scheduled = buildSchedule(
   [workstation],
   { start: friday, end: new Date("2026-10-16T00:00:00.000Z") }
 );
-assert.equal(scheduled.orders[0]?.plannedEnd?.toISOString(), "2026-10-12T10:00:00.000Z");
+assert.equal(scheduled.orders[0]?.plannedEnd?.toISOString(), "2026-10-12T07:00:00.000Z");
 assert.equal(scheduled.orders[0]?.displayStatus, "SCHEDULED");
 
 const saturdayShift = buildWorkCalendar({
@@ -93,7 +94,7 @@ const saturdayShift = buildWorkCalendar({
 assert.match(saturdayShift.label, /Sat/);
 assert.equal(
   addWorkingMinutesOnCalendar(new Date("2026-10-09T15:00:00.000Z"), 120, saturdayShift).toISOString(),
-  "2026-10-12T09:00:00.000Z",
+  "2026-10-12T07:00:00.000Z",
   "Saturday half-shift is skipped when a dated plant shutdown closes Saturday"
 );
 const saturdayOpen = buildWorkCalendar({
@@ -111,7 +112,7 @@ const saturdayOpen = buildWorkCalendar({
 });
 assert.equal(
   addWorkingMinutesOnCalendar(new Date("2026-10-09T15:00:00.000Z"), 120, saturdayOpen).toISOString(),
-  "2026-10-10T09:00:00.000Z",
+  "2026-10-10T07:00:00.000Z",
   "Saturday half-shift is used when no exception closes the day"
 );
 

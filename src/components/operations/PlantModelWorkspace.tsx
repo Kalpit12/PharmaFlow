@@ -66,7 +66,7 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
     <div className="flex min-w-0 flex-col gap-4">
       <section className="work-surface p-4">
         <p className="text-sm text-muted-foreground">
-          Phase 1 — model your plant like SkyPlanner: sites, lines, routings, and changeovers. The Gantt scheduler returns in Phase 4
+          Sites, departments, workstations, routings, and changeovers — the plant model feeds the Gantt and engine.
           after the engine hardening in Phases 2–3.
         </p>
         <ul className="mt-3 flex flex-wrap gap-2">

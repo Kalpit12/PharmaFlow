@@ -80,7 +80,7 @@ const changes = buildProposedOrderChanges({
       previousEnd: locked.operations[0].plannedEnd,
       previousWorkstationId: "line-a",
       materialState: "READY",
-      isLocked: false,
+      isLocked: true,
     },
     {
       id: movable.id,

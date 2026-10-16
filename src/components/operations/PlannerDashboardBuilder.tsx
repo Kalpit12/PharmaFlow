@@ -129,7 +129,14 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
           </p>
         </section>
       ) : null,
-      OEE_BY_WORKSTATION: (
+      OEE_BY_WORKSTATION: !data.hasTimelogData ? (
+        <section className="work-surface p-4">
+          <p className="text-sm font-medium">OEE by workstation</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            OEE appears after shop-floor timelogs (start/complete events) are recorded. No timer data in the last 30 days yet.
+          </p>
+        </section>
+      ) : (
         <section className="work-surface overflow-x-auto p-4">
           <p className="text-sm font-medium">OEE proxy by workstation</p>
           <table className="mt-3 w-full min-w-[640px] text-left text-sm">

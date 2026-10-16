@@ -699,8 +699,11 @@ export function OperationsGanttWorkspace({
                                   return (
                                     <div
                                       key={block.id}
-                                      className="pointer-events-none absolute top-0 z-[1] h-full bg-[var(--planner-shift-green)]"
-                                      style={{ left: `${layout.leftPct}%`, width: `${Math.max(layout.widthPct, 0.2)}%` }}
+                                      className="pointer-events-none absolute top-0 z-[1] h-full rounded-[1px] bg-[var(--planner-shift-green)] shadow-[2px_0_0_0_var(--background)]"
+                                      style={{
+                                        left: `${layout.leftPct}%`,
+                                        width: `max(${Math.max(layout.widthPct - 0.12, 0.15)}%, 2px)`,
+                                      }}
                                       aria-hidden
                                     />
                                   );

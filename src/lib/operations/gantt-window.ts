@@ -3,6 +3,7 @@ import {
   formatGanttDayLabel,
   formatGanttTimeLabel,
 } from "@/lib/operations/gantt-format";
+import { floorToPlantStep, plantHourTicks, startOfPlantDay } from "@/lib/operations/plant-time";
 
 export type GanttZoom = "8h" | "day" | "week" | "month" | "quarter";
 
@@ -33,7 +34,7 @@ export function resolveGanttWindow(input?: {
   if (input?.start) {
     start = new Date(`${input.start}T00:00:00.000Z`);
   } else if (zoom === "day" && !input?.end) {
-    start = new Date(now.getTime() - 6 * HOUR_MS);
+    start = floorToPlantStep(new Date(now.getTime() - 6 * HOUR_MS), 120);
   } else {
     start = startOfLocalDay(now);
   }
@@ -68,7 +69,7 @@ export function buildGanttHeaderTiers(
 ): { days: GanttHeaderDay[]; hours: GanttHeaderHour[] } {
   const days: GanttHeaderDay[] = [];
   const hours: GanttHeaderHour[] = [];
-  let dayCursor = startOfLocalDay(start);
+  let dayCursor = startOfPlantDay(start);
   while (dayCursor.getTime() < end.getTime()) {
     const dayEnd = new Date(Math.min(end.getTime(), dayCursor.getTime() + DAY_MS));
     days.push({
@@ -79,17 +80,11 @@ export function buildGanttHeaderTiers(
     dayCursor = new Date(dayCursor.getTime() + DAY_MS);
   }
 
-  const hourStepMs =
-    zoom === "8h"
-      ? 30 * 60_000
-      : zoom === "day"
-        ? 2 * HOUR_MS
-        : zoom === "week"
-          ? 12 * HOUR_MS
-          : 24 * HOUR_MS;
+  const stepMinutes =
+    zoom === "8h" ? 30 : zoom === "day" ? 120 : zoom === "week" ? 720 : 1_440;
 
   if (zoom === "week") {
-    let dayCursor = startOfLocalDay(start);
+    let dayCursor = startOfPlantDay(start);
     while (dayCursor.getTime() < end.getTime()) {
       for (const minuteOfDay of [0, 12 * 60]) {
         const at = new Date(dayCursor.getTime() + minuteOfDay * 60_000);
@@ -100,13 +95,8 @@ export function buildGanttHeaderTiers(
       dayCursor = new Date(dayCursor.getTime() + DAY_MS);
     }
   } else {
-    let hourCursor = new Date(start);
-    while (hourCursor.getTime() < end.getTime()) {
-      hours.push({
-        at: hourCursor.toISOString(),
-        label: formatGanttTimeLabel(hourCursor),
-      });
-      hourCursor = new Date(hourCursor.getTime() + hourStepMs);
+    for (const at of plantHourTicks(start, end, stepMinutes)) {
+      hours.push({ at: at.toISOString(), label: formatGanttTimeLabel(at) });
     }
   }
 

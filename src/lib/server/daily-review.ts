@@ -20,6 +20,7 @@ import { getSupplierDataGapCount, getSupplierSnapshot, resolveSupplierFilters } 
 import { getTenant } from "@/lib/server/services/tenant";
 import { getIntelligenceSnapshot } from "@/lib/server/intelligence";
 import { getPlannerMaterialDelaySignals } from "@/lib/server/planner-integrations";
+import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
 
 const SEVERITY_RANK: Record<DailySeverity, number> = {
   CRITICAL: 5,
@@ -43,10 +44,11 @@ function healthStatus(rank: number, limited = false): DomainHealthStatus {
 
 export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyReviewSnapshot> {
   const tenant = await getTenant(ctx);
-  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, intelligence, materialDelays] =
+  const planningWindow = resolvePlanningWindow({ weeks: "2" });
+  const [dashboard, operations, materials, procurement, inventory, suppliers, supplierGaps, rfqsAwaitingEvaluation, pendingPurchaseOrders, awaitingReceipt, supplierPerfAttention, intelligence, materialDelays, planSnapshot] =
     await Promise.all([
     getDashboardData(ctx).catch(() => null),
-    getOperationsPlanner(ctx, resolvePlanningWindow({ weeks: "1" })).catch(() => null),
+    getOperationsPlanner(ctx, planningWindow).catch(() => null),
     getMaterialsSnapshot(ctx, resolveMaterialsFilters({ view: "shortages" })).catch(() => null),
     getProcurementSnapshot(ctx, resolveProcurementFilters({ view: "needs-review" })).catch(() => null),
     getInventorySnapshot(ctx, resolveInventoryFilters({ view: "overview" })).catch(() => null),
@@ -58,6 +60,7 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     countSupplierPerformanceAttention(ctx).catch(() => 0),
     getIntelligenceSnapshot(ctx),
     getPlannerMaterialDelaySignals(ctx).catch(() => []),
+    getPlanSnapshot(ctx, { start: planningWindow.start, end: planningWindow.end }).catch(() => null),
   ]);
 
   const attention: DailyAttentionItem[] = [];
@@ -67,6 +70,23 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     operations?.orders.filter((order) => order.displayStatus === "UNSCHEDULED" && (order.priority === "CRITICAL" || order.priority === "HIGH")) ??
     [];
   const conflicts = operations?.conflicts ?? [];
+
+  const plannerAtRisk = planSnapshot?.ordersAtRisk ?? 0;
+  const plannerLateJobs = planSnapshot?.jobsLate ?? 0;
+  if (plannerAtRisk > 0 || plannerLateJobs > 0) {
+    attention.push({
+      id: "prod-plan-late",
+      domain: "production",
+      severity: plannerLateJobs > 10 ? "CRITICAL" : "HIGH",
+      title: "Planner schedule pressure",
+      summary: `${plannerLateJobs} late job${plannerLateJobs === 1 ? "" : "s"} · ${plannerAtRisk} order${plannerAtRisk === 1 ? "" : "s"} at risk (same snapshot as Operations Gantt).`,
+      reason: "Past-due or finish-after-due steps in the current plan. Run Reschedule all and accept a proposal to spread load.",
+      targetType: "production",
+      targetId: null,
+      href: "/operations?view=gantt",
+      actionLabel: "Open Gantt",
+    });
+  }
 
   if (atRiskOrders.length > 0) {
     const earliest = [...atRiskOrders].sort((a, b) => a.dueDate.localeCompare(b.dueDate))[0];
@@ -393,8 +413,12 @@ export async function getDailyReviewSnapshot(ctx: TenantContext): Promise<DailyR
     health,
     attention: topAttention,
     context: {
-      productionAtRisk: atRiskOrders.length,
-      materialShortages: (criticalMaterials.length + highMaterials.length) || 0,
+      productionAtRisk: Math.max(atRiskOrders.length, planSnapshot?.ordersAtRisk ?? 0, planSnapshot?.jobsLate ?? 0),
+      materialShortages: Math.max(
+        materialDelays.length,
+        planSnapshot?.materialBlockedOrders ?? 0,
+        criticalMaterials.length + highMaterials.length
+      ),
       pendingRequisitions,
       supplierGaps,
       inventoryCritical: expiredQty > 0 ? inventory?.expiredBatches ?? 0 : 0,

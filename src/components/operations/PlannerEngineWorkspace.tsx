@@ -19,7 +19,7 @@ export function PlannerEngineWorkspace({
     <div className="flex min-w-0 flex-col gap-4">
       <section className="work-surface p-4">
         <p className="text-sm text-muted-foreground">
-          Phase 12 — SkyPlanner-style engine actions (bulldozer, unscheduled-only, workstation scope, fast track) plus extended
+          Reschedule proposals, bulldozer, unscheduled-only, workstation scope, and fast-track priority.
           global rule weights. Plans are proposed until a planner accepts them.
         </p>
       </section>

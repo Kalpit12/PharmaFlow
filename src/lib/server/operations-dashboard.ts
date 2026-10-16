@@ -68,6 +68,7 @@ export type OperationsDashboardSnapshot = {
     performancePercent: number;
     qualityPercent: number;
   }>;
+  hasTimelogData: boolean;
 };
 
 const TIMELOG_HORIZON_DAYS = 30;
@@ -276,8 +277,11 @@ export async function getOperationsDashboardSnapshot(
     actorName: row.recordedBy?.name ?? null,
   }));
 
+  const hasTimelogData = events.some((row) => row.eventType === "START" || row.eventType === "STOP");
+
   const wsIds = workstationCapacity.map((row) => row.id);
-  const oeeByWorkstation = await Promise.all(
+  const oeeByWorkstation = hasTimelogData
+    ? await Promise.all(
     wsIds.map(async (workstationId) => {
       const ws = workstationCapacity.find((row) => row.id === workstationId)!;
       const ops = await prisma.productionOperation.findMany({
@@ -319,9 +323,10 @@ export async function getOperationsDashboardSnapshot(
         }
         goodQuantity += batch?.producedQuantity ?? 0;
       }
+      if (actualMinutes <= 0 && downtimeEvents === 0 && goodQuantity === 0) return null;
       const oee = computeOeeProxy({
         plannedMinutes: plannedMinutes || 60,
-        actualMinutes: actualMinutes || plannedMinutes || 60,
+        actualMinutes: actualMinutes || plannedMinutes,
         downtimeEvents,
         scrapQuantity,
         goodQuantity,
@@ -336,7 +341,8 @@ export async function getOperationsDashboardSnapshot(
         qualityPercent: oee.qualityPercent,
       };
     })
-  );
+  ).then((rows) => rows.filter((row): row is NonNullable<typeof row> => row != null))
+    : [];
 
   return {
     generatedAt: now.toISOString(),
@@ -351,5 +357,6 @@ export async function getOperationsDashboardSnapshot(
     timelogs,
     orderItems,
     oeeByWorkstation: oeeByWorkstation.sort((a, b) => b.oeePercent - a.oeePercent),
+    hasTimelogData,
   };
 }

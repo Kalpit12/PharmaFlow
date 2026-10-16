@@ -39,3 +39,27 @@ export function atPlantMinute(plantDayStart: Date, minuteOfDay: number): Date {
 export function addPlantDays(plantDayStart: Date, days: number): Date {
   return new Date(plantDayStart.getTime() + days * 86_400_000);
 }
+
+/** Plant-local hour ticks between start (inclusive) and end (exclusive), step in minutes. */
+export function plantHourTicks(start: Date, end: Date, stepMinutes: number): Date[] {
+  if (stepMinutes <= 0) return [];
+  const ticks: Date[] = [];
+  let day = startOfPlantDay(start);
+  const endMs = end.getTime();
+  while (day.getTime() < endMs) {
+    for (let minute = 0; minute < 1_440; minute += stepMinutes) {
+      const at = atPlantMinute(day, minute);
+      if (at.getTime() >= start.getTime() && at.getTime() < endMs) ticks.push(at);
+    }
+    day = addPlantDays(day, 1);
+  }
+  return ticks;
+}
+
+/** Snap instant down to the previous plant-local step boundary (e.g. whole 2h). */
+export function floorToPlantStep(instant: Date, stepMinutes: number): Date {
+  const dayStart = startOfPlantDay(instant);
+  const minute = plantMinuteOfDay(instant);
+  const floored = minute - (minute % stepMinutes);
+  return atPlantMinute(dayStart, floored);
+}

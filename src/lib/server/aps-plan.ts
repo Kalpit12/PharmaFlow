@@ -732,7 +732,11 @@ export async function proposeSchedule(
 }
 
 export async function proposeRescheduleAll(ctx: TenantContext, windowStartIso?: string): Promise<ScheduleProposalView> {
-  return proposeSchedule(ctx, windowStartIso, { kind: "ALL" });
+  return proposeSchedule(ctx, windowStartIso, {
+    kind: "ALL",
+    bulldoze: true,
+    planLabel: "Reschedule all",
+  });
 }
 
 export async function proposeRescheduleUnscheduled(ctx: TenantContext, windowStartIso?: string) {

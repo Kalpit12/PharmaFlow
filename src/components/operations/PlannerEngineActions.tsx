@@ -47,7 +47,7 @@ export function PlannerEngineActions({ disabled }: { disabled?: boolean }) {
 
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-medium">Engine actions (Phase 12)</h3>
+      <h3 className="text-sm font-medium">Engine actions</h3>
       <p className="text-xs text-muted-foreground">
         Bulldozer, unscheduled-only, and workstation scope create proposals. Unschedule writes immediately (audited).
       </p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, ChevronsUpDown } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { useShell } from "@/components/layout/shell-context";
 import { Button } from "@/components/ui/button";
@@ -15,8 +16,23 @@ import { getWorkspaces } from "@/lib/tenant";
 import { cn } from "@/lib/utils";
 
 export function WorkspaceSwitcher({ compact = false }: { compact?: boolean }) {
+  const router = useRouter();
   const { workspace, setWorkspaceId } = useShell();
   const workspaces = getWorkspaces();
+
+  const selectWorkspace = async (slug: string) => {
+    setWorkspaceId(slug);
+    try {
+      await fetch("/api/demo/switch-workspace", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug }),
+      });
+    } catch {
+      /* refresh still picks up cookie when set */
+    }
+    router.refresh();
+  };
 
   return (
     <DropdownMenu>
@@ -42,7 +58,7 @@ export function WorkspaceSwitcher({ compact = false }: { compact?: boolean }) {
       <DropdownMenuContent align="start" className="w-64">
         <DropdownMenuLabel>Workspaces</DropdownMenuLabel>
         {workspaces.map((item) => (
-          <DropdownMenuItem key={item.id} onClick={() => setWorkspaceId(item.id)}>
+          <DropdownMenuItem key={item.id} onClick={() => void selectWorkspace(item.id)}>
             <span className="min-w-0 flex-1">
               <span className="block truncate">{item.brand}</span>
               <span className="block text-xs text-muted-foreground">{item.country}</span>

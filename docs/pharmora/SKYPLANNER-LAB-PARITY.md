@@ -49,6 +49,8 @@ Use for **fictional MediCrest** import only (names pattern, not customer ERP ids
 
 Import path: Operations → Data import → workstations CSV (see `PlannerDataImportWorkspace` templates).
 
+**Tenant:** `lab-allied-demo` — SkyPlanner-layout plant (17 workstations, L&A shift pattern). MediCrest (`medicrest`) keeps the generic machine demo. Switch via sidebar **Workspaces** → *Laboratory & Allied (Demo)*, then open `/operations?view=gantt`. Seed: `npm run db:seed:lab-allied` (requires `AUTH_DEV_PASSWORD` in `.env`).
+
 ## §0 Live bugs (in progress)
 
 | Issue | Design | Implementation |

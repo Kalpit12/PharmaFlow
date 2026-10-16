@@ -8,3 +8,11 @@ export const DEMO_DEV_EMAIL_DEFAULT = "alex@medicrest.demo";
 
 /** @deprecated Previous demo slug; removed on reseed. */
 export const LEGACY_DEMO_TENANT_SLUG = "lab-allied";
+
+/** SkyPlanner-style plant layout demo (fictional; not Lab & Allied customer data). */
+export const LAB_ALLIED_DEMO_SLUG = "lab-allied-demo";
+export const LAB_ALLIED_DEMO_LEGAL_NAME = "Laboratory & Allied (Demo)";
+export const LAB_ALLIED_DEMO_BRAND = "Laboratory & Allied (Demo)";
+export const LAB_ALLIED_DEMO_TAGLINE = "Reference plant layout for scheduling demos";
+export const LAB_ALLIED_DEMO_COUNTRY = "Kenya";
+export const LAB_ALLIED_DEMO_EMAIL = "lab@lab-allied.demo";

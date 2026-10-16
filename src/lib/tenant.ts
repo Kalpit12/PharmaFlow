@@ -1,10 +1,5 @@
-import {
-  DEMO_TENANT_BRAND,
-  DEMO_TENANT_COUNTRY,
-  DEMO_TENANT_LEGAL_NAME,
-  DEMO_TENANT_SLUG,
-  DEMO_TENANT_TAGLINE,
-} from "@/lib/demo-tenant";
+import { DEMO_TENANT_SLUG } from "@/lib/demo-tenant";
+import { demoWorkspaces } from "@/lib/demo-workspaces";
 
 export type TenantConfig = {
   id: string;
@@ -14,32 +9,10 @@ export type TenantConfig = {
   country: string;
 };
 
-/** Demo tenant only. UI must read this config — do not hard-code the demo company in components. */
-export const demoTenant: TenantConfig = {
-  id: DEMO_TENANT_SLUG,
-  legalName: DEMO_TENANT_LEGAL_NAME,
-  brand: DEMO_TENANT_BRAND,
-  tagline: DEMO_TENANT_TAGLINE,
-  country: DEMO_TENANT_COUNTRY,
-};
+/** Default workspace (MediCrest generic demo). */
+export const demoTenant: TenantConfig = demoWorkspaces[0]!;
 
-export const workspaces: TenantConfig[] = [
-  demoTenant,
-  {
-    id: "demo-pharma",
-    legalName: "Demo Pharmaceutical Co.",
-    brand: "Demo Pharmaceutical Co.",
-    tagline: "Quality medicines, reliably supplied",
-    country: "United Kingdom",
-  },
-  {
-    id: "pharmora-demo",
-    legalName: "Pharmaflow Demo",
-    brand: "Pharmaflow Demo",
-    tagline: "Sandbox workspace",
-    country: "Kenya",
-  },
-];
+export const workspaces: TenantConfig[] = demoWorkspaces;
 
 export function getTenant(): TenantConfig {
   return demoTenant;

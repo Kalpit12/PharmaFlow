@@ -6,6 +6,7 @@ import {
   buildWorkCalendar,
   type WorkCalendar,
 } from "../src/lib/operations/calendar";
+import { isElapsedOnlyWorkstation } from "../src/lib/operations/elapsed-workstation";
 
 /** Re-align demo DB planned times to workstation shift calendars (Mon–Sat, no Sunday). */
 export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId: string): Promise<number> {
@@ -35,9 +36,8 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   const ops = await prisma.productionOperation.findMany({
     where: {
       tenantId,
-      plannedStart: { not: null },
-      plannedEnd: { not: null },
       workstationId: { not: null },
+      status: { not: "COMPLETED" },
     },
     orderBy: [{ productionOrderId: "asc" }, { sequence: "asc" }],
   });
@@ -47,7 +47,8 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   const now = new Date();
 
   for (const op of ops) {
-    if (!op.workstationId || wsCodeById.get(op.workstationId) === "QC-HOLD") continue;
+    const wsCode = op.workstationId ? wsCodeById.get(op.workstationId) : undefined;
+    if (!op.workstationId || isElapsedOnlyWorkstation(wsCode)) continue;
     const calendar = calendars.get(op.workstationId);
     if (!calendar) continue;
 
@@ -58,8 +59,10 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
     const end = addWorkingMinutesOnCalendar(start, runMinutes, calendar);
 
     if (
-      op.plannedStart!.getTime() !== start.getTime() ||
-      op.plannedEnd!.getTime() !== end.getTime()
+      !op.plannedStart ||
+      !op.plannedEnd ||
+      op.plannedStart.getTime() !== start.getTime() ||
+      op.plannedEnd.getTime() !== end.getTime()
     ) {
       await prisma.productionOperation.update({
         where: { id: op.id },

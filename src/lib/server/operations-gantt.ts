@@ -16,6 +16,7 @@ export type { GanttLateSummary };
 import { shortBatchLabel, workingSegmentsInRange, type GanttWorkSegment } from "@/lib/operations/gantt-shift-segments";
 import { type GanttZoom, resolveGanttWindow } from "@/lib/operations/gantt-window";
 import { availableWorkingMinutes, createStandardWorkCalendar } from "@/lib/operations/calendar";
+import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
 import { getOperationsPlanner, type OperationsView } from "@/lib/server/operations";
 import { resolvePlannerAccess } from "@/lib/auth/planner-access";
 import { requirePermission } from "@/lib/auth/authorization";
@@ -165,13 +166,21 @@ export type OperationsGanttSnapshot = {
 };
 
 const GROUP_ORDER = [
+  "LA-BLEND",
   "DISP-GRP",
   "GRN-GRP",
+  "LA-COMP",
   "CMP-GRP",
+  "LA-COAT",
   "COAT-GRP",
+  "LA-FILL",
   "ENC-GRP",
+  "LA-BLISTER",
   "LIQ-GRP",
   "PKG-GRP",
+  "LA-LINE",
+  "LA-QUAR",
+  "LA-QC",
   "QC-GRP",
 ];
 
@@ -475,7 +484,7 @@ export async function getOperationsGanttSnapshot(
           createStandardWorkCalendar(wsRows.find((row) => row.id === dbOp.workstationId)?.capacityHoursPerDay ?? 8);
         const rangeStart = new Date(changed ? proposed!.start : plannedStart);
         const rangeEnd = new Date(changed ? proposed!.end : plannedEnd);
-        if (wsRows.find((row) => row.id === dbOp.workstationId)?.code === "QC-HOLD") {
+        if (isElapsedOnlyWorkstation(wsRows.find((row) => row.id === dbOp.workstationId)?.code)) {
           return [{ start: rangeStart.toISOString(), end: rangeEnd.toISOString() }];
         }
         const segments = workingSegmentsInRange(rangeStart, rangeEnd, wsCal);
@@ -650,7 +659,7 @@ export async function getOperationsGanttSnapshot(
     .filter((row) => !scope?.length || scope.includes(row.id))
     .map((row) => {
       const calendar = calendars.get(row.id) ?? createStandardWorkCalendar(row.capacityHoursPerDay);
-      const elapsedOnly = row.code === "QC-HOLD";
+      const elapsedOnly = isElapsedOnlyWorkstation(row.code);
       if (!elapsedOnly) {
         onShiftBlocks.push(...buildOnShiftBlocks(ganttWindow.start, ganttWindow.end, row.id, calendar));
         offShiftBlocks.push(...buildOffShiftBlocks(ganttWindow.start, ganttWindow.end, row.id, calendar));

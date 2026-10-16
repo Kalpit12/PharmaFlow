@@ -4,6 +4,7 @@ import {
   utilizationForWorkstation,
 } from "@/lib/operations/gantt-capacity";
 import { availableWorkingMinutes, createStandardWorkCalendar } from "@/lib/operations/calendar";
+import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
 import {
   jobStatusIsLate,
   jobStatusIsRunning,
@@ -198,7 +199,7 @@ export async function getPlanSnapshot(
 
   const workstationLoads: PlanWorkstationLoad[] = wsRows.map((row) => {
     const calendar = calendars.get(row.id) ?? createStandardWorkCalendar(row.capacityHoursPerDay);
-    const elapsedOnly = row.code === "QC-HOLD";
+    const elapsedOnly = isElapsedOnlyWorkstation(row.code);
     const scheduledMinutes = scheduledOperationMinutesInWindow(
       loadOps,
       row.id,

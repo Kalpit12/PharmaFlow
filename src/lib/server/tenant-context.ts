@@ -64,8 +64,10 @@ export async function getAuthenticatedUser(): Promise<AuthenticatedUser> {
  */
 export async function getAuthenticatedTenantContext(): Promise<TenantContext> {
   const user = await getAuthenticatedUser();
+  const { resolveDemoTenantId } = await import("@/lib/server/demo-workspace");
+  const tenantId = (await resolveDemoTenantId(user)) ?? user.tenantId;
   return {
-    tenantId: user.tenantId,
+    tenantId,
     userId: user.id,
     role: user.role,
   };

@@ -15,9 +15,17 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetHeader, SheetTi
 import { X } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 
-export function AppShell({ children, user }: { children: ReactNode; user: AuthenticatedUser }) {
+export function AppShell({
+  children,
+  user,
+  initialWorkspaceId,
+}: {
+  children: ReactNode;
+  user: AuthenticatedUser;
+  initialWorkspaceId?: string;
+}) {
   return (
-    <ShellProvider user={user}>
+    <ShellProvider user={user} initialWorkspaceId={initialWorkspaceId}>
       <ShellFrame>{children}</ShellFrame>
     </ShellProvider>
   );

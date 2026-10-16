@@ -25,8 +25,16 @@ type ShellContextValue = {
 
 const ShellContext = createContext<ShellContextValue | null>(null);
 
-export function ShellProvider({ children, user }: { children: ReactNode; user: AuthenticatedUser }) {
-  const [workspaceId, setWorkspaceId] = useState(demoTenant.id);
+export function ShellProvider({
+  children,
+  user,
+  initialWorkspaceId = demoTenant.id,
+}: {
+  children: ReactNode;
+  user: AuthenticatedUser;
+  initialWorkspaceId?: string;
+}) {
+  const [workspaceId, setWorkspaceId] = useState(initialWorkspaceId);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMode, setPaletteMode] = useState<PaletteMode>("commands");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);

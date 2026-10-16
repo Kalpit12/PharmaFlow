@@ -6,12 +6,12 @@ export async function seedLabAlliedShopFloorHistory(
   tenantId: string,
   recordedById: string | null
 ): Promise<number> {
-  const employees = await prisma.plantEmployee.findMany({
+  const operators = await prisma.plantEmployee.findMany({
     where: { tenantId, status: "ACTIVE" },
-    select: { id: true },
+    select: { name: true },
     take: 8,
   });
-  if (employees.length === 0) return 0;
+  if (operators.length === 0) return 0;
 
   const completedOps = await prisma.productionOperation.findMany({
     where: { tenantId, status: "COMPLETED", actualEnd: { not: null } },
@@ -32,7 +32,7 @@ export async function seedLabAlliedShopFloorHistory(
     const end =
       op.actualEnd ??
       new Date(start.getTime() + Math.round(op.durationMinutes * 60_000 * (0.85 + (i % 5) * 0.08)));
-    const actor = employees[i % employees.length]!.id;
+    const operatorName = operators[i % operators.length]!.name;
     const qtyGood = 5000 + (i % 7) * 400;
     const qtyReject = i % 4 === 0 ? 12 + (i % 20) : 0;
 
@@ -43,16 +43,18 @@ export async function seedLabAlliedShopFloorHistory(
           productionOperationId: op.id,
           eventType: "START",
           recordedAt: start,
-          recordedById: actor,
+          recordedById: recordedById,
           quantity: null,
+          reason: operatorName,
         },
         {
           tenantId,
           productionOperationId: op.id,
           eventType: "STOP",
           recordedAt: end,
-          recordedById: actor,
+          recordedById: recordedById,
           quantity: qtyGood,
+          reason: operatorName,
         },
       ],
     });
@@ -63,7 +65,7 @@ export async function seedLabAlliedShopFloorHistory(
           productionOperationId: op.id,
           eventType: "SCRAP",
           recordedAt: new Date(end.getTime() - 15 * 60_000),
-          recordedById: actor,
+          recordedById: recordedById,
           quantity: qtyReject,
           reason: "In-process check",
         },

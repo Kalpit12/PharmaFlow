@@ -15,7 +15,7 @@ function operationUsesElapsedCalendar(operationCode: string, workstationCode: st
   return ELAPSED_OPERATION_CODES.has(operationCode.trim().toUpperCase());
 }
 
-/** Re-align demo DB planned times to workstation shift calendars (Mon–Sat, no Sunday). */
+/** Re-align demo schedules: finish-to-start within each order and no overlap on the same workstation. */
 export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId: string): Promise<number> {
   const workstations = await prisma.workstation.findMany({
     where: { tenantId, active: true },
@@ -41,18 +41,6 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
     );
   }
 
-  const ops = await prisma.productionOperation.findMany({
-    where: {
-      tenantId,
-      status: { not: "COMPLETED" },
-    },
-    orderBy: [{ productionOrderId: "asc" }, { sequence: "asc" }],
-  });
-
-  let updated = 0;
-  const cursorByOrder = new Map<string, Date>();
-  const now = new Date();
-
   const elapsedCalendar = buildWorkCalendar({
     capacityHoursPerDay: 24,
     shifts: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
@@ -62,58 +50,99 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
     })),
   });
 
-  for (const op of ops) {
-    let workstationId = op.workstationId;
-    const wsCode = workstationId ? wsCodeById.get(workstationId) : null;
-    const useElapsed = operationUsesElapsedCalendar(op.operationCode, wsCode);
+  const orders = await prisma.productionOrder.findMany({
+    where: { tenantId, status: { not: "COMPLETED" }, orderKind: "FIRM" },
+    orderBy: [{ priority: "desc" }, { dueDate: "asc" }, { createdAt: "asc" }],
+    select: { id: true },
+  });
 
-    if (!workstationId && useElapsed) {
-      const fallbackCode =
-        op.operationCode === "QUAR" ? "SFG-QUAR" : op.operationCode === "QC" || op.operationCode === "QC-HOLD" ? "QC-PROC" : null;
-      workstationId = fallbackCode ? (wsIdByCode.get(fallbackCode) ?? null) : null;
-      if (workstationId && workstationId !== op.workstationId) {
+  const now = new Date();
+  const wsCursor = new Map<string, Date>();
+  let updated = 0;
+
+  for (const order of orders) {
+    const ops = await prisma.productionOperation.findMany({
+      where: { tenantId, productionOrderId: order.id, status: { not: "COMPLETED" } },
+      orderBy: { sequence: "asc" },
+    });
+
+    let orderCursor = alignToCalendar(now, elapsedCalendar);
+    let firstStart: Date | null = null;
+    let lastEnd: Date | null = null;
+
+    for (const op of ops) {
+      let workstationId = op.workstationId;
+      const wsCode = workstationId ? wsCodeById.get(workstationId) : null;
+      const useElapsed = operationUsesElapsedCalendar(op.operationCode, wsCode);
+
+      if (!workstationId && useElapsed) {
+        const fallbackCode =
+          op.operationCode === "QUAR" ? "SFG-QUAR" : op.operationCode === "QC" || op.operationCode === "QC-HOLD" ? "QC-PROC" : null;
+        workstationId = fallbackCode ? (wsIdByCode.get(fallbackCode) ?? null) : null;
+      }
+
+      if (!workstationId && !useElapsed) continue;
+
+      const calendar = useElapsed
+        ? elapsedCalendar
+        : workstationId
+          ? calendars.get(workstationId)
+          : undefined;
+      if (!calendar) continue;
+
+      const machineReady = workstationId ? wsCursor.get(workstationId) : null;
+      let candidate = orderCursor;
+      if (machineReady && machineReady.getTime() > candidate.getTime()) {
+        candidate = machineReady;
+      }
+
+      const start = alignToCalendar(candidate, calendar);
+      const runMinutes = op.setupMinutes + op.durationMinutes + op.teardownMinutes;
+      const end = useElapsed
+        ? new Date(start.getTime() + runMinutes * 60_000)
+        : addWorkingMinutesOnCalendar(start, runMinutes, calendar);
+
+      if (!firstStart) firstStart = start;
+      lastEnd = end;
+
+      if (
+        !op.plannedStart ||
+        !op.plannedEnd ||
+        op.plannedStart.getTime() !== start.getTime() ||
+        op.plannedEnd.getTime() !== end.getTime() ||
+        op.workstationId !== workstationId
+      ) {
         await prisma.productionOperation.update({
           where: { id: op.id },
-          data: { workstationId },
+          data: {
+            workstationId: workstationId ?? op.workstationId,
+            plannedStart: start,
+            plannedEnd: end,
+          },
         });
+        updated += 1;
       }
+
+      orderCursor = end;
+      if (workstationId) wsCursor.set(workstationId, end);
     }
 
-    if (!workstationId && !useElapsed) continue;
-
-    const calendar = useElapsed
-      ? elapsedCalendar
-      : workstationId
-        ? calendars.get(workstationId)
-        : undefined;
-    if (!calendar) continue;
-
-    const orderCursor = cursorByOrder.get(op.productionOrderId) ?? alignToCalendar(now, calendar);
-    const start = alignToCalendar(orderCursor, calendar);
-    const runMinutes = op.setupMinutes + op.durationMinutes + op.teardownMinutes;
-    const end = useElapsed
-      ? new Date(start.getTime() + runMinutes * 60_000)
-      : addWorkingMinutesOnCalendar(start, runMinutes, calendar);
-
-    if (
-      !op.plannedStart ||
-      !op.plannedEnd ||
-      op.plannedStart.getTime() !== start.getTime() ||
-      op.plannedEnd.getTime() !== end.getTime() ||
-      op.workstationId !== workstationId
-    ) {
-      await prisma.productionOperation.update({
-        where: { id: op.id },
+    if (firstStart && lastEnd) {
+      await prisma.productionOrder.update({
+        where: { id: order.id },
         data: {
-          workstationId: workstationId ?? op.workstationId,
-          plannedStart: start,
-          plannedEnd: end,
+          plannedStart: firstStart,
+          plannedEnd: lastEnd,
+          status: "SCHEDULED",
         },
       });
-      updated += 1;
     }
-    cursorByOrder.set(op.productionOrderId, end);
   }
+
+  await prisma.productionOrder.updateMany({
+    where: { tenantId, orderKind: "PROSPECT" },
+    data: { plannedStart: null, plannedEnd: null, workstationId: null, status: "UNSCHEDULED" },
+  });
 
   return updated;
 }

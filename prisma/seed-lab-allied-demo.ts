@@ -7,7 +7,6 @@ import {
 } from "../src/lib/demo-tenant";
 import { hashPassword } from "../src/lib/server/password";
 import { buildStandardPlantShiftRows } from "../src/lib/operations/plant-shift-template";
-import { realignDemoScheduleToShifts } from "./realign-demo-schedule-to-shifts";
 
 type GroupDef = { code: string; name: string };
 type MachineDef = {
@@ -182,11 +181,11 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
       validatedBatchSize: 12000,
     },
     {
-      sku: "COUGH-SYR-100",
-      name: "Cough Syrup 100ml",
-      category: "Cough and cold",
-      dosageForm: "Syrup",
-      validatedBatchSize: 2000,
+      sku: "AMOX-DPS-125",
+      name: "Amoxicillin powder for oral suspension 125mg/5ml",
+      category: "Antibiotic",
+      dosageForm: "Dry powder for suspension",
+      validatedBatchSize: 6000,
     },
   ];
   for (const row of products) {
@@ -222,8 +221,14 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     where: { tenantId: tenant.id, productionOrder: { orderKind: "PROSPECT" } },
   });
 
-  const realigned = await realignDemoScheduleToShifts(prisma, tenant.id);
-  console.log(`[lab-allied-demo] Realigned ${realigned} operations to L&A shift calendars.`);
+  await prisma.productionOperation.updateMany({
+    where: { tenantId: tenant.id },
+    data: { plannedStart: null, plannedEnd: null },
+  });
+  await prisma.productionOrder.updateMany({
+    where: { tenantId: tenant.id, orderKind: "FIRM" },
+    data: { plannedStart: null, plannedEnd: null, workstationId: null },
+  });
 }
 
 type RouteStep = {
@@ -280,12 +285,14 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       ],
     },
     {
-      sku: "COUGH-SYR-100",
-      name: "Liquid fill DPS lines",
-      family: "LIQUID",
+      sku: "AMOX-DPS-125",
+      name: "Dry powder blend and DPS line",
+      family: "BETA_LACTAM",
       steps: [
-        { code: "FILL", name: "Liquid filling", runMinutes: 720, setupMinutes: 60, wsCodes: ["DPS-LINE-1", "BPD-096"] },
-        { code: "QC", name: "QC process", runMinutes: 120, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "BLND", name: "Blending", runMinutes: 320, setupMinutes: 45, wsCodes: ["BPD-062", "BPD-061"] },
+        { code: "DPS", name: "DPS line", runMinutes: 900, setupMinutes: 60, wsCodes: ["DPS-LINE-1", "BPD-096"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 180, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Bulk packing", runMinutes: 480, setupMinutes: 30, wsCodes: ["BPD-009"] },
       ],
     },
@@ -360,7 +367,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
 
 async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
   const products = await prisma.product.findMany({
-    where: { tenantId, sku: { in: ["PARA-500-TAB", "AMOX-500-CAP", "COUGH-SYR-100"] } },
+    where: { tenantId, sku: { in: ["PARA-500-TAB", "AMOX-500-CAP", "AMOX-DPS-125"] } },
     select: { id: true },
   });
   for (const product of products) {
@@ -401,22 +408,143 @@ async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: str
   }
 }
 
+type SeedStep = { code: string; ws: string; mins: number; qc?: boolean };
+type SeedOrder = {
+  orderNumber: string;
+  productId: string;
+  batch: string;
+  dueDays: number;
+  priority: "HIGH" | "NORMAL" | "LOW";
+  steps: SeedStep[];
+};
+
+const TABLET_PACK_LINES = ["BPD-090", "BPD-051", "CPD-010"] as const;
+const TABLET_BLEND_LINES = ["BPD-061", "BPD-062"] as const;
+const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
+const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
+const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
+
+function tabletRoute(blendIdx: number, packIdx: number, scale: number): SeedStep[] {
+  return [
+    { code: "BLND", ws: TABLET_BLEND_LINES[blendIdx % TABLET_BLEND_LINES.length]!, mins: Math.round(280 * scale + 80) },
+    { code: "COMP", ws: "BPD-075", mins: Math.round(600 * scale + 120) },
+    { code: "QUAR", ws: "SFG-QUAR", mins: 420, qc: true },
+    { code: "QC", ws: "QC-PROC", mins: 200, qc: true },
+    { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
+  ];
+}
+
+function capsuleRoute(fillIdx: number, packIdx: number, scale: number): SeedStep[] {
+  return [
+    { code: "BLND", ws: "BPD-062", mins: Math.round(260 * scale + 60) },
+    { code: "ENC", ws: CAP_FILL_LINES[fillIdx % CAP_FILL_LINES.length]!, mins: Math.round(720 * scale + 180) },
+    { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
+    { code: "QC", ws: "QC-PROC", mins: 180, qc: true },
+    { code: "PACK", ws: CAP_PACK_LINES[packIdx % CAP_PACK_LINES.length]!, mins: Math.round(480 * scale + 120) },
+  ];
+}
+
+function dpsRoute(lineIdx: number, scale: number): SeedStep[] {
+  return [
+    { code: "BLND", ws: TABLET_BLEND_LINES[lineIdx % 2]!, mins: Math.round(300 * scale + 40) },
+    { code: "DPS", ws: DPS_LINES[lineIdx % DPS_LINES.length]!, mins: Math.round(780 * scale + 200) },
+    { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
+    { code: "QC", ws: "QC-PROC", mins: 180, qc: true },
+    { code: "PACK", ws: "BPD-009", mins: Math.round(400 * scale + 80) },
+  ];
+}
+
+function buildBulkLabAlliedOrders(paraId: string, amoxId: string, dpsId: string): SeedOrder[] {
+  const rows: SeedOrder[] = [];
+  for (let n = 0; n < 32; n += 1) {
+    const item = 13 + n;
+    const orderNumber = `ORD${String(14 + n).padStart(3, "0")}-2026/${item}`;
+    const dueDays = 2 + (n % 21);
+    const scale = 0.85 + (n % 5) * 0.08;
+    const kind = n % 6;
+    let productId = paraId;
+    let steps: SeedStep[];
+    if (kind <= 2) {
+      steps = tabletRoute(n, n + 1, scale);
+    } else if (kind <= 4) {
+      productId = amoxId;
+      steps = capsuleRoute(n, n + 2, scale);
+    } else {
+      productId = dpsId;
+      steps = dpsRoute(n, scale);
+    }
+    rows.push({
+      orderNumber,
+      productId,
+      batch: `B-${String(100 + n).padStart(3, "0")}`,
+      dueDays,
+      priority: n % 9 === 0 ? "HIGH" : n % 7 === 0 ? "LOW" : "NORMAL",
+      steps,
+    });
+  }
+  return rows;
+}
+
+async function createLabAlliedOrder(
+  prisma: PrismaClient,
+  tenantId: string,
+  wsByCode: Map<string, string>,
+  row: SeedOrder,
+  index: number
+) {
+  const order = await prisma.productionOrder.create({
+    data: {
+      tenantId,
+      orderNumber: row.orderNumber,
+      productId: row.productId,
+      quantity: 6000 + (index % 12) * 750,
+      priority: row.priority,
+      status: "SCHEDULED",
+      dueDate: daysFromNow(row.dueDays, 14),
+      durationMinutes: row.steps.reduce((sum, step) => sum + step.mins, 0),
+      isLocked: false,
+    },
+  });
+  await prisma.productionBatch.create({
+    data: { tenantId, productionOrderId: order.id, batchNumber: row.batch, plannedQuantity: order.quantity },
+  });
+  for (let s = 0; s < row.steps.length; s += 1) {
+    const step = row.steps[s]!;
+    const wsId = wsByCode.get(step.ws);
+    if (!wsId) continue;
+    const family =
+      step.qc ? null : step.code === "ENC" || step.code === "DPS" ? "BETA_LACTAM" : "GENERAL_TABLET";
+    await prisma.productionOperation.create({
+      data: {
+        tenantId,
+        productionOrderId: order.id,
+        operationCode: step.code,
+        operationName: step.code,
+        sequence: (s + 1) * 10,
+        workstationId: wsId,
+        durationMinutes: step.mins,
+        setupMinutes: s === 0 ? 45 : 25,
+        changeoverFamily: family,
+        status: "SCHEDULED",
+        isLocked: false,
+      },
+    });
+  }
+}
+
 async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
   const para = await prisma.product.findFirst({ where: { tenantId, sku: "PARA-500-TAB" }, select: { id: true } });
   const amox = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-500-CAP" }, select: { id: true } });
-  const cough = await prisma.product.findFirst({ where: { tenantId, sku: "COUGH-SYR-100" }, select: { id: true } });
-  if (!para || !amox || !cough) return;
+  const dps = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-DPS-125" }, select: { id: true } });
+  if (!para || !amox || !dps) return;
 
-  const orders: Array<{
-    orderNumber: string;
-    productId: string;
-    batch: string;
-    steps: Array<{ code: string; ws: string; mins: number; qc?: boolean }>;
-  }> = [
+  const orders: SeedOrder[] = [
     {
       orderNumber: "ORD010-2026/9",
       productId: para.id,
       batch: "B-024",
+      dueDays: 14,
+      priority: "HIGH",
       steps: [
         { code: "BLND", ws: "BPD-061", mins: 360 },
         { code: "COMP", ws: "BPD-075", mins: 720 },
@@ -429,6 +557,8 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       orderNumber: "ORD011-2026/10",
       productId: para.id,
       batch: "B-025",
+      dueDays: 18,
+      priority: "NORMAL",
       steps: [
         { code: "BLND", ws: "BPD-062", mins: 300 },
         { code: "COMP", ws: "BPD-075", mins: 660 },
@@ -441,6 +571,8 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       orderNumber: "ORD012-2026/11",
       productId: amox.id,
       batch: "B-026",
+      dueDays: 22,
+      priority: "NORMAL",
       steps: [
         { code: "BLND", ws: "BPD-062", mins: 280 },
         { code: "ENC", ws: "BPD-092", mins: 900 },
@@ -451,54 +583,17 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
     },
     {
       orderNumber: "ORD013-2026/12",
-      productId: cough.id,
+      productId: dps.id,
       batch: "B-027",
-      steps: [
-        { code: "FILL", ws: "DPS-LINE-1", mins: 1350 },
-        { code: "QC", ws: "QC-PROC", mins: 120, qc: true },
-        { code: "PACK", ws: "BPD-009", mins: 420 },
-      ],
+      dueDays: 26,
+      priority: "NORMAL",
+      steps: dpsRoute(0, 1),
     },
+    ...buildBulkLabAlliedOrders(para.id, amox.id, dps.id),
   ];
 
   for (let i = 0; i < orders.length; i += 1) {
-    const row = orders[i]!;
-    const order = await prisma.productionOrder.create({
-      data: {
-        tenantId,
-        orderNumber: row.orderNumber,
-        productId: row.productId,
-        quantity: 8000 + i * 500,
-        priority: i === 0 ? "HIGH" : "NORMAL",
-        status: "SCHEDULED",
-        dueDate: daysFromNow(14 + i * 4, 14),
-        durationMinutes: row.steps.reduce((sum, step) => sum + step.mins, 0),
-        isLocked: false,
-      },
-    });
-    await prisma.productionBatch.create({
-      data: { tenantId, productionOrderId: order.id, batchNumber: row.batch, plannedQuantity: 8000 },
-    });
-    for (let s = 0; s < row.steps.length; s += 1) {
-      const step = row.steps[s]!;
-      const wsId = wsByCode.get(step.ws);
-      if (!wsId) continue;
-      await prisma.productionOperation.create({
-        data: {
-          tenantId,
-          productionOrderId: order.id,
-          operationCode: step.code,
-          operationName: step.code,
-          sequence: (s + 1) * 10,
-          workstationId: wsId,
-          durationMinutes: step.mins,
-          setupMinutes: s === 0 ? 45 : 25,
-          changeoverFamily: step.qc ? null : "GENERAL_TABLET",
-          status: "SCHEDULED",
-          isLocked: false,
-        },
-      });
-    }
+    await createLabAlliedOrder(prisma, tenantId, wsByCode, orders[i]!, i);
   }
 
   await prisma.productionOrder.create({

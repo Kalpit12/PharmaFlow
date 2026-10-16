@@ -12,24 +12,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PlannerWidgetType } from "@prisma/client";
 
-type ReportFocus = "all" | "timelogs" | "job" | "order-items";
+import {
+  downloadPlannerDashboardCsv,
+  openPlannerDashboardPdfPrint,
+} from "@/lib/operations/planner-dashboard-export";
+import { PLANNER_WIDGET_CATALOG, widgetLabel } from "@/lib/operations/planner-widgets";
+import { cn } from "@/lib/utils";
+import type { PlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 
-const REPORT_FOCUS_WIDGETS: Record<Exclude<ReportFocus, "all">, PlannerWidgetType[]> = {
+type ReportFocus = "all" | "timelogs" | "job" | "order-items" | "predicted";
+
+const REPORT_FOCUS_WIDGETS: Record<Exclude<ReportFocus, "all" | "predicted">, PlannerWidgetType[]> = {
   timelogs: ["TIMELOG_REPORT"],
   job: ["JOB_REPORT"],
   "order-items": ["ORDER_ITEM_REPORT"],
 };
 
 function parseReportFocus(value: string | null): ReportFocus {
-  if (value === "timelogs" || value === "job" || value === "order-items") return value;
+  if (value === "timelogs" || value === "job" || value === "order-items" || value === "predicted") return value;
   return "all";
 }
-import {
-  downloadPlannerDashboardCsv,
-  openPlannerDashboardPdfPrint,
-} from "@/lib/operations/planner-dashboard-export";
-import { PLANNER_WIDGET_CATALOG, widgetLabel } from "@/lib/operations/planner-widgets";
-import type { PlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 
 function formatStamp(iso: string | null): string {
   if (!iso) return "—";
@@ -38,8 +40,22 @@ function formatStamp(iso: string | null): string {
     month: "short",
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: "Africa/Nairobi",
   });
+}
+
+function formatMinutes(mins: number): string {
+  if (mins < 60) return `${mins}m`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+function ratioClass(ratio: number | null): string {
+  if (ratio == null) return "text-muted-foreground";
+  if (ratio <= 1) return "text-emerald-600 dark:text-emerald-400";
+  if (ratio <= 1.2) return "text-amber-600 dark:text-amber-400";
+  return "text-red-600 dark:text-red-400";
 }
 
 export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboardPageData }) {
@@ -49,14 +65,19 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
   const [page, setPage] = useState(initial);
   const [editMode, setEditMode] = useState(false);
   const [dragType, setDragType] = useState<PlannerWidgetType | null>(null);
-  const [dateFrom, setDateFrom] = useState(initial.active.dateFrom?.slice(0, 10) ?? "");
-  const [dateTo, setDateTo] = useState(initial.active.dateTo?.slice(0, 10) ?? "");
+  const [dateFrom, setDateFrom] = useState(
+    initial.active.dateFrom?.slice(0, 10) ?? initial.snapshot.window.start.slice(0, 10)
+  );
+  const [dateTo, setDateTo] = useState(
+    initial.active.dateTo?.slice(0, 10) ?? initial.snapshot.window.end.slice(0, 10)
+  );
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
 
   const data = page.snapshot;
   const widgets = useMemo(() => {
     const base = page.active.widgets;
+    if (reportFocus === "predicted") return [];
     if (reportFocus === "all") return base;
     const focusSet = new Set(REPORT_FOCUS_WIDGETS[reportFocus]);
     const focused = base.filter((type) => focusSet.has(type));
@@ -198,25 +219,31 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
       ),
       JOB_REPORT: (
         <section className="work-surface overflow-x-auto p-4">
-          <p className="text-sm font-medium">Job report</p>
-          <table className="mt-3 w-full min-w-[720px] text-left text-sm">
+          <p className="text-sm font-medium">Job report (by step)</p>
+          <table className="mt-3 w-full min-w-[880px] text-left text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
                 <th className="pb-2 pr-3">Order</th>
-                <th className="pb-2 pr-3">Product</th>
-                <th className="pb-2 pr-3">Status</th>
-                <th className="pb-2 pr-3">Start</th>
-                <th className="pb-2">Due</th>
+                <th className="pb-2 pr-3">Step</th>
+                <th className="pb-2 pr-3">Workstation</th>
+                <th className="pb-2 pr-3">Planned</th>
+                <th className="pb-2 pr-3">Logged</th>
+                <th className="pb-2">Difference</th>
               </tr>
             </thead>
             <tbody>
-              {data.jobReport.map((row) => (
+              {data.jobReportSteps.map((row) => (
                 <tr key={row.id} className="border-t border-border/60">
                   <td className="py-2 pr-3 font-medium">{row.orderNumber}</td>
-                  <td className="py-2 pr-3">{row.productName}</td>
-                  <td className="py-2 pr-3">{row.status}</td>
-                  <td className="py-2 pr-3">{formatStamp(row.plannedStart)}</td>
-                  <td className="py-2">{formatStamp(row.dueDate)}</td>
+                  <td className="py-2 pr-3">
+                    {row.stepCode} · {row.stepName}
+                  </td>
+                  <td className="py-2 pr-3">{row.workstationName ?? "—"}</td>
+                  <td className="py-2 pr-3">{formatMinutes(row.plannedMinutes)}</td>
+                  <td className="py-2 pr-3">{row.loggedMinutes > 0 ? formatMinutes(row.loggedMinutes) : "—"}</td>
+                  <td className={cn("py-2 font-medium tabular-nums", ratioClass(row.ratio))}>
+                    {row.ratio == null ? "—" : row.ratio.toFixed(2)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -337,6 +364,7 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
             ["timelogs", "All timelogs"],
             ["job", "Job report"],
             ["order-items", "Order item report"],
+            ["predicted", "Predicted vs realized"],
           ] as const
         ).map(([id, label]) => (
           <Button
@@ -426,13 +454,59 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
         {message ? <span className="text-xs text-muted-foreground">{message}</span> : null}
       </section>
 
-      <section className="work-surface p-4 text-sm text-muted-foreground">
-        Per-user dashboards with drag-and-drop widgets.{" "}
-        <Link href="/execution/production/board" className="text-primary underline-offset-2 hover:underline">
-          TV board
-        </Link>
-        . Export CSV downloads immediately; PDF opens print dialog (Save as PDF).
-      </section>
+      {reportFocus === "predicted" ? (
+        <section className="work-surface overflow-x-auto p-4">
+          <p className="text-sm font-medium">Predicted vs realized</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Compare planned step durations with shop-floor logged time. When enough timelogs exist, head planners can
+            apply rolling averages as new routing defaults (audited).
+          </p>
+          <table className="mt-3 w-full min-w-[720px] text-left text-sm">
+            <thead className="text-xs text-muted-foreground">
+              <tr>
+                <th className="pb-2 pr-3">Step</th>
+                <th className="pb-2 pr-3">Workstation</th>
+                <th className="pb-2 pr-3">Predicted avg</th>
+                <th className="pb-2 pr-3">Realized avg</th>
+                <th className="pb-2">Ratio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {Array.from(
+                data.jobReportSteps.reduce((map, row) => {
+                  const key = `${row.stepCode}|${row.workstationName ?? ""}`;
+                  const entry = map.get(key) ?? { stepCode: row.stepCode, stepName: row.stepName, ws: row.workstationName, planned: 0, logged: 0, count: 0, loggedCount: 0 };
+                  entry.planned += row.plannedMinutes;
+                  entry.count += 1;
+                  if (row.loggedMinutes > 0) {
+                    entry.logged += row.loggedMinutes;
+                    entry.loggedCount += 1;
+                  }
+                  map.set(key, entry);
+                  return map;
+                }, new Map<string, { stepCode: string; stepName: string; ws: string | null; planned: number; logged: number; count: number; loggedCount: number }>())
+              ).map(([key, row]) => {
+                const predicted = row.count > 0 ? Math.round(row.planned / row.count) : 0;
+                const realized = row.loggedCount > 0 ? Math.round(row.logged / row.loggedCount) : null;
+                const ratio = realized != null && predicted > 0 ? realized / predicted : null;
+                return (
+                  <tr key={key} className="border-t border-border/60">
+                    <td className="py-2 pr-3">
+                      {row.stepCode} · {row.stepName}
+                    </td>
+                    <td className="py-2 pr-3">{row.ws ?? "—"}</td>
+                    <td className="py-2 pr-3">{formatMinutes(predicted)}</td>
+                    <td className="py-2 pr-3">{realized != null ? formatMinutes(realized) : "—"}</td>
+                    <td className={cn("py-2 font-medium tabular-nums", ratioClass(ratio))}>
+                      {ratio == null ? "—" : ratio.toFixed(2)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+      ) : null}
 
       {editMode && page.canEdit ? (
         <section className="work-surface p-4">

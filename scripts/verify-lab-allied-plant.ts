@@ -2,31 +2,6 @@ import { PrismaClient } from "@prisma/client";
 
 import { LAB_ALLIED_DEMO_SLUG } from "../src/lib/demo-tenant";
 import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
-import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
-
-async function assertOrderPrecedence(prisma: PrismaClient, tenantId: string, orderNumber: string) {
-  const order = await prisma.productionOrder.findFirst({
-    where: { tenantId, orderNumber },
-    select: { id: true },
-  });
-  if (!order) return;
-  const steps = await prisma.productionOperation.findMany({
-    where: { tenantId, productionOrderId: order.id },
-    orderBy: { sequence: "asc" },
-    select: { operationCode: true, plannedStart: true, plannedEnd: true },
-  });
-  for (let i = 1; i < steps.length; i += 1) {
-    const prev = steps[i - 1]!;
-    const cur = steps[i]!;
-    if (prev.plannedEnd && cur.plannedStart) {
-      if (cur.plannedStart.getTime() < prev.plannedEnd.getTime()) {
-        throw new Error(
-          `Precedence violation: ${cur.operationCode} starts before ${prev.operationCode} ends on ${orderNumber}`
-        );
-      }
-    }
-  }
-}
 
 async function main() {
   const prisma = new PrismaClient();
@@ -36,10 +11,12 @@ async function main() {
     const tenant = await prisma.tenant.findUnique({ where: { slug: LAB_ALLIED_DEMO_SLUG } });
     if (!tenant) throw new Error(`Tenant ${LAB_ALLIED_DEMO_SLUG} missing after seed.`);
 
-    await realignDemoScheduleToShifts(prisma, tenant.id);
-
-    await assertOrderPrecedence(prisma, tenant.id, "ORD010-2026/9");
-    await assertOrderPrecedence(prisma, tenant.id, "ORD011-2026/10");
+    const firmOrders = await prisma.productionOrder.count({
+      where: { tenantId: tenant.id, orderKind: "FIRM" },
+    });
+    const prospects = await prisma.productionOrder.count({
+      where: { tenantId: tenant.id, orderKind: "PROSPECT" },
+    });
 
     const workstations = await prisma.workstation.findMany({
       where: { tenantId: tenant.id, active: true },
@@ -52,23 +29,16 @@ async function main() {
       ? await prisma.workstation.count({ where: { tenantId: medicrest.id, active: true } })
       : 0;
 
-    const lateOps = await prisma.productionOperation.count({
-      where: {
-        tenantId: tenant.id,
-        plannedStart: { lt: new Date() },
-        status: { not: "COMPLETED" },
-        productionOrder: { orderKind: "FIRM" },
-      },
-    });
-
     console.log(
       JSON.stringify(
         {
           tenant: LAB_ALLIED_DEMO_SLUG,
           tenantId: tenant.id,
+          firmOrders,
+          prospects,
           activeWorkstations: workstations.length,
           medicrestActiveWorkstationsUnchanged: medicrestCount,
-          firmOpsWithPastPlannedStart: lateOps,
+          note: "Run db:seed:lab-allied:replan for APS schedule and precedence checks.",
           workstations: workstations.map((row) => ({
             code: row.code,
             name: row.name,

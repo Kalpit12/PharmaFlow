@@ -10,8 +10,10 @@ import type { ChartBarRow } from "@/lib/charts/types";
 import { requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
+import { addPlantDays, startOfPlantDay } from "@/lib/operations/plant-time";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
 import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
+import type { OperationsOrder } from "@/lib/server/operations";
 
 export type PlannerJobReportRow = {
   id: string;
@@ -24,6 +26,17 @@ export type PlannerJobReportRow = {
   status: string;
   quantity: number;
   producedQuantity: number | null;
+};
+
+export type PlannerJobStepReportRow = {
+  id: string;
+  orderNumber: string;
+  stepCode: string;
+  stepName: string;
+  workstationName: string | null;
+  plannedMinutes: number;
+  loggedMinutes: number;
+  ratio: number | null;
 };
 
 export type PlannerOrderItemRow = {
@@ -57,6 +70,7 @@ export type OperationsDashboardSnapshot = {
   workstationLoad: ChartBarRow[];
   bottleneck: { code: string; name: string; utilization: number } | null;
   jobReport: PlannerJobReportRow[];
+  jobReportSteps: PlannerJobStepReportRow[];
   timelogs: PlannerTimelogRow[];
   orderItems: PlannerOrderItemRow[];
   oeeByWorkstation: Array<{
@@ -77,8 +91,21 @@ function resolveDashboardWindow(options?: { from?: Date | null; to?: Date | null
   if (options?.from && options?.to && !Number.isNaN(options.from.getTime()) && !Number.isNaN(options.to.getTime())) {
     return { start: options.from, end: options.to };
   }
-  const window = resolvePlanningWindow({ weeks: "2" });
-  return { start: window.start, end: window.end };
+  const start = startOfPlantDay(new Date());
+  const end = addPlantDays(start, 7);
+  return { start, end };
+}
+
+function firstOperationPlannedStart(order: OperationsOrder): string | null {
+  const ops = order.routing.operations
+    .filter((row) => row.plannedStart)
+    .sort((a, b) => a.sequence - b.sequence);
+  return ops[0]?.plannedStart ?? null;
+}
+
+function reportStatusLabel(order: OperationsOrder): string {
+  if (order.orderKind === "PROSPECT") return "Prospect";
+  return order.displayStatus;
 }
 
 function inScope(workstationId: string | null, scopedWorkstationIds: string[] | null | undefined): boolean {
@@ -221,19 +248,6 @@ export async function getOperationsDashboardSnapshot(
     },
   ];
 
-  const jobReport: PlannerJobReportRow[] = scopedOrders.slice(0, 40).map((order) => ({
-    id: order.id,
-    orderNumber: order.orderNumber,
-    productName: order.productName,
-    workstationName: order.workstationName,
-    plannedStart: order.plannedStart,
-    plannedEnd: order.plannedEnd,
-    dueDate: order.dueDate,
-    status: order.displayStatus,
-    quantity: order.quantity,
-    producedQuantity: order.producedQuantity,
-  }));
-
   const timelogSince = new Date(now.getTime() - TIMELOG_HORIZON_DAYS * 86_400_000);
   const events = await prisma.productionOperationEvent.findMany({
     where: { tenantId: ctx.tenantId, recordedAt: { gte: timelogSince } },
@@ -252,6 +266,59 @@ export async function getOperationsDashboardSnapshot(
     take: 80,
   });
 
+  const jobReport: PlannerJobReportRow[] = scopedOrders.slice(0, 60).map((order) => ({
+    id: order.id,
+    orderNumber: order.orderNumber,
+    productName: order.productName,
+    workstationName: order.workstationName,
+    plannedStart: order.orderKind === "PROSPECT" ? null : firstOperationPlannedStart(order) ?? order.plannedStart,
+    plannedEnd: order.orderKind === "PROSPECT" ? null : order.plannedEnd,
+    dueDate: order.dueDate,
+    status: reportStatusLabel(order),
+    quantity: order.quantity,
+    producedQuantity: order.producedQuantity,
+  }));
+
+  const loggedMinutesByOp = new Map<string, number>();
+  const startAtByOp = new Map<string, number>();
+  for (const event of events) {
+    const opId = event.productionOperationId;
+    if (event.eventType === "START") {
+      startAtByOp.set(opId, event.recordedAt.getTime());
+    } else if (event.eventType === "STOP") {
+      const startMs = startAtByOp.get(opId);
+      if (startMs) {
+        const mins = Math.max(0, Math.round((event.recordedAt.getTime() - startMs) / 60_000));
+        loggedMinutesByOp.set(opId, (loggedMinutesByOp.get(opId) ?? 0) + mins);
+        startAtByOp.delete(opId);
+      }
+    }
+  }
+
+  const jobReportSteps: PlannerJobStepReportRow[] = scopedOrders
+    .flatMap((order) =>
+      order.routing.operations.map((operation) => {
+        const plannedMinutes = Math.max(
+          0,
+          operation.durationMinutes + operation.setupMinutes + operation.teardownMinutes
+        );
+        const loggedMinutes = loggedMinutesByOp.get(operation.id) ?? 0;
+        const ratio = plannedMinutes > 0 && loggedMinutes > 0 ? loggedMinutes / plannedMinutes : null;
+        return {
+          id: operation.id,
+          orderNumber: order.orderNumber,
+          stepCode: operation.code,
+          stepName: operation.name,
+          workstationName: operation.workstationName,
+          plannedMinutes,
+          loggedMinutes,
+          ratio,
+        };
+      })
+    )
+    .filter((row) => row.plannedMinutes > 0)
+    .slice(0, 120);
+
   const orderItems: PlannerOrderItemRow[] = scopedOrders.slice(0, 60).map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
@@ -259,7 +326,7 @@ export async function getOperationsDashboardSnapshot(
     productName: order.productName,
     quantity: order.quantity,
     dueDate: order.dueDate,
-    status: order.displayStatus,
+    status: reportStatusLabel(order),
     workstationName: order.workstationName,
   }));
 
@@ -354,6 +421,7 @@ export async function getOperationsDashboardSnapshot(
       ? { code: bottleneck.code, name: bottleneck.name, utilization: bottleneck.utilization }
       : null,
     jobReport,
+    jobReportSteps,
     timelogs,
     orderItems,
     oeeByWorkstation: oeeByWorkstation.sort((a, b) => b.oeePercent - a.oeePercent),

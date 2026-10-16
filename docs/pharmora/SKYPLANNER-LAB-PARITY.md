@@ -10,18 +10,17 @@ Layout and behaviour reference from a live SkyPlanner install. **Do not copy** c
 
 ## Live check (2026-10-16)
 
-**Improved:** Nairobi time in planner, whole-hour ticks, ~36h default window, bar labels like `B-024 (1.5h) Paracetamol 500mg`, warning badges, changeover blocks, OEE hidden until timer data exists.
+**Improved:** EAT planner clock, Gantt rows A–Z, full workstation names, L&A bar labels `ORD011-2026/10 (14.0h) Product`, continuation `… cont.` uses order number, step precedence after `db:seed:lab-allied:replan`, prospects excluded from Reschedule all (no PRP double-book), Reporting sub-nav (All timelogs / Job report / Order item report) on Operations → Reporting.
 
 **Still open:**
 
 | Area | Notes |
 | --- | --- |
-| §1–§2, §3, §5, §6 | Default shifts, roster, timelogs, job report screens not built. |
-| Past-due pile | ~68 late jobs / red bars left of now — run **Reschedule all** + accept; seed may need longer step times. |
-| Step durations | Routing/seed minutes too short vs real line times. |
-| Batch / bar codes | Mixed `B-024`, `G-01`, `G-2026` (year leak from `PRP-GANTT-2026`) — target §4 `{orderNo}/{item} ({hours}h)`. |
-| Shell | Top bar was UTC while planner EAT; two sidebars on Gantt — **fix in progress** (plant routes → EAT; hide app nav on Gantt). |
-| Orders / plant | Timestamp order codes, duplicates, phase copy, empty site/dept/tool counts — seed + §4 list UX. |
+| §1–§2, §3 | Default shifts UI + roster week grid not built (shifts seeded via `plant-shift-template.ts`). |
+| §5–§6 depth | Timelog accept/faulty pcs, job report planned vs logged ratios — widgets exist; full SkyPlanner tables TBD. |
+| Step durations | Routing minutes vs real line times (tuning). |
+| MediCrest Gantt | Generic machine names; run `db:seed:medicrest:replan` after deploy for slate bars / late KPI. |
+| Orders / plant | PRO-YYYY-NNNN, dedupe, §4 column chooser — follow-up. |
 
 ### Workstation names (Lab reference photos, 17/~19)
 
@@ -58,6 +57,7 @@ Import path: Operations → Data import → workstations CSV (see `PlannerDataIm
 | `npm run db:seed:lab-allied` | `lab-allied-demo` only | `prisma/seed-lab-allied-demo.ts` |
 | `npm run db:seed:lab-allied:verify` | seed + realign + precedence checks + workstation list | `scripts/verify-lab-allied-plant.ts` |
 | `npm run db:seed:lab-allied:replan` | seed + **Reschedule all** + accept + realign + ORD011/12 timelines | `scripts/reseed-lab-allied-plan.ts` |
+| `npm run db:seed:medicrest:replan` | shifts + Reschedule all + accept + realign (no full gantt re-seed) | `scripts/reseed-medicrest-plan.ts` |
 
 Requires `DATABASE_URL` + `AUTH_DEV_PASSWORD` in `.env`. Point `DATABASE_URL` at production, run locally once after deploy. MediCrest seed (`prisma/seed-gantt-demo.ts` via `db:seed`) is separate and still creates Dispensing/Granulation rows on `medicrest`.
 

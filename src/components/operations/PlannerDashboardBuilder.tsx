@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useMemo, useState, useTransition, type ReactNode } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { ColumnChart } from "@/components/charts/ColumnChart";
 import { HorizontalBarChart } from "@/components/charts/HorizontalBarChart";
@@ -11,6 +11,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { PlannerWidgetType } from "@prisma/client";
+
+type ReportFocus = "all" | "timelogs" | "job" | "order-items";
+
+const REPORT_FOCUS_WIDGETS: Record<Exclude<ReportFocus, "all">, PlannerWidgetType[]> = {
+  timelogs: ["TIMELOG_REPORT"],
+  job: ["JOB_REPORT"],
+  "order-items": ["ORDER_ITEM_REPORT"],
+};
+
+function parseReportFocus(value: string | null): ReportFocus {
+  if (value === "timelogs" || value === "job" || value === "order-items") return value;
+  return "all";
+}
 import {
   downloadPlannerDashboardCsv,
   openPlannerDashboardPdfPrint,
@@ -31,6 +44,8 @@ function formatStamp(iso: string | null): string {
 
 export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboardPageData }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const reportFocus = parseReportFocus(searchParams.get("report"));
   const [page, setPage] = useState(initial);
   const [editMode, setEditMode] = useState(false);
   const [dragType, setDragType] = useState<PlannerWidgetType | null>(null);
@@ -40,7 +55,23 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
   const [message, setMessage] = useState<string | null>(null);
 
   const data = page.snapshot;
-  const widgets = page.active.widgets;
+  const widgets = useMemo(() => {
+    const base = page.active.widgets;
+    if (reportFocus === "all") return base;
+    const focusSet = new Set(REPORT_FOCUS_WIDGETS[reportFocus]);
+    const focused = base.filter((type) => focusSet.has(type));
+    return focused.length > 0 ? focused : REPORT_FOCUS_WIDGETS[reportFocus];
+  }, [page.active.widgets, reportFocus]);
+
+  const reportHref = (focus: ReportFocus) => {
+    const next = new URLSearchParams(searchParams.toString());
+    next.set("view", "dashboard");
+    if (focus === "all") next.delete("report");
+    else next.set("report", focus);
+    const dashboard = searchParams.get("dashboard");
+    if (dashboard) next.set("dashboard", dashboard);
+    return `/operations?${next.toString()}`;
+  };
 
   const saveDashboard = useCallback(
     (patch: { widgets?: PlannerWidgetType[]; dateFrom?: string | null; dateTo?: string | null; name?: string }) => {
@@ -296,6 +327,28 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
+      <nav
+        className="flex flex-wrap gap-2 px-1"
+        aria-label="Planner reports"
+      >
+        {(
+          [
+            ["all", "Overview"],
+            ["timelogs", "All timelogs"],
+            ["job", "Job report"],
+            ["order-items", "Order item report"],
+          ] as const
+        ).map(([id, label]) => (
+          <Button
+            key={id}
+            asChild
+            size="sm"
+            variant={reportFocus === id ? "secondary" : "outline"}
+          >
+            <Link href={reportHref(id)}>{label}</Link>
+          </Button>
+        ))}
+      </nav>
       <section className="work-surface flex flex-wrap items-end gap-3 p-4">
         <div className="min-w-[160px] flex-1">
           <Label htmlFor="dashboard-select">Dashboard</Label>

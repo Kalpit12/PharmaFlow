@@ -121,12 +121,10 @@ export async function applyLabAlliedSteadyStateWip(
     const active = ops[activeIdx]!;
     const wsCode = active.workstationId ? wsCodeById.get(active.workstationId) : null;
     const useElapsed = operationUsesElapsedCalendar(active.operationCode, wsCode);
-    const calendar =
+    const calendar: WorkCalendar =
       useElapsed && active.workstationId
         ? elapsedCalendar
-        : active.workstationId
-          ? calendars.get(active.workstationId)
-          : elapsedCalendar;
+        : (active.workstationId ? calendars.get(active.workstationId) : undefined) ?? elapsedCalendar;
 
     const activeRun = runMinutes(active);
     const activeStart = alignToCalendar(new Date(now.getTime() - 2.5 * 3_600_000), calendar);

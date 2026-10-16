@@ -1,18 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
 
 import { computeDueDateFromPlannedEnd } from "../src/lib/operations/sync-order-due-dates";
-import type { TenantContext } from "../src/lib/server/tenant-context";
-import { getOperationsPlanner } from "../src/lib/server/operations";
+import type { TenantContext } from "../src/lib/server/errors";
+import { getOperationsPlanner, type OperationsWindow } from "../src/lib/server/operations";
 
 /** Bump stored due dates when the live planner schedule extends past current due dates. */
 export async function reconcileLabAlliedDueDatesWithPlanner(
   prisma: PrismaClient,
   ctx: TenantContext
 ): Promise<number> {
-  const window = {
+  const window: OperationsWindow = {
     start: new Date(),
-    end: new Date(Date.now() + 120 * 86_400_000),
-    weeks: 8 as const,
+    end: new Date(Date.now() + 28 * 86_400_000),
+    weeks: 4,
   };
   const planner = await getOperationsPlanner(ctx, window, null);
   let updated = 0;

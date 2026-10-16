@@ -8,6 +8,13 @@ import {
 } from "../src/lib/operations/calendar";
 import { isElapsedOnlyWorkstation } from "../src/lib/operations/elapsed-workstation";
 
+const ELAPSED_OPERATION_CODES = new Set(["QUAR", "QC", "QC-HOLD"]);
+
+function operationUsesElapsedCalendar(operationCode: string, workstationCode: string | null | undefined): boolean {
+  if (isElapsedOnlyWorkstation(workstationCode ?? undefined)) return true;
+  return ELAPSED_OPERATION_CODES.has(operationCode.trim().toUpperCase());
+}
+
 /** Re-align demo DB planned times to workstation shift calendars (Mon–Sat, no Sunday). */
 export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId: string): Promise<number> {
   const workstations = await prisma.workstation.findMany({
@@ -16,6 +23,7 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   });
   const shifts = await prisma.workstationShift.findMany({ where: { tenantId } });
   const wsCodeById = new Map(workstations.map((row) => [row.id, row.code]));
+  const wsIdByCode = new Map(workstations.map((row) => [row.code, row.id]));
   const calendars = new Map<string, WorkCalendar>();
   for (const ws of workstations) {
     calendars.set(
@@ -36,14 +44,13 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   const ops = await prisma.productionOperation.findMany({
     where: {
       tenantId,
-      workstationId: { not: null },
       status: { not: "COMPLETED" },
     },
     orderBy: [{ productionOrderId: "asc" }, { sequence: "asc" }],
   });
 
   let updated = 0;
-  let cursorByOrder = new Map<string, Date>();
+  const cursorByOrder = new Map<string, Date>();
   const now = new Date();
 
   const elapsedCalendar = buildWorkCalendar({
@@ -56,17 +63,35 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   });
 
   for (const op of ops) {
-    if (!op.workstationId) continue;
-    const wsCode = wsCodeById.get(op.workstationId);
-    const calendar = isElapsedOnlyWorkstation(wsCode)
+    let workstationId = op.workstationId;
+    const wsCode = workstationId ? wsCodeById.get(workstationId) : null;
+    const useElapsed = operationUsesElapsedCalendar(op.operationCode, wsCode);
+
+    if (!workstationId && useElapsed) {
+      const fallbackCode =
+        op.operationCode === "QUAR" ? "SFG-QUAR" : op.operationCode === "QC" || op.operationCode === "QC-HOLD" ? "QC-PROC" : null;
+      workstationId = fallbackCode ? (wsIdByCode.get(fallbackCode) ?? null) : null;
+      if (workstationId && workstationId !== op.workstationId) {
+        await prisma.productionOperation.update({
+          where: { id: op.id },
+          data: { workstationId },
+        });
+      }
+    }
+
+    if (!workstationId && !useElapsed) continue;
+
+    const calendar = useElapsed
       ? elapsedCalendar
-      : calendars.get(op.workstationId);
+      : workstationId
+        ? calendars.get(workstationId)
+        : undefined;
     if (!calendar) continue;
 
     const orderCursor = cursorByOrder.get(op.productionOrderId) ?? alignToCalendar(now, calendar);
     const start = alignToCalendar(orderCursor, calendar);
     const runMinutes = op.setupMinutes + op.durationMinutes + op.teardownMinutes;
-    const end = isElapsedOnlyWorkstation(wsCode)
+    const end = useElapsed
       ? new Date(start.getTime() + runMinutes * 60_000)
       : addWorkingMinutesOnCalendar(start, runMinutes, calendar);
 
@@ -74,11 +99,16 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
       !op.plannedStart ||
       !op.plannedEnd ||
       op.plannedStart.getTime() !== start.getTime() ||
-      op.plannedEnd.getTime() !== end.getTime()
+      op.plannedEnd.getTime() !== end.getTime() ||
+      op.workstationId !== workstationId
     ) {
       await prisma.productionOperation.update({
         where: { id: op.id },
-        data: { plannedStart: start, plannedEnd: end },
+        data: {
+          workstationId: workstationId ?? op.workstationId,
+          plannedStart: start,
+          plannedEnd: end,
+        },
       });
       updated += 1;
     }

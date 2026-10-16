@@ -4,6 +4,30 @@ import { LAB_ALLIED_DEMO_SLUG } from "../src/lib/demo-tenant";
 import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
 import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
 
+async function assertOrderPrecedence(prisma: PrismaClient, tenantId: string, orderNumber: string) {
+  const order = await prisma.productionOrder.findFirst({
+    where: { tenantId, orderNumber },
+    select: { id: true },
+  });
+  if (!order) return;
+  const steps = await prisma.productionOperation.findMany({
+    where: { tenantId, productionOrderId: order.id },
+    orderBy: { sequence: "asc" },
+    select: { operationCode: true, plannedStart: true, plannedEnd: true },
+  });
+  for (let i = 1; i < steps.length; i += 1) {
+    const prev = steps[i - 1]!;
+    const cur = steps[i]!;
+    if (prev.plannedEnd && cur.plannedStart) {
+      if (cur.plannedStart.getTime() < prev.plannedEnd.getTime()) {
+        throw new Error(
+          `Precedence violation: ${cur.operationCode} starts before ${prev.operationCode} ends on ${orderNumber}`
+        );
+      }
+    }
+  }
+}
+
 async function main() {
   const prisma = new PrismaClient();
   try {
@@ -13,6 +37,9 @@ async function main() {
     if (!tenant) throw new Error(`Tenant ${LAB_ALLIED_DEMO_SLUG} missing after seed.`);
 
     await realignDemoScheduleToShifts(prisma, tenant.id);
+
+    await assertOrderPrecedence(prisma, tenant.id, "ORD010-2026/9");
+    await assertOrderPrecedence(prisma, tenant.id, "ORD011-2026/10");
 
     const workstations = await prisma.workstation.findMany({
       where: { tenantId: tenant.id, active: true },
@@ -28,33 +55,11 @@ async function main() {
     const lateOps = await prisma.productionOperation.count({
       where: {
         tenantId: tenant.id,
-        plannedEnd: { lt: new Date() },
+        plannedStart: { lt: new Date() },
         status: { not: "COMPLETED" },
+        productionOrder: { orderKind: "FIRM" },
       },
     });
-
-    const ord010 = await prisma.productionOrder.findFirst({
-      where: { tenantId: tenant.id, orderNumber: "ORD010-2026/F" },
-      select: { id: true },
-    });
-    if (ord010) {
-      const steps = await prisma.productionOperation.findMany({
-        where: { tenantId: tenant.id, productionOrderId: ord010.id },
-        orderBy: { sequence: "asc" },
-        select: { operationCode: true, plannedStart: true, plannedEnd: true },
-      });
-      for (let i = 1; i < steps.length; i += 1) {
-        const prev = steps[i - 1]!;
-        const cur = steps[i]!;
-        if (prev.plannedEnd && cur.plannedStart) {
-          if (cur.plannedStart.getTime() < prev.plannedEnd.getTime()) {
-            throw new Error(
-              `Precedence violation: ${cur.operationCode} starts before ${prev.operationCode} ends on ORD010-2026/F`
-            );
-          }
-        }
-      }
-    }
 
     console.log(
       JSON.stringify(
@@ -63,7 +68,7 @@ async function main() {
           tenantId: tenant.id,
           activeWorkstations: workstations.length,
           medicrestActiveWorkstationsUnchanged: medicrestCount,
-          operationsPastPlannedEnd: lateOps,
+          firmOpsWithPastPlannedStart: lateOps,
           workstations: workstations.map((row) => ({
             code: row.code,
             name: row.name,

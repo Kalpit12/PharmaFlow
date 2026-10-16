@@ -56,7 +56,8 @@ Import path: Operations → Data import → workstations CSV (see `PlannerDataIm
 | Script | Target tenant | File |
 | --- | --- | --- |
 | `npm run db:seed:lab-allied` | `lab-allied-demo` only | `prisma/seed-lab-allied-demo.ts` |
-| `npm run db:seed:lab-allied:verify` | seed + Reschedule all/accept + print workstation list | `scripts/verify-lab-allied-plant.ts` |
+| `npm run db:seed:lab-allied:verify` | seed + realign + precedence checks + workstation list | `scripts/verify-lab-allied-plant.ts` |
+| `npm run db:seed:lab-allied:replan` | seed + **Reschedule all** + accept + realign + ORD011/12 timelines | `scripts/reseed-lab-allied-plan.ts` |
 
 Requires `DATABASE_URL` + `AUTH_DEV_PASSWORD` in `.env`. Point `DATABASE_URL` at production, run locally once after deploy. MediCrest seed (`prisma/seed-gantt-demo.ts` via `db:seed`) is separate and still creates Dispensing/Granulation rows on `medicrest`.
 

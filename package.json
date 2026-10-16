@@ -19,6 +19,7 @@
     "db:seed:verify": "tsx scripts/seed-verify-prerequisites.ts",
     "db:seed:lab-allied": "tsx prisma/run-seed-lab-allied-demo.ts",
     "db:seed:lab-allied:verify": "tsx scripts/verify-lab-allied-plant.ts",
+    "db:seed:lab-allied:replan": "tsx scripts/reseed-lab-allied-plan.ts",
     "db:seed:medicrest-shifts": "tsx scripts/reseed-medicrest-shifts.ts",
     "verify:operation-precedence": "tsx scripts/verify-operation-precedence.ts",
     "verify:pilot-hardening": "tsx scripts/run-pilot-hardening-verify.mjs",

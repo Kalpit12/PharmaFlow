@@ -218,6 +218,9 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
 
   await seedLabAlliedOrders(prisma, tenant.id, wsByCode);
   await linkLabAlliedOrdersToRoutings(prisma, tenant.id, wsByCode);
+  await prisma.productionOperation.deleteMany({
+    where: { tenantId: tenant.id, productionOrder: { orderKind: "PROSPECT" } },
+  });
 
   const realigned = await realignDemoScheduleToShifts(prisma, tenant.id);
   console.log(`[lab-allied-demo] Realigned ${realigned} operations to L&A shift calendars.`);
@@ -373,7 +376,15 @@ async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: str
     });
     for (const order of orders) {
       for (const routeOp of routing.operations) {
+        const existing = await prisma.productionOperation.findFirst({
+          where: { tenantId, productionOrderId: order.id, operationCode: routeOp.code },
+          select: { workstationId: true },
+        });
+        const resourceIds = new Set(routeOp.resources.map((row) => row.workstationId));
+        const keepExisting =
+          existing?.workstationId && resourceIds.has(existing.workstationId) ? existing.workstationId : null;
         const preferredWs =
+          keepExisting ??
           routeOp.resources.find((row) => row.preferred)?.workstationId ??
           routeOp.resources[0]?.workstationId ??
           null;
@@ -403,7 +414,7 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
     steps: Array<{ code: string; ws: string; mins: number; qc?: boolean }>;
   }> = [
     {
-      orderNumber: "ORD010-2026/F",
+      orderNumber: "ORD010-2026/9",
       productId: para.id,
       batch: "B-024",
       steps: [
@@ -415,31 +426,36 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       ],
     },
     {
-      orderNumber: "ORD011-2026/A",
+      orderNumber: "ORD011-2026/10",
       productId: para.id,
       batch: "B-025",
       steps: [
         { code: "BLND", ws: "BPD-062", mins: 300 },
         { code: "COMP", ws: "BPD-075", mins: 660 },
-        { code: "PACK", ws: "BPD-051", mins: 840 },
+        { code: "QUAR", ws: "SFG-QUAR", mins: 480, qc: true },
+        { code: "QC", ws: "QC-PROC", mins: 240, qc: true },
+        { code: "PACK", ws: "CPD-010", mins: 840 },
       ],
     },
     {
-      orderNumber: "ORD012-2026/C",
+      orderNumber: "ORD012-2026/11",
       productId: amox.id,
       batch: "B-026",
       steps: [
         { code: "BLND", ws: "BPD-062", mins: 280 },
         { code: "ENC", ws: "BPD-092", mins: 900 },
+        { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
+        { code: "QC", ws: "QC-PROC", mins: 180, qc: true },
         { code: "PACK", ws: "BPD-089", mins: 540 },
       ],
     },
     {
-      orderNumber: "ORD013-2026/L",
+      orderNumber: "ORD013-2026/12",
       productId: cough.id,
       batch: "B-027",
       steps: [
         { code: "FILL", ws: "DPS-LINE-1", mins: 1350 },
+        { code: "QC", ws: "QC-PROC", mins: 120, qc: true },
         { code: "PACK", ws: "BPD-009", mins: 420 },
       ],
     },

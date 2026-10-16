@@ -494,6 +494,7 @@ export async function proposeSchedule(
   ]);
 
   for (const order of orderRows) {
+    if (order.orderKind === "PROSPECT") continue;
     if (order.operations.length === 0) {
       await instantiateOperationsForOrder(prisma, ctx.tenantId, order);
     }
@@ -529,7 +530,7 @@ export async function proposeSchedule(
   };
 
   let routingOrders: RoutingOrder[] = refreshedOrders
-    .filter((order) => order.operations.length > 0)
+    .filter((order) => order.orderKind !== "PROSPECT" && order.operations.length > 0)
     .map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,

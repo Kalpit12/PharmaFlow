@@ -499,7 +499,7 @@ export function OperationsGanttWorkspace({
           const segmentLabel =
             index === labelSegmentIndex
               ? bar.label
-              : `${bar.shortBatchLabel || bar.orderNumber.split("/")[0]} cont.`;
+              : `${bar.orderNumber.includes("/") ? bar.orderNumber : bar.shortBatchLabel || bar.orderNumber} cont.`;
           return (
             <div
               key={`${bar.id}-${index}`}

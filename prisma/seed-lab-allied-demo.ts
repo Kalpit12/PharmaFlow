@@ -538,7 +538,7 @@ function buildBulkLabAlliedOrders(paraId: string, amoxId: string, dpsId: string)
   for (let n = 0; n < 32; n += 1) {
     const item = 13 + n;
     const orderNumber = `ORD${String(14 + n).padStart(3, "0")}-2026/${item}`;
-    const dueDays = 2 + (n % 21);
+    const dueDays = 21 + (n % 14);
     const scale = 0.85 + (n % 5) * 0.08;
     const kind = n % 6;
     let productId = paraId;

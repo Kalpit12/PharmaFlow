@@ -291,6 +291,8 @@ export async function getOperationsPlanner(
           }),
           locked:
             operation.isLocked ||
+            operation.status === "COMPLETED" ||
+            operation.status === "IN_PROGRESS" ||
             (operation.plannedStart != null &&
               operation.plannedStart.getTime() < new Date(policy.freezeUntil).getTime()),
           workstationId: operation.workstationId,

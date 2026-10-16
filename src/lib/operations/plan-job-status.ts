@@ -42,8 +42,9 @@ export function resolveJobPlanStatus(input: {
   return "SCHEDULED";
 }
 
+/** Delivery late (Gantt Late tab, KPIs): order finish after due — not merely a slipped planned start. */
 export function jobStatusIsLate(status: JobPlanStatus): boolean {
-  return status === "LATE" || status === "AT_RISK";
+  return status === "AT_RISK";
 }
 
 export function jobStatusIsRunning(status: JobPlanStatus): boolean {

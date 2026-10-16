@@ -499,7 +499,7 @@ export function OperationsGanttWorkspace({
           const segmentLabel =
             index === labelSegmentIndex
               ? bar.label
-              : widthPx >= 96
+              : widthPx >= 90
                 ? `${bar.orderNumber.includes("/") ? bar.orderNumber : bar.shortBatchLabel || bar.orderNumber} cont.`
                 : "cont.";
           return (

@@ -2,8 +2,12 @@ import { PrismaClient } from "@prisma/client";
 
 import { LAB_ALLIED_DEMO_SLUG } from "../src/lib/demo-tenant";
 import { acceptSchedulePlan, proposeRescheduleAll } from "../src/lib/server/aps-plan";
+import { applyLabAlliedSteadyStateWip } from "../prisma/apply-lab-allied-steady-state-wip";
 import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
 import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
+import { reconcileLabAlliedDueDatesWithPlanner } from "../prisma/reconcile-lab-allied-due-dates-with-planner";
+import { syncLabAlliedDueDatesAfterSchedule } from "../prisma/sync-lab-allied-due-dates";
+import { getOperationsGanttSnapshot } from "../src/lib/server/operations-gantt";
 
 async function printOrderTimeline(prisma: PrismaClient, tenantId: string, orderNumber: string) {
   const order = await prisma.productionOrder.findFirst({
@@ -54,8 +58,13 @@ async function main() {
     const proposal = await proposeRescheduleAll(ctx, new Date().toISOString());
     if (!proposal.id) throw new Error("Reschedule all did not return a plan id.");
     await acceptSchedulePlan(ctx, proposal.id);
+    const wip = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
     const realigned = await realignDemoScheduleToShifts(prisma, tenant.id);
-    console.log(`[lab-allied-demo] Accepted plan v${proposal.version}; realigned ${realigned} ops.`);
+    const dueUpdates = await syncLabAlliedDueDatesAfterSchedule(prisma, tenant.id);
+    const dueReconciled = await reconcileLabAlliedDueDatesWithPlanner(prisma, ctx);
+    console.log(
+      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}.`
+    );
 
     await printOrderTimeline(prisma, tenant.id, "ORD011-2026/10");
     await printOrderTimeline(prisma, tenant.id, "ORD012-2026/11");
@@ -68,7 +77,25 @@ async function main() {
         productionOrder: { orderKind: "FIRM" },
       },
     });
-    console.log(`\n[summary] firm ops with plannedStart in the past (should be 0): ${lateOps}`);
+    console.log(`\n[summary] firm ops with plannedStart in the past (non-completed): ${lateOps}`);
+
+    const gantt = await getOperationsGanttSnapshot(ctx, { zoom: "36h" });
+    const errorRows = gantt.orderTableRows.filter((row) => row.tab === "error");
+    const lateRows = gantt.orderTableRows.filter((row) => row.tab === "late");
+    const runningBars = gantt.bars.filter((bar) => bar.tone === "running").length;
+    console.log(
+      `[summary] Gantt 36h — late rows: ${lateRows.length}, error rows: ${errorRows.length}, running bars: ${runningBars}, late orders: ${gantt.lateSummary.lateOrders}`
+    );
+    if (errorRows.length > 0) {
+      const sample = errorRows.slice(0, 25);
+      for (const row of sample) {
+        console.log(`  [error] ${row.orderNumber} ${row.stepName}: ${row.reason ?? "unknown"}`);
+      }
+      throw new Error(`Gantt error tab must be empty after replan (got ${errorRows.length}).`);
+    }
+    if (gantt.lateSummary.lateOrders > 3) {
+      throw new Error(`Expected ≤3 late orders after due-date sync (got ${gantt.lateSummary.lateOrders}).`);
+    }
   } finally {
     await prisma.$disconnect();
   }

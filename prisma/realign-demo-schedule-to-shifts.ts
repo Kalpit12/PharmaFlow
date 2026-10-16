@@ -71,6 +71,30 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
     let lastEnd: Date | null = null;
 
     for (const op of ops) {
+      if (op.status === "COMPLETED" && op.plannedEnd) {
+        orderCursor = op.plannedEnd;
+        if (op.workstationId) {
+          const prev = wsCursor.get(op.workstationId);
+          if (!prev || op.plannedEnd.getTime() > prev.getTime()) {
+            wsCursor.set(op.workstationId, op.plannedEnd);
+          }
+        }
+        continue;
+      }
+
+      if (op.status === "IN_PROGRESS" && op.plannedStart && op.plannedEnd) {
+        orderCursor = op.plannedEnd;
+        if (op.workstationId) {
+          const prev = wsCursor.get(op.workstationId);
+          if (!prev || op.plannedEnd.getTime() > prev.getTime()) {
+            wsCursor.set(op.workstationId, op.plannedEnd);
+          }
+        }
+        if (!firstStart) firstStart = op.plannedStart;
+        lastEnd = op.plannedEnd;
+        continue;
+      }
+
       let workstationId = op.workstationId;
       const wsCode = workstationId ? wsCodeById.get(workstationId) : null;
       const useElapsed = operationUsesElapsedCalendar(op.operationCode, wsCode);

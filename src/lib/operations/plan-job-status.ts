@@ -47,6 +47,11 @@ export function jobStatusIsLate(status: JobPlanStatus): boolean {
   return status === "AT_RISK";
 }
 
+/** Planned start in the past without a running timer — show "!" on the bar, not red fill. */
+export function jobStatusIsScheduleSlip(status: JobPlanStatus): boolean {
+  return status === "LATE";
+}
+
 export function jobStatusIsRunning(status: JobPlanStatus): boolean {
   return status === "RUNNING";
 }

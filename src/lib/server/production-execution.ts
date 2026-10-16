@@ -26,6 +26,7 @@ import { ServerError } from "@/lib/server/errors";
 import { computeOrderMaterialReadiness } from "@/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
 import { filterOpenStationJobs, sortStationQueue } from "@/lib/production-execution/shop-floor";
+import { loadActiveShopFloorTimerOperationIds } from "@/lib/server/active-shop-floor-timers";
 import { listRecentShopFloorEvents } from "@/lib/server/production-operation-events";
 
 export type ProductionExecutionFilters = {
@@ -100,6 +101,10 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
           operationCode: true,
           status: true,
           sequence: true,
+          plannedStart: true,
+          plannedEnd: true,
+          workstationId: true,
+          workstation: { select: { id: true, name: true, active: true } },
           routingOperation: { select: { requiresLineClearance: true } },
         },
       },
@@ -140,6 +145,7 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
   }
 
   const now = new Date();
+  const openShopFloorTimers = await loadActiveShopFloorTimerOperationIds(ctx.tenantId);
   const canExecute = can(ctx.role, "production.execute");
   const activeOperationIds = orders
     .map((order) => {
@@ -157,6 +163,8 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     const history = mapHistoryEntries(historyRows);
     const plannedQuantity = order.batch?.plannedQuantity ?? order.quantity;
     const producedQuantity = order.batch?.producedQuantity ?? null;
+    const hasInProgressOperation = order.operations.some((operation) => operation.status === "IN_PROGRESS");
+    const hasOpenShopFloorTimer = order.operations.some((operation) => openShopFloorTimers.has(operation.id));
     const overlay = {
       planningStatus: order.status,
       plannedStart: order.plannedStart,
@@ -168,6 +176,8 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       productionStartedAt: order.batch?.productionStartedAt ?? null,
       productionCompletedAt: order.batch?.productionCompletedAt ?? null,
       history: historyRows.map((row) => ({ action: row.action, createdAt: row.createdAt })),
+      hasInProgressOperation,
+      hasOpenShopFloorTimer,
       now,
     };
     const executionState = deriveExecutionState(overlay);
@@ -196,6 +206,12 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     const requiresLineClearance = firstOperation?.routingOperation?.requiresLineClearance ?? false;
     const lineClearanceComplete = historyRows.some((row) => row.action === "PRODUCTION_LINE_CLEARANCE");
 
+    const taskStartIso = activeOperation?.plannedStart?.toISOString() ?? order.plannedStart?.toISOString() ?? null;
+    const taskStartDisplay =
+      taskStartIso && new Date(taskStartIso).getTime() < now.getTime() && executionState !== "IN_PROGRESS"
+        ? now.toISOString()
+        : taskStartIso;
+
     return {
       id: order.id,
       orderNumber: order.orderNumber,
@@ -203,9 +219,9 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       productName: order.product.name,
       productSku: order.product.sku,
       unit: order.product.unit ?? "unit",
-      workstationId: order.workstationId,
-      workstationName: order.workstation?.name ?? null,
-      workstationActive: order.workstation?.active ?? null,
+      workstationId: activeOperation?.workstationId ?? order.workstationId,
+      workstationName: activeOperation?.workstation?.name ?? order.workstation?.name ?? null,
+      workstationActive: activeOperation?.workstation?.active ?? order.workstation?.active ?? null,
       priority: order.priority,
       planningStatus: order.status,
       executionState,
@@ -214,7 +230,7 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       remainingQuantity: progress.remainingQuantity,
       progressPercent: progress.progressPercent,
       progressLabel: progress.progressLabel,
-      plannedStart: order.plannedStart?.toISOString() ?? null,
+      plannedStart: taskStartDisplay,
       plannedEnd: order.plannedEnd?.toISOString() ?? null,
       actualStart: actualStart?.toISOString() ?? null,
       actualCompletion: actualCompletion?.toISOString() ?? null,
@@ -294,7 +310,13 @@ export async function getProductionExecutionSnapshot(
         row.executionState === "RELEASED" ||
         row.executionState === "WAITING"
     )
-    .sort((a, b) => (a.plannedStart ?? "").localeCompare(b.plannedStart ?? ""));
+    .sort((a, b) => {
+      const rank = (row: ExecutionOrderRow) =>
+        row.executionState === "IN_PROGRESS" ? 0 : row.executionState === "RELEASED" ? 1 : 2;
+      const byRank = rank(a) - rank(b);
+      if (byRank !== 0) return byRank;
+      return (a.plannedStart ?? "").localeCompare(b.plannedStart ?? "");
+    });
   const nextTask = queue[0] ?? null;
 
   const active = allOrders.filter((row) => row.executionState === "IN_PROGRESS").length;

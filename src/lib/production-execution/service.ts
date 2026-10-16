@@ -19,6 +19,10 @@ export type ExecutionOverlayInput = {
   productionStartedAt: Date | null;
   productionCompletedAt: Date | null;
   history: Array<{ action: string; createdAt: Date }>;
+  /** Any routing step marked IN_PROGRESS (shop floor). */
+  hasInProgressOperation?: boolean;
+  /** Open START timelog without STOP on any step. */
+  hasOpenShopFloorTimer?: boolean;
   now?: Date;
 };
 
@@ -62,7 +66,11 @@ export function deriveIsPaused(history: Array<{ action: string }>): boolean {
  */
 export function deriveExecutionState(input: ExecutionOverlayInput): ExecutionState {
   if (input.planningStatus === "COMPLETED") return "COMPLETED";
-  if (input.planningStatus === "IN_PROGRESS") {
+  const shopFloorActive =
+    input.planningStatus === "IN_PROGRESS" ||
+    input.hasInProgressOperation ||
+    input.hasOpenShopFloorTimer;
+  if (shopFloorActive) {
     return deriveIsPaused(input.history) ? "PAUSED" : "IN_PROGRESS";
   }
   if (

@@ -51,6 +51,7 @@ export async function applyLabAlliedSteadyStateWip(
     select: { id: true, code: true, capacityHoursPerDay: true },
   });
   const wsCodeById = new Map(workstations.map((row) => [row.id, row.code]));
+  const wsIdByCode = new Map(workstations.map((row) => [row.code, row.id]));
   const shifts = await prisma.workstationShift.findMany({ where: { tenantId } });
   const calendars = new Map<string, WorkCalendar>();
   for (const ws of workstations) {
@@ -132,10 +133,19 @@ export async function applyLabAlliedSteadyStateWip(
       ? new Date(activeStart.getTime() + activeRun * 60_000)
       : addWorkingMinutesOnCalendar(activeStart, activeRun, calendar);
 
+    const resolvedWsId =
+      active.workstationId ??
+      (active.operationCode === "QUAR"
+        ? wsIdByCode.get("SFG-QUAR")
+        : active.operationCode === "QC" || active.operationCode === "QC-HOLD"
+          ? wsIdByCode.get("QC-PROC")
+          : undefined);
+
     await prisma.productionOperation.update({
       where: { id: active.id },
       data: {
         status: "IN_PROGRESS",
+        workstationId: resolvedWsId ?? active.workstationId,
         plannedStart: activeStart,
         plannedEnd: activeEnd,
         actualStart: activeStart,
@@ -165,13 +175,14 @@ export async function applyLabAlliedSteadyStateWip(
   }
 
   let runningTimers = 0;
-  for (const operationId of runningOperationIds) {
+  for (let i = 0; i < runningOperationIds.length; i += 1) {
+    const operationId = runningOperationIds[i]!;
     await prisma.productionOperationEvent.create({
       data: {
         tenantId,
         productionOperationId: operationId,
         eventType: "START",
-        recordedAt: new Date(now.getTime() - 2 * 3_600_000),
+        recordedAt: new Date(now.getTime() - (2 + i * 0.37) * 3_600_000),
         recordedById,
       },
     });

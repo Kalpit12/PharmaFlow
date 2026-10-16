@@ -66,6 +66,7 @@ function testLabAlliedPlantShiftAnchors() {
   const fridayIntervals = intervalsForDay(friday, calendar);
   const dayShift = fridayIntervals.find((row) => row.startMinute === PLANT_DAY_SHIFT_START);
   assert.ok(dayShift, "Friday day shift should start at 08:30 plant time");
+  assert.equal(dayShift!.startMinute, 8 * 60);
   assert.equal(dayShift!.endMinute, 17 * 60 + 30);
 
   const nightStart = atPlantMinuteFromTemplate(friday, PLANT_NIGHT_SHIFT_START);
@@ -76,7 +77,7 @@ function testLabAlliedPlantShiftAnchors() {
     calendar
   );
   const nightBlock = blocks.find((row) => plantMinuteOfDay(new Date(row.start)) === PLANT_NIGHT_SHIFT_START);
-  assert.ok(nightBlock, "Night shift block should begin at 19:00 EAT");
+  assert.ok(nightBlock, "Night shift block should begin at 18:00 EAT");
   assert.equal(new Date(nightBlock!.start).getTime(), nightStart.getTime());
   console.log("verify-gantt-shift-segments: L&A plant shift anchors OK");
 }

@@ -7,7 +7,11 @@ import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
 import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
 import { reconcileLabAlliedDueDatesWithPlanner } from "../prisma/reconcile-lab-allied-due-dates-with-planner";
 import { syncLabAlliedDueDatesAfterSchedule } from "../prisma/sync-lab-allied-due-dates";
+import { seedLabAlliedLateDemoOrders } from "../prisma/seed-lab-allied-late-demo";
+import { seedLabAlliedShopFloorHistory } from "../prisma/seed-lab-allied-shop-floor-history";
+import { syncLabAlliedOrderWorkstations } from "../prisma/sync-lab-allied-order-workstations";
 import { getOperationsGanttSnapshot } from "../src/lib/server/operations-gantt";
+import { getProductionExecutionSnapshot } from "../src/lib/server/production-execution";
 
 async function printOrderTimeline(prisma: PrismaClient, tenantId: string, orderNumber: string) {
   const order = await prisma.productionOrder.findFirst({
@@ -62,8 +66,11 @@ async function main() {
     const realigned = await realignDemoScheduleToShifts(prisma, tenant.id);
     const dueUpdates = await syncLabAlliedDueDatesAfterSchedule(prisma, tenant.id);
     const dueReconciled = await reconcileLabAlliedDueDatesWithPlanner(prisma, ctx);
+    const rollup = await syncLabAlliedOrderWorkstations(prisma, tenant.id);
+    const lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
+    const historyEvents = await seedLabAlliedShopFloorHistory(prisma, tenant.id, user.id);
     console.log(
-      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}.`
+      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}; order rollup ${rollup}; late demo ${lateDemo}; history ops ${historyEvents}.`
     );
 
     await printOrderTimeline(prisma, tenant.id, "ORD011-2026/10");
@@ -93,8 +100,14 @@ async function main() {
       }
       throw new Error(`Gantt error tab must be empty after replan (got ${errorRows.length}).`);
     }
-    if (gantt.lateSummary.lateOrders > 3) {
-      throw new Error(`Expected ≤3 late orders after due-date sync (got ${gantt.lateSummary.lateOrders}).`);
+    if (gantt.lateSummary.lateOrders < 2 || gantt.lateSummary.lateOrders > 4) {
+      throw new Error(`Expected 2–4 late orders for demo (got ${gantt.lateSummary.lateOrders}).`);
+    }
+
+    const execution = await getProductionExecutionSnapshot(ctx, { view: "all" });
+    const activeExecution = Number(execution.kpis.find((row) => row.id === "active")?.value ?? 0);
+    if (activeExecution === 0 && runningBars > 0) {
+      throw new Error("Execution Active count must match running Gantt bars when timers are open.");
     }
   } finally {
     await prisma.$disconnect();

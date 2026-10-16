@@ -119,6 +119,9 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
       if (machineReady && machineReady.getTime() > candidate.getTime()) {
         candidate = machineReady;
       }
+      if (candidate.getTime() < now.getTime()) {
+        candidate = alignToCalendar(now, calendar);
+      }
 
       const start = alignToCalendar(candidate, calendar);
       const runMinutes = op.setupMinutes + op.durationMinutes + op.teardownMinutes;
@@ -152,12 +155,18 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
     }
 
     if (firstStart && lastEnd) {
+      const orderOps = await prisma.productionOperation.findMany({
+        where: { tenantId, productionOrderId: order.id },
+        select: { status: true },
+      });
+      const hasInProgress = orderOps.some((row) => row.status === "IN_PROGRESS");
+      const allCompleted = orderOps.length > 0 && orderOps.every((row) => row.status === "COMPLETED");
       await prisma.productionOrder.update({
         where: { id: order.id },
         data: {
           plannedStart: firstStart,
           plannedEnd: lastEnd,
-          status: "SCHEDULED",
+          status: allCompleted ? "COMPLETED" : hasInProgress ? "IN_PROGRESS" : "SCHEDULED",
         },
       });
     }

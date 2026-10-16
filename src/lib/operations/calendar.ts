@@ -157,6 +157,23 @@ export function availableMinutesForDay(day: Date, calendar: WorkCalendar): numbe
   return intervalsForDay(day, calendar).reduce((sum, interval) => sum + interval.endMinute - interval.startMinute, 0);
 }
 
+/** Average working hours per weekday (Mon–Fri) from shift template — for Cap h/d display. */
+export function averageWeekdayCapacityHours(calendar: WorkCalendar): number {
+  let total = 0;
+  let days = 0;
+  const anchor = startOfPlantDay(new Date());
+  for (let offset = 0; offset < 7; offset += 1) {
+    const day = addPlantDays(anchor, offset);
+    const wd = plantWeekday(day);
+    if (wd >= 1 && wd <= 5) {
+      total += availableMinutesForDay(day, calendar);
+      days += 1;
+    }
+  }
+  if (days === 0) return 0;
+  return Math.round((total / days / 60) * 10) / 10;
+}
+
 export function isWorkingAt(date: Date, calendar: WorkCalendar): boolean {
   const minute = plantMinuteOfDay(date);
   return intervalsForDay(date, calendar).some(

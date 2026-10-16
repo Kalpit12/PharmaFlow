@@ -39,3 +39,29 @@ export function appendDueDateFeasibilityIssues(input: {
 
   return issues;
 }
+
+/** Flag scheduled steps whose planned start is before now without shop-floor activity. */
+export function appendSlippedStartIssues(input: {
+  operations: ScheduledOperation[];
+  operationStatusById: Map<string, string>;
+  activeTimerOperationIds: Set<string>;
+  issues: RoutingIssue[];
+  now?: Date;
+}): RoutingIssue[] {
+  const issues = [...input.issues];
+  const now = input.now ?? new Date();
+  for (const operation of input.operations) {
+    if (!operation.plannedStart) continue;
+    const status = input.operationStatusById.get(operation.id) ?? "SCHEDULED";
+    if (status === "COMPLETED" || status === "IN_PROGRESS") continue;
+    if (input.activeTimerOperationIds.has(operation.id)) continue;
+    if (operation.plannedStart.getTime() >= now.getTime()) continue;
+    issues.push({
+      operationId: operation.id,
+      orderNumber: operation.orderNumber,
+      kind: "SLIPPED_START",
+      detail: `Planned start ${operation.plannedStart.toISOString()} is before now; reschedule or start the job.`,
+    });
+  }
+  return issues;
+}

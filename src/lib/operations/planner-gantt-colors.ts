@@ -65,9 +65,10 @@ export function ganttToneFromJobStatus(status: JobPlanStatus): GanttBarTone {
       return "completed";
     case "RUNNING":
       return "running";
-    case "LATE":
     case "AT_RISK":
       return "late";
+    case "LATE":
+      return "scheduled";
     default:
       return "scheduled";
   }

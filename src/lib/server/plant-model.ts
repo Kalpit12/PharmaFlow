@@ -1,5 +1,9 @@
 import { requirePermission } from "@/lib/auth/authorization";
 import { buildRoutingDagEdges, type RoutingDagEdge, type RoutingDagNode } from "@/lib/operations/routing-dag-layout";
+import {
+  PLANT_CAPACITY_HOURS_PER_DAY,
+  PLANT_LOGICAL_SHIFTS_PER_WEEK,
+} from "@/lib/operations/plant-shift-template";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 
@@ -259,7 +263,10 @@ export async function getPlantModelSnapshot(ctx: TenantContext): Promise<PlantMo
       name: row.name,
       kind: row.kind,
       active: row.active,
-      capacityHoursPerDay: row.capacityHoursPerDay,
+      capacityHoursPerDay:
+        row.code === "SFG-QUAR" || row.code === "QC-PROC"
+          ? row.capacityHoursPerDay
+          : PLANT_CAPACITY_HOURS_PER_DAY,
       siteCode: row.site?.code ?? null,
       departmentCode: row.department?.code ?? null,
       roomCode: row.room?.code ?? null,
@@ -268,7 +275,8 @@ export async function getPlantModelSnapshot(ctx: TenantContext): Promise<PlantMo
       qualificationStatus: row.qualificationStatus,
       cleanStatus: row.cleanStatus,
       allowedParallelJobs: row.allowedParallelJobs,
-      shiftCount: row._count.shifts,
+      shiftCount:
+        row.code === "SFG-QUAR" || row.code === "QC-PROC" ? 7 : PLANT_LOGICAL_SHIFTS_PER_WEEK,
       exceptionCount: row._count.calendarExceptions,
     })),
     tools: tools.map((row) => ({

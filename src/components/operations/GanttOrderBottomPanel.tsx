@@ -55,7 +55,7 @@ export function GanttOrderBottomPanel({
 
   const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
     { key: "unscheduled", label: "Unscheduled", count: counts.unscheduled },
-    { key: "scheduled", label: "Scheduled" },
+    { key: "scheduled", label: "Scheduled", count: counts.scheduled },
     { key: "late", label: "Late", count: lateJobCount },
     { key: "error", label: "Errors", count: counts.error },
   ];
@@ -74,7 +74,7 @@ export function GanttOrderBottomPanel({
             onClick={() => setTab(t.key)}
           >
             {t.label}
-            {t.count != null && t.count > 0 ? ` (${t.count})` : ""}
+            {t.count != null ? ` (${t.count})` : ""}
           </button>
         ))}
         <div className="ml-auto flex flex-wrap items-center gap-2">

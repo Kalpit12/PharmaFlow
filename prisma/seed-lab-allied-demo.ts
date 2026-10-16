@@ -7,7 +7,10 @@ import {
 } from "../src/lib/demo-tenant";
 import { hashPassword } from "../src/lib/server/password";
 import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "../src/lib/operations/plant-time";
-import { buildStandardPlantShiftRows } from "../src/lib/operations/plant-shift-template";
+import {
+  PLANT_CAPACITY_HOURS_PER_DAY,
+  buildStandardPlantShiftRows,
+} from "../src/lib/operations/plant-shift-template";
 import { shiftTimeLabel } from "../src/lib/server/workstation-roster";
 
 type GroupDef = { code: string; name: string };
@@ -24,6 +27,7 @@ const GROUPS: GroupDef[] = [
   { code: "LA-COAT", name: "Coating" },
   { code: "LA-FILL", name: "Filling" },
   { code: "LA-BLISTER", name: "Blistering/Packing" },
+  { code: "LA-PACK", name: "Packing lines" },
   { code: "LA-LINE", name: "Line" },
   { code: "LA-QUAR", name: "Quarantine" },
   { code: "LA-QC", name: "QC" },
@@ -40,9 +44,9 @@ const MACHINES: MachineDef[] = [
   { code: "BPD-090", name: "ACG Blister Tablet Packing", groupCode: "LA-BLISTER", shift: "plant" },
   { code: "BPD-051", name: "Blister Packing Alu/Alu Lablas", groupCode: "LA-BLISTER", shift: "plant" },
   { code: "CPD-010", name: "Blister Machine-BMAX", groupCode: "LA-BLISTER", shift: "plant" },
-  { code: "BPD-089", name: "Capsule Line Packing", groupCode: "LA-BLISTER", shift: "plant" },
-  { code: "BPD-099", name: "Capsules Line packing II", groupCode: "LA-BLISTER", shift: "plant" },
-  { code: "BPD-009", name: "Bulk (counting) Packing", groupCode: "LA-BLISTER", shift: "plant" },
+  { code: "BPD-089", name: "Capsule Line Packing", groupCode: "LA-PACK", shift: "plant" },
+  { code: "BPD-099", name: "Capsules Line packing II", groupCode: "LA-PACK", shift: "plant" },
+  { code: "BPD-009", name: "Bulk (counting) Packing", groupCode: "LA-PACK", shift: "plant" },
   { code: "DPS-LINE-1", name: "Dps Line 1", groupCode: "LA-LINE", shift: "plant" },
   { code: "BPD-096", name: "DPS Line 2", groupCode: "LA-LINE", shift: "plant" },
   { code: "SFG-QUAR", name: "sFG QUARANTINE", groupCode: "LA-QUAR", shift: "qc24" },
@@ -140,7 +144,7 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
         tenantId: tenant.id,
         code: machine.code,
         name: machine.name,
-        capacityHoursPerDay: machine.shift === "qc24" ? 24 : 18,
+        capacityHoursPerDay: machine.shift === "qc24" ? 24 : Math.round(PLANT_CAPACITY_HOURS_PER_DAY),
         active: true,
         siteId: site.id,
         departmentId: dept.id,
@@ -155,7 +159,7 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
         groupId,
         siteId: site.id,
         departmentId: dept.id,
-        capacityHoursPerDay: machine.shift === "qc24" ? 24 : 18,
+        capacityHoursPerDay: machine.shift === "qc24" ? 24 : Math.round(PLANT_CAPACITY_HOURS_PER_DAY),
       },
     });
     wsByCode.set(machine.code, row.id);

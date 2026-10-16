@@ -23,6 +23,7 @@ import { requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
+import { loadActiveShopFloorTimerOperationIds } from "@/lib/server/active-shop-floor-timers";
 
 export type PlanSnapshotWindow = {
   start: Date;
@@ -78,24 +79,6 @@ export type PlanSnapshot = {
   proposal: PlanSnapshotProposalMetrics | null;
 };
 
-async function loadActiveTimerOperationIds(tenantId: string): Promise<Set<string>> {
-  const prisma = getPrisma();
-  const since = new Date(Date.now() - 90 * 86_400_000);
-  const events = await prisma.productionOperationEvent.findMany({
-    where: { tenantId, recordedAt: { gte: since } },
-    orderBy: { recordedAt: "desc" },
-    select: { productionOperationId: true, eventType: true },
-  });
-  const seen = new Set<string>();
-  const open = new Set<string>();
-  for (const row of events) {
-    if (seen.has(row.productionOperationId)) continue;
-    seen.add(row.productionOperationId);
-    if (row.eventType === "START") open.add(row.productionOperationId);
-  }
-  return open;
-}
-
 function orderPlannedEndByOrderId(
   ops: Array<{ productionOrderId: string; plannedEnd: Date | null }>
 ): Map<string, Date> {
@@ -121,7 +104,7 @@ export async function getPlanSnapshot(
   const [materials, policy, activeTimers, wsRows] = await Promise.all([
     getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null),
     getOrCreatePlanningPolicy(ctx),
-    loadActiveTimerOperationIds(ctx.tenantId),
+    loadActiveShopFloorTimerOperationIds(ctx.tenantId),
     prisma.workstation.findMany({
       where: { tenantId: ctx.tenantId, active: true },
       orderBy: { code: "asc" },

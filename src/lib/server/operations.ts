@@ -26,7 +26,9 @@ import {
 } from "@/lib/operations/schedule";
 import { planningWeightsFromPolicy } from "@/lib/operations/planner-policy-weights";
 import { resolveQualifiedResources } from "@/lib/operations/routing-resources";
+import { appendSlippedStartIssues } from "@/lib/operations/schedule-feasibility";
 import { buildOperationSchedule } from "@/lib/operations/routing";
+import { loadActiveShopFloorTimerOperationIds } from "@/lib/server/active-shop-floor-timers";
 import { computeScheduleAdherence } from "@/lib/operations/schedule-adherence";
 import {
   buildOrderMaterialConstraints,
@@ -257,6 +259,10 @@ export async function getOperationsPlanner(
       return [{ fromOperationId, toOperationId, minimumLagMinutes: dependency.minimumLagMinutes }];
     });
   });
+  const activeShopFloorTimers = await loadActiveShopFloorTimerOperationIds(ctx.tenantId);
+  const operationStatusById = new Map(
+    orderRows.flatMap((order) => order.operations.map((operation) => [operation.id, operation.status] as const))
+  );
   const operationPlan = buildOperationSchedule({
     orders: orderRows
       .filter((order) => order.operations.length > 0)
@@ -307,6 +313,12 @@ export async function getOperationsPlanner(
     freezeUntil: new Date(policy.freezeUntil),
     weights: planningWeightsFromPolicy(policy),
   });
+  const routingIssues = appendSlippedStartIssues({
+    operations: operationPlan.operations,
+    operationStatusById,
+    activeTimerOperationIds: activeShopFloorTimers,
+    issues: operationPlan.issues,
+  });
   const plannedOperationsByOrder = new Map<string, typeof operationPlan.operations>();
   for (const operation of operationPlan.operations) {
     const group = plannedOperationsByOrder.get(operation.orderId) ?? [];
@@ -315,7 +327,7 @@ export async function getOperationsPlanner(
   }
   const routingIssuesByOrderNumber = new Map<string, number>();
   const routingIssuesByOperationId: Record<string, { kind: string; detail: string }> = {};
-  for (const issue of operationPlan.issues) {
+  for (const issue of routingIssues) {
     routingIssuesByOrderNumber.set(
       issue.orderNumber,
       (routingIssuesByOrderNumber.get(issue.orderNumber) ?? 0) + 1

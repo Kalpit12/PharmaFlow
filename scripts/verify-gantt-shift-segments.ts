@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { buildWorkCalendar } from "../src/lib/operations/calendar";
-import { workingSegmentsInRange } from "../src/lib/operations/gantt-shift-segments";
+import { shortBatchLabel, workingSegmentsInRange } from "../src/lib/operations/gantt-shift-segments";
 import { startOfPlantDay } from "../src/lib/operations/plant-time";
 
 /** BT-GANTT-01 style job: start late shift, run longer than remaining shift → must split overnight. */
@@ -29,4 +29,12 @@ function testOvernightSplit() {
   console.log("verify-gantt-shift-segments: overnight split OK", segments.length, "segments");
 }
 
+function testShortBatchLabels() {
+  assert.equal(shortBatchLabel("BT-GANTT-01"), "G-01");
+  assert.equal(shortBatchLabel("PRP-GANTT-2026"), "PRP");
+  assert.equal(shortBatchLabel("BATCH-B-024"), "B-024");
+  console.log("verify-gantt-shift-segments: short batch labels OK");
+}
+
 testOvernightSplit();
+testShortBatchLabels();

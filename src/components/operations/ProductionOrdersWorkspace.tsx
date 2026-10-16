@@ -131,8 +131,8 @@ export function ProductionOrdersWorkspace({ data }: { data: ProductionOrdersSnap
     <div className="flex min-w-0 flex-col gap-4">
       <section className="work-surface p-4">
         <p className="text-sm text-muted-foreground">
-          Phase 2 — firm orders and job prospects with validated batch sizing, customer default priority, forward/JIT direction, and
-          optional capacity reservation. Prospects can run a delivery simulation before conversion.
+          Firm orders and job prospects with batch sizing, customer priority, forward or JIT scheduling, and optional capacity
+          reservation. Prospects can run a delivery simulation before conversion.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <StatusBadge tone="intel">{firmOrders.length} firm</StatusBadge>

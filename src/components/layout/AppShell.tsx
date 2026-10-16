@@ -25,15 +25,16 @@ export function AppShell({ children, user }: { children: ReactNode; user: Authen
 
 function ShellFrame({ children }: { children: ReactNode }) {
   const clientReady = useClientReady();
+  const { navChromeHidden } = useShell();
 
   return (
     <div className="fixed inset-0 z-0 flex overflow-hidden bg-background">
-      {clientReady ? (
+      {clientReady && !navChromeHidden ? (
         <>
           <Sidebar compact className="hidden md:flex lg:hidden" />
           <Sidebar className="hidden lg:flex" />
         </>
-      ) : (
+      ) : clientReady && navChromeHidden ? null : (
         <>
           <aside
             className="hidden h-full w-14 shrink-0 border-r border-sidebar-border bg-sidebar md:flex lg:hidden"

@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+
+import { useShell } from "@/components/layout/shell-context";
 import { PlannerDashboardBuilder } from "@/components/operations/PlannerDashboardBuilder";
 import { OperationsGanttWorkspace } from "@/components/operations/OperationsGanttWorkspace";
 import { OperationsPlannerShell, type PlannerShellView } from "@/components/operations/OperationsPlannerShell";
@@ -55,6 +58,12 @@ export function OperationsWorkspace({
   initialView?: string;
 }) {
   const view = parseView(initialView);
+  const { setNavChromeHidden } = useShell();
+
+  useEffect(() => {
+    setNavChromeHidden(view === "gantt");
+    return () => setNavChromeHidden(false);
+  }, [view, setNavChromeHidden]);
 
   return (
     <OperationsPlannerShell activeView={view}>

@@ -59,8 +59,15 @@ export function Topbar() {
 function contextForPath(pathname: string, brand: string, timeZonePreference: "utc" | "nairobi" | "local") {
   const item = findNavItem(pathname);
   const section = item ? findNavSection(item.href) : null;
-  const timeZone = timeZonePreference === "utc" ? "UTC" : timeZonePreference === "nairobi" ? "Africa/Nairobi" : undefined;
-  const zoneLabel = timeZonePreference === "utc" ? "UTC" : timeZonePreference === "nairobi" ? "EAT" : "Local";
+  const plantClock =
+    pathname.startsWith("/operations") ||
+    pathname.startsWith("/execution") ||
+    pathname.startsWith("/daily-review");
+  const effectivePreference = plantClock ? "nairobi" : timeZonePreference;
+  const timeZone =
+    effectivePreference === "utc" ? "UTC" : effectivePreference === "nairobi" ? "Africa/Nairobi" : undefined;
+  const zoneLabel =
+    effectivePreference === "utc" ? "UTC" : effectivePreference === "nairobi" ? "EAT" : "Local";
   const stamp = new Date().toLocaleString("en-GB", {
     day: "numeric",
     month: "short",

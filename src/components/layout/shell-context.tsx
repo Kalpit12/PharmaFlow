@@ -18,6 +18,9 @@ type ShellContextValue = {
   setPaletteMode: (mode: PaletteMode) => void;
   mobileNavOpen: boolean;
   setMobileNavOpen: (open: boolean) => void;
+  /** Hides app sidebar for full-bleed planner surfaces (Gantt icon rail only). */
+  navChromeHidden: boolean;
+  setNavChromeHidden: (hidden: boolean) => void;
 };
 
 const ShellContext = createContext<ShellContextValue | null>(null);
@@ -27,6 +30,7 @@ export function ShellProvider({ children, user }: { children: ReactNode; user: A
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMode, setPaletteMode] = useState<PaletteMode>("commands");
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  const [navChromeHidden, setNavChromeHidden] = useState(false);
 
   const workspace = useMemo(() => getWorkspaceById(workspaceId), [workspaceId]);
 
@@ -63,8 +67,10 @@ export function ShellProvider({ children, user }: { children: ReactNode; user: A
       setPaletteMode,
       mobileNavOpen,
       setMobileNavOpen,
+      navChromeHidden,
+      setNavChromeHidden,
     }),
-    [user, workspace, paletteOpen, paletteMode, openPalette, mobileNavOpen]
+    [user, workspace, paletteOpen, paletteMode, openPalette, mobileNavOpen, navChromeHidden]
   );
 
   return <ShellContext.Provider value={value}>{children}</ShellContext.Provider>;

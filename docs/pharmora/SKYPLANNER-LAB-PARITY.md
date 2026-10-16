@@ -8,6 +8,47 @@ Layout and behaviour reference from a live SkyPlanner install. **Do not copy** c
 2. **§5 All timelogs** — supervisor accept, faulty pcs, filters.
 3. **§6 Job report** — planned vs logged, difference ratio colours.
 
+## Live check (2026-10-16)
+
+**Improved:** Nairobi time in planner, whole-hour ticks, ~36h default window, bar labels like `B-024 (1.5h) Paracetamol 500mg`, warning badges, changeover blocks, OEE hidden until timer data exists.
+
+**Still open:**
+
+| Area | Notes |
+| --- | --- |
+| §1–§2, §3, §5, §6 | Default shifts, roster, timelogs, job report screens not built. |
+| Past-due pile | ~68 late jobs / red bars left of now — run **Reschedule all** + accept; seed may need longer step times. |
+| Step durations | Routing/seed minutes too short vs real line times. |
+| Batch / bar codes | Mixed `B-024`, `G-01`, `G-2026` (year leak from `PRP-GANTT-2026`) — target §4 `{orderNo}/{item} ({hours}h)`. |
+| Shell | Top bar was UTC while planner EAT; two sidebars on Gantt — **fix in progress** (plant routes → EAT; hide app nav on Gantt). |
+| Orders / plant | Timestamp order codes, duplicates, phase copy, empty site/dept/tool counts — seed + §4 list UX. |
+
+### Workstation names (Lab reference photos, 17/~19)
+
+Use for **fictional MediCrest** import only (names pattern, not customer ERP ids in sales demos). External IDs and CSV columns are in the analyst handoff; scroll photo needed for last ~2 rows.
+
+| Name |
+| --- |
+| ACG Blister Tablet Packing |
+| ACG Coating |
+| Blender octagonal 1000kg |
+| Blister Machine-BMAX |
+| Blister Packing Alu/Alu Lablas |
+| Bulk (counting) Packing |
+| Capsule Filling Small Batch |
+| Capsule Filling-ACG |
+| Capsule Filling-Chinese |
+| Capsule Line Packing |
+| Capsules Line packing II |
+| Dps Line 1 |
+| DPS Line 2 |
+| LabClav Blending 500kg |
+| LabClav Compression |
+| QC PROCESS |
+| sFG QUARANTINE |
+
+Import path: Operations → Data import → workstations CSV (see `PlannerDataImportWorkspace` templates).
+
 ## §0 Live bugs (in progress)
 
 | Issue | Design | Implementation |

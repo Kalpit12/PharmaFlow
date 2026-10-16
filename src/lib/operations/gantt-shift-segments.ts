@@ -44,8 +44,17 @@ export function formatDurationHuman(totalMinutes: number): string {
 
 /** Short batch code for bar labels, e.g. BT-GANTT-01 → G-01. */
 export function shortBatchLabel(batchNumber: string): string {
+  if (/GANTT-20\d{2}/i.test(batchNumber)) {
+    const stem = batchNumber.replace(/-GANTT-20\d{2}/i, "").replace(/-GANTT-\d+/i, "");
+    if (stem.length > 0 && stem.length <= 12) return stem;
+  }
   const gantt = batchNumber.match(/GANTT-(\d+)/i) ?? batchNumber.match(/DEMO-(\d+)/i);
-  if (gantt) return `G-${gantt[1]!.padStart(2, "0")}`;
+  if (gantt) {
+    const raw = gantt[1]!;
+    if (!(raw.length === 4 && raw.startsWith("20"))) {
+      return `G-${raw.padStart(2, "0").slice(-2)}`;
+    }
+  }
   const tail = batchNumber.match(/-(\d+)$/);
   if (tail) {
     const letter = (batchNumber.match(/BT-([A-Z]+)/i)?.[1]?.[0] ?? "B").toUpperCase();

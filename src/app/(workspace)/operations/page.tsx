@@ -24,6 +24,7 @@ export default async function OperationsPage({
     ganttZoom?: string;
     ganttStart?: string;
     ganttEnd?: string;
+    ganttRows?: string;
   }>;
 }) {
   try {
@@ -38,6 +39,7 @@ export default async function OperationsPage({
         zoom: params.ganttZoom,
         start: params.ganttStart,
         end: params.ganttEnd,
+        ganttRows: params.ganttRows,
       }),
       getPlannerIntegrationSnapshot(ctx),
       getPlannerDashboardPageData(ctx, params.dashboard),

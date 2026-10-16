@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 
 import { buildWorkCalendar } from "../src/lib/operations/calendar";
-import { shortBatchLabel, workingSegmentsInRange } from "../src/lib/operations/gantt-shift-segments";
+import {
+  mergeMidnightShiftSplits,
+  shortBatchLabel,
+  workingSegmentsInRange,
+} from "../src/lib/operations/gantt-shift-segments";
 import { startOfPlantDay } from "../src/lib/operations/plant-time";
 
 /** BT-GANTT-01 style job: start late shift, run longer than remaining shift → must split overnight. */
@@ -36,5 +40,15 @@ function testShortBatchLabels() {
   console.log("verify-gantt-shift-segments: short batch labels OK");
 }
 
+function testMidnightMerge() {
+  const merged = mergeMidnightShiftSplits([
+    { start: "2026-10-16T15:00:00.000Z", end: "2026-10-16T21:00:00.000Z" },
+    { start: "2026-10-16T21:00:00.000Z", end: "2026-10-17T03:00:00.000Z" },
+  ]);
+  assert.equal(merged.length, 1);
+  console.log("verify-gantt-shift-segments: midnight merge OK");
+}
+
 testOvernightSplit();
 testShortBatchLabels();
+testMidnightMerge();

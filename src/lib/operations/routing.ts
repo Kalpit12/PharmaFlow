@@ -73,6 +73,16 @@ export type OperationDependency = {
   minimumLagMinutes: number;
 };
 
+/** Finish-to-start chain by routing sequence when no explicit routing dependencies exist. */
+export function sequenceDependenciesForOrder(operations: RoutableOperation[]): OperationDependency[] {
+  const sorted = [...operations].sort((a, b) => a.sequence - b.sequence || a.id.localeCompare(b.id));
+  return sorted.slice(1).map((operation, index) => ({
+    fromOperationId: sorted[index]!.id,
+    toOperationId: operation.id,
+    minimumLagMinutes: 0,
+  }));
+}
+
 export type ChangeoverConstraint = {
   id: string;
   workstationId: string | null;
@@ -266,10 +276,14 @@ export function buildOperationSchedule(input: {
 
     const pending = new Map(order.operations.map((operation) => [operation.id, operation]));
     const operationIds = new Set(order.operations.map((operation) => operation.id));
-    const orderDependencies = input.dependencies.filter(
+    const explicitDependencies = input.dependencies.filter(
       (dependency) =>
         operationIds.has(dependency.fromOperationId) && operationIds.has(dependency.toOperationId)
     );
+    const orderDependencies =
+      explicitDependencies.length > 0
+        ? explicitDependencies
+        : sequenceDependenciesForOrder(order.operations);
 
     while (pending.size > 0) {
       const ready = [...pending.values()]

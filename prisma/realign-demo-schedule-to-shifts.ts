@@ -46,17 +46,29 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
   let cursorByOrder = new Map<string, Date>();
   const now = new Date();
 
+  const elapsedCalendar = buildWorkCalendar({
+    capacityHoursPerDay: 24,
+    shifts: [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+      weekday,
+      startMinute: 0,
+      endMinute: 1_440,
+    })),
+  });
+
   for (const op of ops) {
-    const wsCode = op.workstationId ? wsCodeById.get(op.workstationId) : undefined;
-    if (!op.workstationId || isElapsedOnlyWorkstation(wsCode)) continue;
-    const calendar = calendars.get(op.workstationId);
+    if (!op.workstationId) continue;
+    const wsCode = wsCodeById.get(op.workstationId);
+    const calendar = isElapsedOnlyWorkstation(wsCode)
+      ? elapsedCalendar
+      : calendars.get(op.workstationId);
     if (!calendar) continue;
 
     const orderCursor = cursorByOrder.get(op.productionOrderId) ?? alignToCalendar(now, calendar);
     const start = alignToCalendar(orderCursor, calendar);
-    const runMinutes =
-      op.setupMinutes + op.durationMinutes + op.teardownMinutes;
-    const end = addWorkingMinutesOnCalendar(start, runMinutes, calendar);
+    const runMinutes = op.setupMinutes + op.durationMinutes + op.teardownMinutes;
+    const end = isElapsedOnlyWorkstation(wsCode)
+      ? new Date(start.getTime() + runMinutes * 60_000)
+      : addWorkingMinutesOnCalendar(start, runMinutes, calendar);
 
     if (
       !op.plannedStart ||

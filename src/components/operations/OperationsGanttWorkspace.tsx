@@ -32,7 +32,7 @@ const MIN_LABEL_PX = 40;
 const ROW_GAP = 4;
 const ROW_HEIGHT = 34;
 const GROUP_HEIGHT = 24;
-const LABEL_WIDTH = 160;
+const LABEL_WIDTH = 230;
 const BAR_HEIGHT = 26;
 const BAR_TOP = (ROW_HEIGHT - BAR_HEIGHT) / 2;
 const DEFAULT_BOTTOM_PCT = 30;
@@ -495,7 +495,11 @@ export function OperationsGanttWorkspace({
           if (isDragging && index === 0) left += dragOffsetPct;
           const widthPx = (layout.widthPct / 100) * trackWidth;
           const widthPct = widthPx < MIN_BAR_PX ? (MIN_BAR_PX / trackWidth) * 100 : layout.widthPct;
-          const showLabel = index === labelSegmentIndex && widthPx >= MIN_LABEL_PX;
+          const showLabel = widthPx >= MIN_LABEL_PX;
+          const segmentLabel =
+            index === labelSegmentIndex
+              ? bar.label
+              : `${bar.shortBatchLabel || bar.orderNumber.split("/")[0]} cont.`;
           return (
             <div
               key={`${bar.id}-${index}`}
@@ -527,7 +531,7 @@ export function OperationsGanttWorkspace({
                 minWidth: MIN_BAR_PX,
               }}
             >
-              {showLabel ? <span className="block truncate">{bar.label}</span> : null}
+              {showLabel ? <span className="block truncate">{segmentLabel}</span> : null}
               {showLabel && barHasWarning(bar) ? (
                 <span
                   className="absolute -right-1.5 -top-1.5 flex size-3.5 items-center justify-center rounded-full bg-[var(--planner-late-red)] text-[9px] font-bold leading-none text-white"
@@ -556,6 +560,7 @@ export function OperationsGanttWorkspace({
         onOpenRules={() => setRulesOpen(true)}
         onExportPng={exportPng}
         plantNowLabel={formatGanttNowLabel(nowInstant)}
+        rowLayout={data.rowLayout}
       />
 
       <PlannerGlobalRulesDrawer
@@ -645,25 +650,28 @@ export function OperationsGanttWorkspace({
 
             {visibleGroups.map((group) => {
               const collapsed = collapsedGroups.has(group.id);
+              const showGroupHeader = data.rowLayout !== "alpha" && group.name.length > 0;
               return (
                 <div key={group.id}>
-                  <button
-                    type="button"
-                    className="sticky left-0 z-30 flex w-full items-center gap-1.5 border-b border-border bg-muted/50 px-2 text-left text-[11px] font-medium text-muted-foreground"
-                    style={{ height: GROUP_HEIGHT }}
-                    onClick={() =>
-                      setCollapsedGroups((prev) => {
-                        const next = new Set(prev);
-                        if (next.has(group.id)) next.delete(group.id);
-                        else next.add(group.id);
-                        return next;
-                      })
-                    }
-                  >
-                    {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
-                    {group.name}
-                  </button>
-                  {!collapsed
+                  {showGroupHeader ? (
+                    <button
+                      type="button"
+                      className="sticky left-0 z-30 flex w-full items-center gap-1.5 border-b border-border bg-muted/50 px-2 text-left text-[11px] font-medium text-muted-foreground"
+                      style={{ height: GROUP_HEIGHT }}
+                      onClick={() =>
+                        setCollapsedGroups((prev) => {
+                          const next = new Set(prev);
+                          if (next.has(group.id)) next.delete(group.id);
+                          else next.add(group.id);
+                          return next;
+                        })
+                      }
+                    >
+                      {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+                      {group.name}
+                    </button>
+                  ) : null}
+                  {!collapsed || !showGroupHeader
                     ? group.workstationIds.map((wsId) => {
                         const ws = wsById.get(wsId);
                         if (!ws) return null;
@@ -679,9 +687,9 @@ export function OperationsGanttWorkspace({
                             <div
                               className="flex items-center border-r border-border/70 px-2 text-xs font-medium"
                               style={{ height: rowHeight }}
-                              title={`${ws.code} · ${ws.utilization ?? 0}% load · ${ws.scheduledHours}h / ${ws.availableHours}h`}
+                              title={ws.name}
                             >
-                              <span className="truncate">{ws.name}</span>
+                              <span className="line-clamp-2 text-[11px] leading-tight">{ws.name}</span>
                             </div>
                             <div className="flex flex-col">
                               <div

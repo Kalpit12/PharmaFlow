@@ -232,6 +232,7 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
   await prisma.productionOrder.deleteMany({ where: { tenantId: tenant.id } });
 
   await seedLabAlliedOrders(prisma, tenant.id, wsByCode);
+  await linkLabAlliedOrdersToRoutings(prisma, tenant.id, wsByCode);
 
   const realigned = await realignDemoScheduleToShifts(prisma, tenant.id);
   console.log(`[lab-allied-demo] Realigned ${realigned} operations to L&A shift calendars.`);
@@ -316,7 +317,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
         })
       )?.version ?? 0) + 1;
 
-    await prisma.productRouting.create({
+    const routing = await prisma.productRouting.create({
       data: {
         tenantId,
         productId: product.id,
@@ -334,6 +335,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
             teardownMinutes: 0,
             changeoverFamily: template.family,
             isQcHold: step.isQcHold ?? false,
+            minCompletionPercent: 100,
             resources: {
               create: step.wsCodes.flatMap((code, resourceIndex) => {
                 const workstationId = wsByCode.get(code);
@@ -351,7 +353,55 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
           })),
         },
       },
+      include: { operations: { orderBy: { sequence: "asc" } } },
     });
+
+    if (routing.operations.length > 1) {
+      await prisma.routingDependency.createMany({
+        data: routing.operations.slice(1).map((operation, index) => ({
+          tenantId,
+          fromOperationId: routing.operations[index]!.id,
+          toOperationId: operation.id,
+          minimumLagMinutes: 0,
+        })),
+        skipDuplicates: true,
+      });
+    }
+  }
+}
+
+async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
+  const products = await prisma.product.findMany({
+    where: { tenantId, sku: { in: ["PARA-500-TAB", "AMOX-500-CAP", "COUGH-SYR-100"] } },
+    select: { id: true },
+  });
+  for (const product of products) {
+    const routing = await prisma.productRouting.findFirst({
+      where: { tenantId, productId: product.id, active: true },
+      include: { operations: { orderBy: { sequence: "asc" }, include: { resources: true } } },
+    });
+    if (!routing) continue;
+
+    const orders = await prisma.productionOrder.findMany({
+      where: { tenantId, productId: product.id },
+      select: { id: true },
+    });
+    for (const order of orders) {
+      for (const routeOp of routing.operations) {
+        const preferredWs =
+          routeOp.resources.find((row) => row.preferred)?.workstationId ??
+          routeOp.resources[0]?.workstationId ??
+          null;
+        await prisma.productionOperation.updateMany({
+          where: { tenantId, productionOrderId: order.id, operationCode: routeOp.code },
+          data: {
+            routingOperationId: routeOp.id,
+            operationName: routeOp.name,
+            workstationId: preferredWs,
+          },
+        });
+      }
+    }
   }
 }
 
@@ -420,7 +470,7 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
         quantity: 8000 + i * 500,
         priority: i === 0 ? "HIGH" : "NORMAL",
         status: "SCHEDULED",
-        dueDate: daysFromNow(21 + i, 14),
+        dueDate: daysFromNow(14 + i * 4, 14),
         durationMinutes: row.steps.reduce((sum, step) => sum + step.mins, 0),
         isLocked: false,
       },

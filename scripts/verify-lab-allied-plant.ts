@@ -44,6 +44,29 @@ async function main() {
       },
     });
 
+    const ord010 = await prisma.productionOrder.findFirst({
+      where: { tenantId: tenant.id, orderNumber: "ORD010-2026/F" },
+      select: { id: true },
+    });
+    if (ord010) {
+      const steps = await prisma.productionOperation.findMany({
+        where: { tenantId: tenant.id, productionOrderId: ord010.id },
+        orderBy: { sequence: "asc" },
+        select: { operationCode: true, plannedStart: true, plannedEnd: true },
+      });
+      for (let i = 1; i < steps.length; i += 1) {
+        const prev = steps[i - 1]!;
+        const cur = steps[i]!;
+        if (prev.plannedEnd && cur.plannedStart) {
+          if (cur.plannedStart.getTime() < prev.plannedEnd.getTime()) {
+            throw new Error(
+              `Precedence violation: ${cur.operationCode} starts before ${prev.operationCode} ends on ORD010-2026/F`
+            );
+          }
+        }
+      }
+    }
+
     console.log(
       JSON.stringify(
         {

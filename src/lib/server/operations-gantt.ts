@@ -17,7 +17,9 @@ import { shortBatchLabel, workingSegmentsInRange, type GanttWorkSegment } from "
 import { type GanttZoom, resolveGanttWindow } from "@/lib/operations/gantt-window";
 import { availableWorkingMinutes, createStandardWorkCalendar } from "@/lib/operations/calendar";
 import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
+import { LAB_ALLIED_DEMO_SLUG } from "@/lib/demo-tenant";
 import { getOperationsPlanner, type OperationsView } from "@/lib/server/operations";
+import { getTenant } from "@/lib/server/services/tenant";
 import { resolvePlannerAccess } from "@/lib/auth/planner-access";
 import { requirePermission } from "@/lib/auth/authorization";
 import { loadWorkstationCalendars } from "@/lib/server/aps-plan";
@@ -163,6 +165,7 @@ export type OperationsGanttSnapshot = {
   capabilities: OperationsView["capabilities"];
   scheduleStatusLine: string;
   lateSummary: GanttLateSummary;
+  rowLayout: "alpha" | "group";
 };
 
 const GROUP_ORDER = [
@@ -207,9 +210,18 @@ function stepDisplayName(code: string, name: string): string {
   return STEP_LABELS[key] ?? name ?? code;
 }
 
-function formatBarLabel(shortBatch: string, durationMinutes: number, productName: string): string {
-  const hours = (Math.round((durationMinutes / 60) * 10) / 10).toFixed(1);
-  return `${shortBatch} (${hours}h) ${productName}`;
+function formatBarLabel(input: {
+  tenantSlug: string;
+  orderNumber: string;
+  batchLabel: string;
+  durationMinutes: number;
+  productName: string;
+}): string {
+  const hours = (Math.round((input.durationMinutes / 60) * 10) / 10).toFixed(1);
+  if (input.tenantSlug === LAB_ALLIED_DEMO_SLUG) {
+    return `${input.orderNumber} (${hours}h) ${input.productName}`;
+  }
+  return `${shortBatchLabel(input.batchLabel)} (${hours}h) ${input.productName}`;
 }
 
 function buildOrderTableRows(
@@ -297,7 +309,12 @@ function sameInstant(a: string, b: string): boolean {
 
 export async function getOperationsGanttSnapshot(
   ctx: TenantContext,
-  options?: { zoom?: string | null; start?: string | null; end?: string | null }
+  options?: {
+    zoom?: string | null;
+    start?: string | null;
+    end?: string | null;
+    ganttRows?: string | null;
+  }
 ): Promise<OperationsGanttSnapshot> {
   requirePermission(ctx, "production.read");
   const ganttWindow = resolveGanttWindow(options);
@@ -308,6 +325,10 @@ export async function getOperationsGanttSnapshot(
     getPlanSnapshot(ctx, { start: ganttWindow.start, end: ganttWindow.end }),
   ]);
   const prisma = getPrisma();
+  const tenant = await getTenant(ctx);
+  const defaultRowLayout = tenant.slug === LAB_ALLIED_DEMO_SLUG ? "alpha" : "group";
+  const rowLayout: "alpha" | "group" =
+    options?.ganttRows === "alpha" ? "alpha" : options?.ganttRows === "group" ? "group" : defaultRowLayout;
   const now = new Date();
   const activeTimers = new Set(planSnapshot.activeTimerOperationIds);
 
@@ -476,7 +497,13 @@ export async function getOperationsGanttSnapshot(
             now,
           })
         : tone,
-      label: formatBarLabel(shortBatchLabel(batchLabel), dbOp.durationMinutes, order.productName),
+      label: formatBarLabel({
+        tenantSlug: tenant.slug,
+        orderNumber: order.orderNumber,
+        batchLabel,
+        durationMinutes: dbOp.durationMinutes,
+        productName: order.productName,
+      }),
       shortBatchLabel: shortBatchLabel(batchLabel),
       workSegments: (() => {
         const wsCal =
@@ -693,7 +720,7 @@ export async function getOperationsGanttSnapshot(
 
   const scopedBars = scope?.length ? bars.filter((bar) => scope.includes(bar.workstationId)) : bars;
 
-  const groups = [...groupMap.values()].sort((a, b) => {
+  let groups = [...groupMap.values()].sort((a, b) => {
     const ai = GROUP_ORDER.indexOf(a.code);
     const bi = GROUP_ORDER.indexOf(b.code);
     if (ai === -1 && bi === -1) return a.code.localeCompare(b.code);
@@ -701,6 +728,16 @@ export async function getOperationsGanttSnapshot(
     if (bi === -1) return -1;
     return ai - bi;
   });
+  if (rowLayout === "alpha") {
+    groups = [
+      {
+        id: "alpha",
+        code: "ALPHA",
+        name: "",
+        workstationIds: [...workstations].sort((a, b) => a.name.localeCompare(b.name)).map((row) => row.id),
+      },
+    ];
+  }
 
   const orderEndForStatus = new Map<string, string | null>();
   for (const order of planner.orders) {
@@ -782,6 +819,7 @@ export async function getOperationsGanttSnapshot(
     },
     scheduleStatusLine,
     lateSummary,
+    rowLayout,
   };
 }
 

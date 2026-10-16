@@ -45,10 +45,12 @@ export function GanttPlannerToolbar({
   onOpenRules,
   onExportPng,
   plantNowLabel,
+  rowLayout,
 }: {
   windowStartIso: string;
   zoom: GanttZoom;
   plantNowLabel: string;
+  rowLayout: "alpha" | "group";
   workstations: GanttWorkstationRow[];
   workstationFilter: string | "all";
   onWorkstationFilterChange: (value: string | "all") => void;
@@ -80,6 +82,13 @@ export function GanttPlannerToolbar({
     pushParams((params) => {
       params.set("view", "gantt");
       params.set("ganttZoom", next);
+    });
+  };
+
+  const setRowLayout = (next: "alpha" | "group") => {
+    pushParams((params) => {
+      params.set("view", "gantt");
+      params.set("ganttRows", next);
     });
   };
 
@@ -134,6 +143,15 @@ export function GanttPlannerToolbar({
         <Button type="button" size="icon" variant="ghost" className="size-8" onClick={onOpenRules} aria-label="Global planning rules">
           <Settings className="size-4" />
         </Button>
+        <Select value={rowLayout} onValueChange={(value) => setRowLayout(value as "alpha" | "group")}>
+          <SelectTrigger className="hidden h-8 w-[8.5rem] text-xs lg:flex">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="alpha">Rows A–Z</SelectItem>
+            <SelectItem value="group">Group by stage</SelectItem>
+          </SelectContent>
+        </Select>
         <Select value={workstationFilter} onValueChange={onWorkstationFilterChange}>
           <SelectTrigger className="h-8 w-[9.5rem] text-xs">
             <SelectValue placeholder="All workstations" />

@@ -30,7 +30,24 @@ export function workingSegmentsInRange(
     void ymd;
   }
 
-  return segments;
+  return mergeMidnightShiftSplits(segments);
+}
+
+/** Keep one visual bar across night shifts; split only at real off-shift gaps (>1 min). */
+export function mergeMidnightShiftSplits(segments: GanttWorkSegment[]): GanttWorkSegment[] {
+  if (segments.length <= 1) return segments;
+  const merged: GanttWorkSegment[] = [{ ...segments[0]! }];
+  for (let i = 1; i < segments.length; i += 1) {
+    const prev = merged[merged.length - 1]!;
+    const cur = segments[i]!;
+    const gapMs = new Date(cur.start).getTime() - new Date(prev.end).getTime();
+    if (gapMs >= 0 && gapMs <= 60_000) {
+      merged[merged.length - 1] = { start: prev.start, end: cur.end };
+    } else {
+      merged.push({ ...cur });
+    }
+  }
+  return merged;
 }
 
 export function formatDurationHuman(totalMinutes: number): string {

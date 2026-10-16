@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@prisma/client";
 
+import { buildStandardPlantShiftRows } from "../src/lib/operations/plant-shift-template";
 import { migrateLegacyWorkstationsToMachines } from "./migrate-gantt-workstations";
 
 type GroupDef = { code: string; name: string };
@@ -35,8 +36,6 @@ const MACHINES: MachineDef[] = [
 ];
 
 const SHIFT_WEEKDAYS = [1, 2, 3, 4, 5, 6];
-const SHIFT_A = { startMinute: 6 * 60, endMinute: 14 * 60 };
-const SHIFT_B = { startMinute: 14 * 60, endMinute: 22 * 60 };
 
 /** Machine-level plant, shifts, migration off legacy lines, and 20+ demo jobs. */
 export async function ensureGanttSkyPlannerDemoSeed(prisma: PrismaClient) {
@@ -127,10 +126,11 @@ export async function ensureGanttSkyPlannerDemoSeed(prisma: PrismaClient) {
 async function ensureTwoShiftCalendar(prisma: PrismaClient, tenantId: string, workstationId: string) {
   await prisma.workstationShift.deleteMany({ where: { workstationId } });
   await prisma.workstationShift.createMany({
-    data: SHIFT_WEEKDAYS.flatMap((weekday) => [
-      { tenantId, workstationId, weekday, ...SHIFT_A },
-      { tenantId, workstationId, weekday, ...SHIFT_B },
-    ]),
+    data: buildStandardPlantShiftRows(SHIFT_WEEKDAYS).map((row) => ({
+      tenantId,
+      workstationId,
+      ...row,
+    })),
   });
 }
 

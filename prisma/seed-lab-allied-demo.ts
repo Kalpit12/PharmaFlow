@@ -6,6 +6,7 @@ import {
   LAB_ALLIED_DEMO_SLUG,
 } from "../src/lib/demo-tenant";
 import { hashPassword } from "../src/lib/server/password";
+import { buildStandardPlantShiftRows } from "../src/lib/operations/plant-shift-template";
 import { realignDemoScheduleToShifts } from "./realign-demo-schedule-to-shifts";
 
 type GroupDef = { code: string; name: string };
@@ -47,12 +48,6 @@ const MACHINES: MachineDef[] = [
   { code: "QC-PROC", name: "QC PROCESS", groupCode: "LA-QC", shift: "qc24" },
 ];
 
-const DAY_START = 8 * 60;
-const DAY_END = 17 * 60 + 30;
-const NIGHT_START = 18 * 60;
-const SATURDAY = 6;
-const WEEKDAYS = [1, 2, 3, 4, 5];
-
 function daysFromNow(offset: number, hourUtc = 11): Date {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset, hourUtc, 0, 0));
@@ -73,20 +68,10 @@ async function applyPlantShifts(prisma: PrismaClient, tenantId: string, workstat
     return;
   }
 
-  const rows: Array<{ tenantId: string; workstationId: string; weekday: number; startMinute: number; endMinute: number }> =
-    [];
-  for (const weekday of WEEKDAYS) {
-    rows.push({ tenantId, workstationId, weekday, startMinute: DAY_START, endMinute: DAY_END });
-    rows.push({ tenantId, workstationId, weekday, startMinute: NIGHT_START, endMinute: 1_440 });
-    const morning = weekday === 6 ? SATURDAY : weekday + 1;
-    if (morning <= SATURDAY) {
-      rows.push({ tenantId, workstationId, weekday: morning, startMinute: 0, endMinute: 6 * 60 });
-    }
-  }
-  if (mode === "saturday" || mode === "plant") {
-    rows.push({ tenantId, workstationId, weekday: SATURDAY, startMinute: DAY_START, endMinute: DAY_END });
-  }
-  await prisma.workstationShift.createMany({ data: rows });
+  const shiftRows = buildStandardPlantShiftRows([1, 2, 3, 4, 5, 6]);
+  await prisma.workstationShift.createMany({
+    data: shiftRows.map((row) => ({ tenantId, workstationId, ...row })),
+  });
 }
 
 /** Fictional SkyPlanner-layout demo tenant — not Lab & Allied customer ERP data. */

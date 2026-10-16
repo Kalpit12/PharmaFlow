@@ -80,7 +80,7 @@ Requires `DATABASE_URL` + `AUTH_DEV_PASSWORD` in `.env`. Point `DATABASE_URL` at
 
 **Model:** `ShiftTemplate` — name, colour, begin/end (overnight), weekdays bitmask. Workstations link via `WorkstationDefaultShift`.
 
-**UI:** CRUD table + colour swatch. Seed: Day 08:00–17:30 Mon–Fri, Night 18:00–06:00, Saturday 08:00–17:30, QC 24h.
+**UI:** CRUD table + colour swatch. Seed: Day **08:30–17:30** Mon–Fri, Night **19:00–06:00** (17:30–19:00 gap), Saturday day only, QC/quarantine 24h (`plant-shift-template.ts`).
 
 ## §2 Workstation settings modal
 

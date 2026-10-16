@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 
 import { LAB_ALLIED_DEMO_SLUG } from "../src/lib/demo-tenant";
-import { acceptSchedulePlan, proposeRescheduleAll } from "../src/lib/server/aps-plan";
 import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
+import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
 
 async function main() {
   const prisma = new PrismaClient();
@@ -12,18 +12,7 @@ async function main() {
     const tenant = await prisma.tenant.findUnique({ where: { slug: LAB_ALLIED_DEMO_SLUG } });
     if (!tenant) throw new Error(`Tenant ${LAB_ALLIED_DEMO_SLUG} missing after seed.`);
 
-    const user = await prisma.user.findFirst({
-      where: { tenantId: tenant.id, status: "ACTIVE" },
-      select: { id: true, role: true },
-    });
-    if (!user) throw new Error("No active user on lab-allied-demo tenant.");
-
-    const ctx = { tenantId: tenant.id, userId: user.id, role: user.role };
-
-    const proposal = await proposeRescheduleAll(ctx, new Date().toISOString());
-    if (proposal.id) {
-      await acceptSchedulePlan(ctx, proposal.id);
-    }
+    await realignDemoScheduleToShifts(prisma, tenant.id);
 
     const workstations = await prisma.workstation.findMany({
       where: { tenantId: tenant.id, active: true },

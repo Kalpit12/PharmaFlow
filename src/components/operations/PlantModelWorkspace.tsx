@@ -65,9 +65,14 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
   return (
     <div className="flex min-w-0 flex-col gap-4">
       <section className="work-surface p-4">
-        <p className="text-sm text-muted-foreground">
-          Sites, departments, workstations, routings, and changeovers — the plant model feeds scheduling and capacity planning.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-sm text-muted-foreground">
+            Sites, departments, workstations, routings, and changeovers — the plant model feeds scheduling and capacity planning.
+          </p>
+          <Button asChild size="sm" variant="secondary">
+            <Link href="/operations?view=roster">Workstation scheduling</Link>
+          </Button>
+        </div>
         <ul className="mt-3 flex flex-wrap gap-2">
           {phaseChecks.map((item) => (
             <li key={item.id}>

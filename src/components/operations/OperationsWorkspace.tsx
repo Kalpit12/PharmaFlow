@@ -13,6 +13,8 @@ import { PlannerIntegrationsWorkspace } from "@/components/operations/PlannerInt
 import { PlannerEngineWorkspace } from "@/components/operations/PlannerEngineWorkspace";
 import { PlantModelWorkspace } from "@/components/operations/PlantModelWorkspace";
 import { ProductionOrdersWorkspace } from "@/components/operations/ProductionOrdersWorkspace";
+import { WorkstationRosterWorkspace } from "@/components/operations/WorkstationRosterWorkspace";
+import type { WorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
 import type { PlannerEngineSnapshot } from "@/lib/server/aps-plan";
 import type { OperationsGanttSnapshot } from "@/lib/server/operations-gantt";
 import type { PlannerDashboardPageData } from "@/lib/server/planner-dashboards";
@@ -25,6 +27,7 @@ const VIEWS: PlannerShellView[] = [
   "gantt",
   "dashboard",
   "plant",
+  "roster",
   "orders",
   "engine",
   "integrations",
@@ -45,6 +48,7 @@ export function OperationsWorkspace({
   gantt,
   integrations,
   dashboard,
+  roster,
   canGlobalRules,
   initialView,
 }: {
@@ -54,6 +58,7 @@ export function OperationsWorkspace({
   gantt: OperationsGanttSnapshot;
   integrations: PlannerIntegrationSnapshot;
   dashboard: PlannerDashboardPageData;
+  roster: WorkstationRosterSnapshot | null;
   canGlobalRules: boolean;
   initialView?: string;
 }) {
@@ -73,6 +78,7 @@ export function OperationsWorkspace({
         <div className={cn("min-w-0 overflow-auto p-4 sm:p-6", view === "dashboard" && "p-4")}>
           {view === "dashboard" ? <PlannerDashboardBuilder initial={dashboard} /> : null}
           {view === "plant" ? <PlantModelWorkspace data={plant} /> : null}
+          {view === "roster" && roster ? <WorkstationRosterWorkspace data={roster} /> : null}
           {view === "orders" ? <ProductionOrdersWorkspace data={orders} /> : null}
           {view === "engine" ? <PlannerEngineWorkspace initial={planner} canGlobalRules={canGlobalRules} /> : null}
           {view === "integrations" ? <PlannerIntegrationsWorkspace data={integrations} /> : null}

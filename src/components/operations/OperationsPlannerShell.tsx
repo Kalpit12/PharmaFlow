@@ -26,6 +26,7 @@ export type PlannerShellView =
   | "gantt"
   | "dashboard"
   | "plant"
+  | "roster"
   | "orders"
   | "engine"
   | "integrations"
@@ -86,7 +87,11 @@ export function OperationsPlannerShell({
       >
         {PRIMARY.map((item) => {
           const Icon = item.icon;
-          const active = item.view ? activeView === item.view : false;
+          const active = item.view
+            ? item.view === "plant"
+              ? activeView === "plant" || activeView === "roster"
+              : activeView === item.view
+            : false;
           const href = item.href ?? (item.view ? hrefForView(item.view, searchParams) : "/operations");
           return (
             <Link

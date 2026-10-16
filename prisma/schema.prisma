@@ -501,6 +501,7 @@ model Tenant {
   plantEmployeeLeaves          PlantEmployeeLeave[]
   plantEmployeeOperationSkills PlantEmployeeOperationSkill[]
   productSubAssemblies         ProductSubAssembly[]
+  workstationRosterAssignments WorkstationRosterAssignment[]
 }
 
 model User {
@@ -1004,6 +1005,7 @@ model PlantEmployee {
   groupLinks   PlantEmployeeGroupMember[]
   leaves       PlantEmployeeLeave[]
   skills       PlantEmployeeOperationSkill[]
+  rosterAssignments WorkstationRosterAssignment[]
 
   @@unique([tenantId, code])
   @@index([tenantId, departmentId])
@@ -1166,6 +1168,7 @@ model Workstation {
   changeoverRules      ChangeoverRule[]
   shifts               WorkstationShift[]
   calendarExceptions   WorkstationCalendarException[]
+  rosterAssignments    WorkstationRosterAssignment[]
   schedulePlanOrders   SchedulePlanOrder[]
   schedulePlanOperations SchedulePlanOperation[]
   toolLinks            ProductionToolWorkstation[]
@@ -1207,6 +1210,25 @@ model WorkstationCalendarException {
 
   @@unique([workstationId, date])
   @@index([tenantId, date])
+}
+
+model WorkstationRosterAssignment {
+  id            String   @id @default(uuid())
+  tenantId      String
+  workstationId String
+  date          DateTime @db.Date
+  startMinute   Int
+  endMinute     Int
+  employeeId    String?
+  shiftLabel    String?
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  workstation Workstation    @relation(fields: [workstationId], references: [id], onDelete: Cascade)
+  employee    PlantEmployee? @relation(fields: [employeeId], references: [id], onDelete: SetNull)
+
+  @@unique([workstationId, date, startMinute])
+  @@index([tenantId, date])
+  @@index([tenantId, workstationId])
 }
 
 model PlanningPolicy {

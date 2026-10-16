@@ -12,6 +12,7 @@ import { getPlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 import { getPlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
 import { getProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
+import { getWorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
 
 export const dynamic = "force-dynamic";
 
@@ -25,13 +26,15 @@ export default async function OperationsPage({
     ganttStart?: string;
     ganttEnd?: string;
     ganttRows?: string;
+    rosterWeek?: string;
   }>;
 }) {
   try {
     const ctx = await getAuthenticatedTenantContext();
     const params = await searchParams;
     const canGlobalRules = can(ctx.role, "production.global_rules");
-    const [plant, orders, planner, gantt, integrations, dashboard] = await Promise.all([
+    const needRoster = params.view === "roster";
+    const [plant, orders, planner, gantt, integrations, dashboard, roster] = await Promise.all([
       getPlantModelSnapshot(ctx),
       getProductionOrdersSnapshot(ctx),
       getPlannerEngineSnapshot(ctx),
@@ -43,6 +46,7 @@ export default async function OperationsPage({
       }),
       getPlannerIntegrationSnapshot(ctx),
       getPlannerDashboardPageData(ctx, params.dashboard),
+      needRoster ? getWorkstationRosterSnapshot(ctx, params.rosterWeek) : Promise.resolve(null),
     ]);
 
     const isGantt = !params.view || params.view === "gantt";
@@ -65,6 +69,7 @@ export default async function OperationsPage({
           gantt={gantt}
           integrations={integrations}
           dashboard={dashboard}
+          roster={roster}
           canGlobalRules={canGlobalRules}
           initialView={params.view}
         />

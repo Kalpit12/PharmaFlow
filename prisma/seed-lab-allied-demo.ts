@@ -6,7 +6,9 @@ import {
   LAB_ALLIED_DEMO_SLUG,
 } from "../src/lib/demo-tenant";
 import { hashPassword } from "../src/lib/server/password";
+import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "../src/lib/operations/plant-time";
 import { buildStandardPlantShiftRows } from "../src/lib/operations/plant-shift-template";
+import { shiftTimeLabel } from "../src/lib/server/workstation-roster";
 
 type GroupDef = { code: string; name: string };
 type MachineDef = {
@@ -229,6 +231,83 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     where: { tenantId: tenant.id, orderKind: "FIRM" },
     data: { plannedStart: null, plannedEnd: null, workstationId: null },
   });
+
+  await ensureLabAlliedEmployees(prisma, tenant.id, dept.id);
+  await syncLabAlliedRoster(prisma, tenant.id);
+}
+
+async function ensureLabAlliedEmployees(prisma: PrismaClient, tenantId: string, departmentId: string) {
+  const operators = [
+    { code: "OP-001", name: "Grace Wanjiku" },
+    { code: "OP-002", name: "James Otieno" },
+    { code: "OP-003", name: "Mary Akinyi" },
+    { code: "OP-004", name: "Peter Kamau" },
+    { code: "OP-005", name: "Sarah Mwangi" },
+    { code: "OP-006", name: "David Ochieng" },
+    { code: "OP-007", name: "Lucy Njeri" },
+    { code: "OP-008", name: "Daniel Mutua" },
+  ];
+  for (const row of operators) {
+    await prisma.plantEmployee.upsert({
+      where: { tenantId_code: { tenantId, code: row.code } },
+      create: { tenantId, departmentId, code: row.code, name: row.name, status: "ACTIVE" },
+      update: { name: row.name, status: "ACTIVE", departmentId },
+    });
+  }
+}
+
+async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
+  const employees = await prisma.plantEmployee.findMany({
+    where: { tenantId, status: "ACTIVE" },
+    orderBy: { code: "asc" },
+  });
+  if (employees.length === 0) return;
+
+  await prisma.workstationRosterAssignment.deleteMany({ where: { tenantId } });
+
+  const workstations = await prisma.workstation.findMany({
+    where: { tenantId, active: true },
+    include: { shifts: true },
+  });
+
+  const anchor = startOfPlantDay(new Date());
+  const rows: Array<{
+    tenantId: string;
+    workstationId: string;
+    date: Date;
+    startMinute: number;
+    endMinute: number;
+    employeeId: string;
+    shiftLabel: string;
+  }> = [];
+
+  for (let offset = 0; offset < 21; offset += 1) {
+    const day = addPlantDays(anchor, offset);
+    const weekday = plantWeekday(day);
+    const ymd = plantYmd(day);
+    const [y, m, d] = ymd.split("-").map(Number);
+    const dateOnly = new Date(Date.UTC(y!, m! - 1, d!));
+
+    for (const ws of workstations) {
+      const dayShifts = ws.shifts.filter((shift) => shift.weekday === weekday);
+      dayShifts.forEach((shift, shiftIndex) => {
+        const employee = employees[(ws.code.charCodeAt(0) + offset + shiftIndex) % employees.length]!;
+        rows.push({
+          tenantId,
+          workstationId: ws.id,
+          date: dateOnly,
+          startMinute: shift.startMinute,
+          endMinute: shift.endMinute,
+          employeeId: employee.id,
+          shiftLabel: shiftTimeLabel(shift.startMinute, shift.endMinute),
+        });
+      });
+    }
+  }
+
+  for (let i = 0; i < rows.length; i += 100) {
+    await prisma.workstationRosterAssignment.createMany({ data: rows.slice(i, i + 100) });
+  }
 }
 
 type RouteStep = {

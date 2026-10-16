@@ -22,6 +22,7 @@
     "db:seed:lab-allied:replan": "tsx scripts/reseed-lab-allied-plan.ts",
     "db:seed:medicrest-shifts": "tsx scripts/reseed-medicrest-shifts.ts",
     "db:seed:medicrest:replan": "tsx scripts/reseed-medicrest-plan.ts",
+    "verify:workstation-roster": "tsx scripts/verify-workstation-roster.ts",
     "verify:operation-precedence": "tsx scripts/verify-operation-precedence.ts",
     "verify:pilot-hardening": "tsx scripts/run-pilot-hardening-verify.mjs",
     "verify:tenant-isolation": "tsx scripts/verify-tenant-isolation.mjs",

@@ -16,7 +16,7 @@ Layout and behaviour reference from a live SkyPlanner install. **Do not copy** c
 
 | Area | Notes |
 | --- | --- |
-| §1–§2, §3 | Default shifts UI + roster week grid not built (shifts seeded via `plant-shift-template.ts`). |
+| §1–§2 | Default shifts CRUD UI + workstation settings modal not built (shifts seeded via `plant-shift-template.ts`). |
 | §5–§6 depth | Timelog accept/faulty pcs, job report planned vs logged ratios — widgets exist; full SkyPlanner tables TBD. |
 | Step durations | Routing minutes vs real line times (tuning). |
 | MediCrest Gantt | Generic machine names; run `db:seed:medicrest:replan` after deploy for slate bars / late KPI. |

@@ -133,15 +133,20 @@ export async function runLabAlliedDemoHeartbeat(
   };
 }
 
+/** Max simulated catchup window (avoids hundreds of replans when no heartbeat was logged yet). */
+const CATCHUP_MAX_LOOKBACK_MS = 48 * 60 * 60_000;
+
 export async function runLabAlliedDemoCatchup(prisma: PrismaClient, ctx: TenantContext): Promise<number> {
   const last = await prisma.planningEvent.findFirst({
     where: { tenantId: ctx.tenantId, summary: { startsWith: HEARTBEAT_SUMMARY_PREFIX } },
     orderBy: { createdAt: "desc" },
   });
-  const start = last?.createdAt ?? new Date(Date.now() - 7 * 86_400_000);
   const end = new Date();
+  const fallbackStart = new Date(end.getTime() - CATCHUP_MAX_LOOKBACK_MS);
+  const start = last?.createdAt ?? fallbackStart;
+  const effectiveStartMs = Math.max(start.getTime(), end.getTime() - CATCHUP_MAX_LOOKBACK_MS);
   let ticks = 0;
-  for (let t = start.getTime() + 30 * 60_000; t <= end.getTime(); t += 30 * 60_000) {
+  for (let t = effectiveStartMs + 30 * 60_000; t <= end.getTime(); t += 30 * 60_000) {
     await runLabAlliedDemoHeartbeat(prisma, ctx, { until: new Date(t) });
     ticks += 1;
   }

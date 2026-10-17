@@ -279,13 +279,19 @@ export async function getOperationsDashboardSnapshot(
     producedQuantity: order.producedQuantity,
   }));
 
+  const pairingEvents = await prisma.productionOperationEvent.findMany({
+    where: { tenantId: ctx.tenantId, recordedAt: { gte: timelogSince }, eventType: { in: ["START", "STOP"] } },
+    orderBy: { recordedAt: "asc" },
+    select: { productionOperationId: true, eventType: true, recordedAt: true },
+  });
+
   const loggedMinutesByOp = new Map<string, number>();
   const startAtByOp = new Map<string, number>();
-  for (const event of events) {
+  for (const event of pairingEvents) {
     const opId = event.productionOperationId;
     if (event.eventType === "START") {
       startAtByOp.set(opId, event.recordedAt.getTime());
-    } else if (event.eventType === "STOP") {
+    } else {
       const startMs = startAtByOp.get(opId);
       if (startMs) {
         const mins = Math.max(0, Math.round((event.recordedAt.getTime() - startMs) / 60_000));
@@ -341,7 +347,7 @@ export async function getOperationsDashboardSnapshot(
     workstationName: row.productionOperation.workstation?.name ?? null,
     quantity: row.quantity,
     reason: row.reason,
-    actorName: row.recordedBy?.name ?? null,
+    actorName: row.recordedBy?.name ?? (row.reason && !row.reason.startsWith("Demo") ? row.reason : null),
   }));
 
   const hasTimelogData = events.some((row) => row.eventType === "START" || row.eventType === "STOP");

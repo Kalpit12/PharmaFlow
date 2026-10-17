@@ -58,6 +58,7 @@
     "verify:operations-report": "node scripts/run-operations-verification-report.mjs",
     "demo:medicrest-day": "dotenv-cli -e .env -- node scripts/lab-allied-day-simulation.mjs",
     "demo:medicrest-ui": "dotenv-cli -e .env -- node scripts/lab-allied-day-walkthrough.mjs",
+    "demo:lab-allied:catchup": "tsx scripts/demo-lab-allied-catchup.ts",
     "demo:lab-allied-day": "npm run demo:medicrest-day",
     "demo:lab-allied-ui": "npm run demo:medicrest-ui"
   },

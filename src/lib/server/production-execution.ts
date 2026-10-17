@@ -304,12 +304,7 @@ export async function getProductionExecutionSnapshot(
     ).values(),
   ].sort((a, b) => a.name.localeCompare(b.name));
   const queue = filtered
-    .filter(
-      (row) =>
-        row.executionState === "IN_PROGRESS" ||
-        row.executionState === "RELEASED" ||
-        row.executionState === "WAITING"
-    )
+    .filter((row) => row.executionState === "RELEASED" || row.executionState === "WAITING")
     .sort((a, b) => {
       const rank = (row: ExecutionOrderRow) =>
         row.executionState === "IN_PROGRESS" ? 0 : row.executionState === "RELEASED" ? 1 : 2;

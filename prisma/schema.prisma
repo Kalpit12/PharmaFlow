@@ -287,6 +287,17 @@ enum PlanningEventType {
   SHOP_FLOOR_TRIGGERED
 }
 
+enum ProductHazardClass {
+  GENERAL
+  BETA_LACTAM
+}
+
+enum WorkstationDedicatedHazard {
+  ANY
+  BETA_LACTAM
+  GENERAL_ONLY
+}
+
 enum IntegrationConnectorType {
   SAP_B1
   MES_SHOP_FLOOR
@@ -680,6 +691,7 @@ model Product {
   dosageForm   String?
   safetyStock  Int           @default(0)
   validatedBatchSize Int?
+  hazardClass    ProductHazardClass @default(GENERAL)
   createdAt    DateTime      @default(now()) @db.Timestamptz(6)
   updatedAt    DateTime      @updatedAt @db.Timestamptz(6)
 
@@ -1154,6 +1166,7 @@ model Workstation {
   cleanStatus         WorkstationCleanStatus @default(CLEAN)
   cleanHoldExpiresAt  DateTime?       @db.Timestamptz(6)
   allowedParallelJobs Int             @default(1)
+  dedicatedTo         WorkstationDedicatedHazard @default(ANY)
   createdAt           DateTime @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 

@@ -19,8 +19,9 @@ function operationUsesElapsedCalendar(operationCode: string, workstationCode: st
 export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId: string): Promise<number> {
   const workstations = await prisma.workstation.findMany({
     where: { tenantId, active: true },
-    select: { id: true, code: true, capacityHoursPerDay: true },
+    select: { id: true, code: true, capacityHoursPerDay: true, allowedParallelJobs: true },
   });
+  const parallelByWsId = new Map(workstations.map((row) => [row.id, Math.max(1, row.allowedParallelJobs)]));
   const shifts = await prisma.workstationShift.findMany({ where: { tenantId } });
   const wsCodeById = new Map(workstations.map((row) => [row.id, row.code]));
   const wsIdByCode = new Map(workstations.map((row) => [row.code, row.id]));
@@ -58,7 +59,28 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
 
   const now = new Date();
   const wsCursor = new Map<string, Date>();
+  const wsLanes = new Map<string, Date[]>();
   let updated = 0;
+
+  function laneReadyAt(workstationId: string, calendar: WorkCalendar, parallel: number): Date {
+    let lanes = wsLanes.get(workstationId);
+    if (!lanes) {
+      const seed = alignToCalendar(now, calendar);
+      lanes = Array.from({ length: parallel }, () => seed);
+      wsLanes.set(workstationId, lanes);
+    }
+    return lanes.reduce((min, value) => (value.getTime() < min.getTime() ? value : min), lanes[0]!);
+  }
+
+  function occupyLane(workstationId: string, end: Date, parallel: number): void {
+    const lanes = wsLanes.get(workstationId);
+    if (!lanes) return;
+    let idx = 0;
+    for (let i = 1; i < lanes.length; i += 1) {
+      if (lanes[i]!.getTime() < lanes[idx]!.getTime()) idx = i;
+    }
+    lanes[idx] = end;
+  }
 
   for (const order of orders) {
     const ops = await prisma.productionOperation.findMany({
@@ -114,10 +136,17 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
           : undefined;
       if (!calendar) continue;
 
-      const machineReady = workstationId ? wsCursor.get(workstationId) : null;
+      const parallel = workstationId ? parallelByWsId.get(workstationId) ?? 1 : 1;
+      const isQuarantine = wsCode === "SFG-QUAR";
       let candidate = orderCursor;
-      if (machineReady && machineReady.getTime() > candidate.getTime()) {
-        candidate = machineReady;
+      if (workstationId && !isQuarantine) {
+        const machineReady =
+          parallel > 1
+            ? laneReadyAt(workstationId, calendar, parallel)
+            : wsCursor.get(workstationId) ?? alignToCalendar(now, calendar);
+        if (machineReady.getTime() > candidate.getTime()) {
+          candidate = machineReady;
+        }
       }
       if (candidate.getTime() < now.getTime()) {
         candidate = alignToCalendar(now, calendar);
@@ -151,7 +180,10 @@ export async function realignDemoScheduleToShifts(prisma: PrismaClient, tenantId
       }
 
       orderCursor = end;
-      if (workstationId) wsCursor.set(workstationId, end);
+      if (workstationId && !isQuarantine) {
+        if (parallel > 1) occupyLane(workstationId, end, parallel);
+        else wsCursor.set(workstationId, end);
+      }
     }
 
     if (firstStart && lastEnd) {

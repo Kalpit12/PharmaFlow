@@ -107,8 +107,8 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
 
   await prisma.planningPolicy.upsert({
     where: { tenantId: tenant.id },
-    create: { tenantId: tenant.id },
-    update: {},
+    create: { tenantId: tenant.id, autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0 },
+    update: { autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0 },
   });
 
   let site = await prisma.plantSite.findFirst({ where: { tenantId: tenant.id, code: "LA-DEMO" } });
@@ -164,7 +164,22 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     });
     wsByCode.set(machine.code, row.id);
     await applyPlantShifts(prisma, tenant.id, row.id, machine.shift);
+    const parallelJobs =
+      machine.code === "SFG-QUAR" ? 999 : machine.code === "QC-PROC" ? 4 : machine.shift === "qc24" ? 4 : 1;
+    await prisma.workstation.update({
+      where: { id: row.id },
+      data: { allowedParallelJobs: parallelJobs },
+    });
   }
+
+  await prisma.workstation.updateMany({
+    where: { tenantId: tenant.id, code: { in: ["BPD-062", "BPD-075"] } },
+    data: { dedicatedTo: "BETA_LACTAM" },
+  });
+  await prisma.workstation.updateMany({
+    where: { tenantId: tenant.id, code: "BPD-061" },
+    data: { dedicatedTo: "GENERAL_ONLY" },
+  });
 
   await prisma.workstation.updateMany({
     where: { tenantId: tenant.id, code: { notIn: MACHINES.map((row) => row.code) } },
@@ -206,9 +221,15 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
         unit: "pack",
         status: "ACTIVE",
         validatedBatchSize: row.validatedBatchSize,
+        hazardClass: row.sku.startsWith("AMOX") ? "BETA_LACTAM" : "GENERAL",
         description: "Demo SKU for scheduling layout only.",
       },
-      update: { name: row.name, validatedBatchSize: row.validatedBatchSize, status: "ACTIVE" },
+      update: {
+        name: row.name,
+        validatedBatchSize: row.validatedBatchSize,
+        status: "ACTIVE",
+        hazardClass: row.sku.startsWith("AMOX") ? "BETA_LACTAM" : "GENERAL",
+      },
     });
   }
 
@@ -507,6 +528,14 @@ const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
 const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
 
+/** Paracetamol: blend on general line; compression step omitted until L&A confirms a non–beta-lactam press. */
+function tabletRoutePara(blendIdx: number, packIdx: number, scale: number): SeedStep[] {
+  return [
+    { code: "BLND", ws: TABLET_BLEND_LINES[blendIdx % TABLET_BLEND_LINES.length]!, mins: Math.round(280 * scale + 80) },
+    { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
+  ];
+}
+
 function tabletRoute(blendIdx: number, packIdx: number, scale: number): SeedStep[] {
   return [
     { code: "BLND", ws: TABLET_BLEND_LINES[blendIdx % TABLET_BLEND_LINES.length]!, mins: Math.round(280 * scale + 80) },
@@ -548,7 +577,7 @@ function buildBulkLabAlliedOrders(paraId: string, amoxId: string, dpsId: string)
     let productId = paraId;
     let steps: SeedStep[];
     if (kind <= 2) {
-      steps = tabletRoute(n, n + 1, scale);
+      steps = tabletRoutePara(n, n + 1, scale);
     } else if (kind <= 4) {
       productId = amoxId;
       steps = capsuleRoute(n, n + 2, scale);
@@ -630,7 +659,6 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       priority: "HIGH",
       steps: [
         { code: "BLND", ws: "BPD-061", mins: 360 },
-        { code: "COMP", ws: "BPD-075", mins: 720 },
         { code: "QUAR", ws: "SFG-QUAR", mins: 480, qc: true },
         { code: "QC", ws: "QC-PROC", mins: 240, qc: true },
         { code: "PACK", ws: "BPD-090", mins: 1350 },
@@ -643,8 +671,7 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       dueDays: 18,
       priority: "NORMAL",
       steps: [
-        { code: "BLND", ws: "BPD-062", mins: 300 },
-        { code: "COMP", ws: "BPD-075", mins: 660 },
+        { code: "BLND", ws: "BPD-061", mins: 300 },
         { code: "QUAR", ws: "SFG-QUAR", mins: 480, qc: true },
         { code: "QC", ws: "QC-PROC", mins: 240, qc: true },
         { code: "PACK", ws: "CPD-010", mins: 840 },

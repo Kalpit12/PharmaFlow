@@ -79,6 +79,10 @@ async function main() {
     await printOrderTimeline(prisma, tenant.id, "ORD011-2026/10");
     await printOrderTimeline(prisma, tenant.id, "ORD012-2026/11");
 
+    const { runLabAlliedDemoHeartbeat } = await import("../src/lib/server/lab-allied-demo-heartbeat");
+    await runLabAlliedDemoHeartbeat(prisma, ctx);
+    console.log("[lab-allied-demo] Post-seed demo heartbeat applied.");
+
     const lateOps = await prisma.productionOperation.count({
       where: {
         tenantId: tenant.id,

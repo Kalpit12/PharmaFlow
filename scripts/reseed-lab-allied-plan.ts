@@ -81,7 +81,10 @@ async function main() {
 
     const { runLabAlliedDemoHeartbeat } = await import("../src/lib/server/lab-allied-demo-heartbeat");
     await runLabAlliedDemoHeartbeat(prisma, ctx);
-    console.log("[lab-allied-demo] Post-seed demo heartbeat applied.");
+    const wipAfterHeartbeat = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
+    console.log(
+      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers).`
+    );
 
     const lateOps = await prisma.productionOperation.count({
       where: {

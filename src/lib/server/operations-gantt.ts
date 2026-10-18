@@ -165,6 +165,7 @@ export type OperationsGanttSnapshot = {
   planningPolicy: PlanningPolicyView;
   capabilities: OperationsView["capabilities"];
   scheduleStatusLine: string;
+  rescheduleNeededBanner: string | null;
   lateSummary: GanttLateSummary;
   rowLayout: "alpha" | "group";
 };
@@ -798,6 +799,27 @@ export async function getOperationsGanttSnapshot(
     scheduleStatusLine = `Proposal V${proposal.version} · ${proposal.status.replace(/_/g, " ").toLowerCase()}`;
   }
 
+  const staleSinceAccept =
+    acceptedPlan?.acceptedAt != null
+      ? await prisma.planningEvent.findFirst({
+          where: {
+            tenantId: ctx.tenantId,
+            createdAt: { gt: acceptedPlan.acceptedAt },
+            OR: [{ summary: { startsWith: "ROSTER_" } }, { summary: { startsWith: "WORKSTATION_" } }],
+          },
+          orderBy: { createdAt: "desc" },
+        })
+      : await prisma.planningEvent.findFirst({
+          where: {
+            tenantId: ctx.tenantId,
+            OR: [{ summary: { startsWith: "ROSTER_" } }, { summary: { startsWith: "WORKSTATION_" } }],
+          },
+          orderBy: { createdAt: "desc" },
+        });
+  const rescheduleNeededBanner = staleSinceAccept
+    ? "Reschedule needed — roster or workstation settings changed since the last accepted plan."
+    : null;
+
   return {
     anchorNow: now.toISOString(),
     window: { start: ganttWindow.start.toISOString(), end: ganttWindow.end.toISOString(), zoom: ganttWindow.zoom },
@@ -821,6 +843,7 @@ export async function getOperationsGanttSnapshot(
       canSchedule: planner.capabilities.canSchedule && access.canProposeSchedule,
     },
     scheduleStatusLine,
+    rescheduleNeededBanner,
     lateSummary,
     rowLayout,
   };

@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import type { ReactNode } from "react";
 import {
   BarChart3,
+  CalendarRange,
   Clock,
   Home,
   LayoutGrid,
@@ -45,6 +46,7 @@ const PRIMARY: Array<{
   { view: "orders", label: "Orders", icon: ShoppingCart },
   { href: "/materials", label: "Warehouse", icon: Warehouse },
   { view: "gantt", label: "Scheduling", icon: Clock },
+  { view: "roster", label: "Roster", icon: CalendarRange },
   { href: "/execution/production", label: "Timer", icon: Package },
   { view: "dashboard", label: "Reporting", icon: BarChart3 },
 ];
@@ -87,11 +89,7 @@ export function OperationsPlannerShell({
       >
         {PRIMARY.map((item) => {
           const Icon = item.icon;
-          const active = item.view
-            ? item.view === "plant"
-              ? activeView === "plant" || activeView === "roster"
-              : activeView === item.view
-            : false;
+          const active = item.view ? activeView === item.view : false;
           const href = item.href ?? (item.view ? hrefForView(item.view, searchParams) : "/operations");
           return (
             <Link

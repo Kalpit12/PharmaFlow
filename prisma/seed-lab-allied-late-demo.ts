@@ -11,7 +11,7 @@ export async function seedLabAlliedLateDemoOrders(prisma: PrismaClient, tenantId
       select: { id: true, plannedEnd: true },
     });
     if (!order?.plannedEnd) continue;
-    const dueDate = new Date(Date.now() + 2 * 86_400_000);
+    const dueDate = new Date(order.plannedEnd.getTime() - 4 * 86_400_000);
     await prisma.productionOrder.update({
       where: { id: order.id },
       data: { dueDate },

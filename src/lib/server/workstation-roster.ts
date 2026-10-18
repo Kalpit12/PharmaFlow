@@ -1,7 +1,10 @@
 import { requirePermission } from "@/lib/auth/authorization";
+import { pickRosterEmployee } from "@/lib/operations/roster-staffing";
+import { rosterBandsForWorkstation } from "@/lib/operations/roster-shift-bands";
 import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "@/lib/operations/plant-time";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
+import { randomUUID } from "crypto";
 
 export type RosterShiftChip = {
   id: string;
@@ -21,6 +24,7 @@ export type RosterWorkstationRow = {
   code: string;
   name: string;
   groupName: string | null;
+  groupCode: string | null;
   maintenanceDates: string[];
 };
 
@@ -43,7 +47,7 @@ export function formatPlantClock(minute: number): string {
 
 export function shiftTimeLabel(startMinute: number, endMinute: number): string {
   if (endMinute > 1_440) {
-    return `${formatPlantClock(startMinute)}–${formatPlantClock(endMinute - 1_440)}`;
+    return `${formatPlantClock(startMinute)}–${formatPlantClock(endMinute - 1_440)} (+1)`;
   }
   return `${formatPlantClock(startMinute)}–${formatPlantClock(endMinute)}`;
 }
@@ -91,11 +95,11 @@ export async function getWorkstationRosterSnapshot(
     };
   });
 
-  const [workstations, assignments, employees, exceptions, leaves] = await Promise.all([
+  const [workstations, assignments, employees, exceptions, leaves, shiftRows] = await Promise.all([
     prisma.workstation.findMany({
       where: { tenantId: ctx.tenantId, active: true },
-      include: { group: { select: { name: true } } },
-      orderBy: [{ group: { code: "asc" } }, { name: "asc" }],
+      include: { group: { select: { name: true, code: true } } },
+      orderBy: { name: "asc" },
     }),
     prisma.workstationRosterAssignment.findMany({
       where: {
@@ -125,7 +129,23 @@ export async function getWorkstationRosterSnapshot(
       },
       select: { employeeId: true, startDate: true, endDate: true },
     }),
+    prisma.workstationShift.findMany({
+      where: { tenantId: ctx.tenantId },
+      select: { workstationId: true, weekday: true, startMinute: true, endMinute: true },
+    }),
   ]);
+
+  const shiftsByWs = new Map<string, Array<{ weekday: number; startMinute: number; endMinute: number }>>();
+  for (const row of shiftRows) {
+    const list = shiftsByWs.get(row.workstationId) ?? [];
+    list.push(row);
+    shiftsByWs.set(row.workstationId, list);
+  }
+
+  const assignmentByKey = new Map<string, (typeof assignments)[number]>();
+  for (const row of assignments) {
+    assignmentByKey.set(`${row.workstationId}|${plantYmd(row.date)}|${row.startMinute}`, row);
+  }
 
   const maintenanceByWs = new Map<string, string[]>();
   for (const row of exceptions) {
@@ -155,25 +175,108 @@ export async function getWorkstationRosterSnapshot(
       code: row.code,
       name: row.name,
       groupName: row.group?.name ?? null,
+      groupCode: row.group?.code ?? null,
       maintenanceDates: maintenanceByWs.get(row.id) ?? [],
     })),
-    assignments: assignments.map((row) => {
-      const dateKey = plantYmd(row.date);
-      return {
-        id: row.id,
-        workstationId: row.workstationId,
-        date: dateKey,
-        startMinute: row.startMinute,
-        endMinute: row.endMinute,
-        timeLabel: shiftTimeLabel(row.startMinute, row.endMinute),
-        shiftLabel: row.shiftLabel,
-        employeeId: row.employeeId,
-        employeeName: row.employee?.name ?? null,
-        employeeOnLeave: row.employeeId ? leaveSet.has(`${row.employeeId}|${dateKey}`) : false,
-      };
-    }),
+    assignments: (() => {
+      const chips: WorkstationRosterSnapshot["assignments"] = [];
+      for (const ws of workstations) {
+        const wsShifts = shiftsByWs.get(ws.id) ?? [];
+        for (const day of days) {
+          const bands = rosterBandsForWorkstation(wsShifts, day.weekday);
+          for (const band of bands) {
+            const key = `${ws.id}|${day.date}|${band.startMinute}`;
+            const stored = assignmentByKey.get(key);
+            const startMinute = stored?.startMinute ?? band.startMinute;
+            const endMinute = stored?.endMinute ?? band.endMinute;
+            const dateKey = day.date;
+            const fallbackEmployee =
+              stored?.employeeId == null
+                ? pickRosterEmployee({
+                    employees,
+                    groupCode: ws.group?.code ?? null,
+                    workstationCode: ws.code,
+                    shiftLabel: band.shiftLabel,
+                    dateYmd: dateKey,
+                    startMinute,
+                  })
+                : null;
+            const employeeId = stored?.employeeId ?? fallbackEmployee?.id ?? null;
+            const employeeName = stored?.employee?.name ?? fallbackEmployee?.name ?? null;
+            chips.push({
+              id: stored?.id ?? `tpl:${key}:${randomUUID()}`,
+              workstationId: ws.id,
+              date: dateKey,
+              startMinute,
+              endMinute,
+              timeLabel: shiftTimeLabel(startMinute, endMinute),
+              shiftLabel: stored?.shiftLabel ?? band.shiftLabel,
+              employeeId,
+              employeeName,
+              employeeOnLeave: employeeId ? leaveSet.has(`${employeeId}|${dateKey}`) : false,
+            });
+          }
+        }
+      }
+      return chips;
+    })(),
     employees,
   };
+}
+
+export async function upsertRosterAssignment(
+  ctx: TenantContext,
+  input: {
+    id?: string;
+    workstationId: string;
+    date: string;
+    startMinute: number;
+    endMinute: number;
+    employeeId?: string | null;
+    shiftLabel?: string | null;
+  }
+): Promise<{ id: string }> {
+  requirePermission(ctx, "production.schedule");
+  const prisma = getPrisma();
+  const date = dateOnlyUtc(startOfPlantDay(new Date(input.date)));
+  const created = await prisma.workstationRosterAssignment.upsert({
+    where: {
+      workstationId_date_startMinute: {
+        workstationId: input.workstationId,
+        date,
+        startMinute: input.startMinute,
+      },
+    },
+    create: {
+      tenantId: ctx.tenantId,
+      workstationId: input.workstationId,
+      date,
+      startMinute: input.startMinute,
+      endMinute: input.endMinute,
+      employeeId: input.employeeId ?? null,
+      shiftLabel: input.shiftLabel ?? null,
+    },
+    update: {
+      endMinute: input.endMinute,
+      employeeId: input.employeeId ?? null,
+      shiftLabel: input.shiftLabel ?? null,
+    },
+  });
+  const { markWorkstationScheduleStale } = await import("@/lib/server/workstation-settings");
+  await markWorkstationScheduleStale(ctx, `ROSTER_UPDATED ${input.workstationId}`);
+  return { id: created.id };
+}
+
+export async function deleteRosterAssignment(ctx: TenantContext, assignmentId: string): Promise<void> {
+  requirePermission(ctx, "production.schedule");
+  const prisma = getPrisma();
+  const row = await prisma.workstationRosterAssignment.findFirst({
+    where: { id: assignmentId, tenantId: ctx.tenantId },
+  });
+  if (!row) throw new ServerError("Assignment not found.", "NOT_FOUND");
+  await prisma.workstationRosterAssignment.delete({ where: { id: row.id } });
+  const { markWorkstationScheduleStale } = await import("@/lib/server/workstation-settings");
+  await markWorkstationScheduleStale(ctx, `ROSTER_DELETED ${row.workstationId}`);
 }
 
 export async function duplicateRosterAssignment(
@@ -183,6 +286,9 @@ export async function duplicateRosterAssignment(
 ): Promise<{ id: string }> {
   requirePermission(ctx, "production.schedule");
   const prisma = getPrisma();
+  if (assignmentId.startsWith("tpl:")) {
+    throw new ServerError("Save the shift before duplicating.", "INTERNAL");
+  }
   const source = await prisma.workstationRosterAssignment.findFirst({
     where: { id: assignmentId, tenantId: ctx.tenantId },
   });
@@ -211,5 +317,7 @@ export async function duplicateRosterAssignment(
       shiftLabel: source.shiftLabel,
     },
   });
+  const { markWorkstationScheduleStale } = await import("@/lib/server/workstation-settings");
+  await markWorkstationScheduleStale(ctx, `ROSTER_DUPLICATED ${source.workstationId}`);
   return { id: created.id };
 }

@@ -8,6 +8,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { GanttOrderBottomPanel } from "@/components/operations/GanttOrderBottomPanel";
 import { GanttPlannerToolbar } from "@/components/operations/GanttPlannerToolbar";
 import { GanttReschedulePill } from "@/components/operations/GanttReschedulePill";
+import { WorkstationSettingsDialog } from "@/components/operations/WorkstationSettingsDialog";
 import { PlannerGlobalRulesDrawer } from "@/components/operations/PlannerGlobalRulesDrawer";
 import { ganttBarFillClass, ganttBarSelectedClass, type GanttBarTone } from "@/lib/operations/planner-gantt-colors";
 import {
@@ -85,6 +86,7 @@ export function OperationsGanttWorkspace({
   const [contextMenu, setContextMenu] = useState<ContextMenuState>(null);
   const [pending, startTransition] = useTransition();
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [settingsWorkstationId, setSettingsWorkstationId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [workstationFilter, setWorkstationFilter] = useState<string | "all">("all");
   const [showCapacity, setShowCapacity] = useState(false);
@@ -565,6 +567,12 @@ export function OperationsGanttWorkspace({
         rowLayout={data.rowLayout}
       />
 
+      {data.rescheduleNeededBanner ? (
+        <p className="shrink-0 border-b border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs text-amber-900 dark:text-amber-100">
+          {data.rescheduleNeededBanner}
+        </p>
+      ) : null}
+
       <PlannerGlobalRulesDrawer
         open={rulesOpen}
         onOpenChange={setRulesOpen}
@@ -686,13 +694,15 @@ export function OperationsGanttWorkspace({
                             className="mb-1 grid bg-background"
                             style={{ gridTemplateColumns: `${LABEL_WIDTH}px 1fr` }}
                           >
-                            <div
-                              className="flex items-center border-r border-border/70 px-2 text-xs font-medium"
+                            <button
+                              type="button"
+                              className="flex items-center border-r border-border/70 px-2 text-left text-xs font-medium hover:bg-muted/40"
                               style={{ height: rowHeight }}
                               title={ws.name}
+                              onClick={() => setSettingsWorkstationId(wsId)}
                             >
                               <span className="line-clamp-2 text-[11px] leading-tight">{ws.name}</span>
-                            </div>
+                            </button>
                             <div className="flex flex-col">
                               <div
                                 ref={(node) => {
@@ -866,6 +876,15 @@ export function OperationsGanttWorkspace({
           </Link>
         </div>
       ) : null}
+
+      <WorkstationSettingsDialog
+        workstationId={settingsWorkstationId}
+        open={settingsWorkstationId != null}
+        onOpenChange={(open) => {
+          if (!open) setSettingsWorkstationId(null);
+        }}
+        onSaved={() => router.refresh()}
+      />
     </div>
   );
 }

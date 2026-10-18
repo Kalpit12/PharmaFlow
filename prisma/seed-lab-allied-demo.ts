@@ -11,7 +11,9 @@ import {
   PLANT_CAPACITY_HOURS_PER_DAY,
   buildStandardPlantShiftRows,
 } from "../src/lib/operations/plant-shift-template";
-import { shiftTimeLabel } from "../src/lib/server/workstation-roster";
+import { pickRosterEmployee } from "../src/lib/operations/roster-staffing";
+import { rosterBandsForWorkstation } from "../src/lib/operations/roster-shift-bands";
+import { mondayOfPlantWeek, shiftTimeLabel } from "../src/lib/server/workstation-roster";
 
 type GroupDef = { code: string; name: string };
 type MachineDef = {
@@ -292,10 +294,10 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
 
   const workstations = await prisma.workstation.findMany({
     where: { tenantId, active: true },
-    include: { shifts: true },
+    include: { shifts: true, group: { select: { code: true } } },
   });
 
-  const anchor = startOfPlantDay(new Date());
+  const weekStart = mondayOfPlantWeek(startOfPlantDay(new Date()));
   const rows: Array<{
     tenantId: string;
     workstationId: string;
@@ -306,27 +308,35 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
     shiftLabel: string;
   }> = [];
 
-  for (let offset = 0; offset < 21; offset += 1) {
-    const day = addPlantDays(anchor, offset);
+  for (let offset = -7 * 12; offset <= 7 * 16; offset += 1) {
+    const day = addPlantDays(weekStart, offset);
     const weekday = plantWeekday(day);
     const ymd = plantYmd(day);
     const [y, m, d] = ymd.split("-").map(Number);
     const dateOnly = new Date(Date.UTC(y!, m! - 1, d!));
 
     for (const ws of workstations) {
-      const dayShifts = ws.shifts.filter((shift) => shift.weekday === weekday);
-      dayShifts.forEach((shift, shiftIndex) => {
-        const employee = employees[(ws.code.charCodeAt(0) + offset + shiftIndex) % employees.length]!;
+      const bands = rosterBandsForWorkstation(ws.shifts, weekday);
+      for (const band of bands) {
+        const employee = pickRosterEmployee({
+          employees,
+          groupCode: ws.group?.code ?? null,
+          workstationCode: ws.code,
+          shiftLabel: band.shiftLabel,
+          dateYmd: ymd,
+          startMinute: band.startMinute,
+        });
+        if (!employee) continue;
         rows.push({
           tenantId,
           workstationId: ws.id,
           date: dateOnly,
-          startMinute: shift.startMinute,
-          endMinute: shift.endMinute,
+          startMinute: band.startMinute,
+          endMinute: band.endMinute,
           employeeId: employee.id,
-          shiftLabel: shiftTimeLabel(shift.startMinute, shift.endMinute),
+          shiftLabel: band.shiftLabel,
         });
-      });
+      }
     }
   }
 
@@ -529,9 +539,9 @@ const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
 
 /** Paracetamol: blend on general line; compression step omitted until L&A confirms a non–beta-lactam press. */
-function tabletRoutePara(blendIdx: number, packIdx: number, scale: number): SeedStep[] {
+function tabletRoutePara(_blendIdx: number, packIdx: number, scale: number): SeedStep[] {
   return [
-    { code: "BLND", ws: TABLET_BLEND_LINES[blendIdx % TABLET_BLEND_LINES.length]!, mins: Math.round(280 * scale + 80) },
+    { code: "BLND", ws: "BPD-061", mins: Math.round(280 * scale + 80) },
     { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
   ];
 }

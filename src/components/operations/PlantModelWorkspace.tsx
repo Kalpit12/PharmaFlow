@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { WORKSTATION_CSV_TEMPLATE } from "@/lib/operations/workstation-csv";
 import { RoutingDagPreview } from "@/components/operations/RoutingDagPreview";
+import { WorkstationSettingsDialog } from "@/components/operations/WorkstationSettingsDialog";
 import type { PlantModelSnapshot } from "@/lib/server/plant-model";
 import { cn } from "@/lib/utils";
 
@@ -22,6 +23,7 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
   const [csv, setCsv] = useState(WORKSTATION_CSV_TEMPLATE);
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [settingsWorkstationId, setSettingsWorkstationId] = useState<string | null>(null);
 
   const phaseChecks = useMemo(
     () => [
@@ -162,6 +164,7 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
             ])}
             empty="No workstations in this tenant."
             rowMeta={data.workstations.map((row) => ({ inactive: !row.active, qual: row.qualificationStatus }))}
+            onRowClick={(index) => setSettingsWorkstationId(data.workstations[index]?.id ?? null)}
           />
         </TabsContent>
 
@@ -276,6 +279,14 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
           Shop floor execution
         </Link>
       </p>
+
+      <WorkstationSettingsDialog
+        workstationId={settingsWorkstationId}
+        open={settingsWorkstationId != null}
+        onOpenChange={(open) => {
+          if (!open) setSettingsWorkstationId(null);
+        }}
+      />
     </div>
   );
 }
@@ -286,12 +297,14 @@ function DataTable({
   rows,
   empty,
   rowMeta,
+  onRowClick,
 }: {
   title: string;
   columns: string[];
   rows: string[][];
   empty: string;
   rowMeta?: Array<{ inactive?: boolean; qual?: string }>;
+  onRowClick?: (index: number) => void;
 }) {
   return (
     <section className="min-w-0 overflow-hidden work-surface">
@@ -316,7 +329,12 @@ function DataTable({
               {rows.map((cells, index) => (
                 <tr
                   key={`${cells[0]}-${index}`}
-                  className={cn("border-t border-border", rowMeta?.[index]?.inactive ? "opacity-50" : null)}
+                  className={cn(
+                    "border-t border-border",
+                    rowMeta?.[index]?.inactive ? "opacity-50" : null,
+                    onRowClick ? "cursor-pointer hover:bg-muted/40" : null
+                  )}
+                  onClick={onRowClick ? () => onRowClick(index) : undefined}
                 >
                   {cells.map((cell, cellIndex) => (
                     <td key={`${index}-${cellIndex}`} className="px-4 py-2 align-middle">

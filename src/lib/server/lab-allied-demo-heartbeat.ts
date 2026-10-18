@@ -8,6 +8,7 @@ import { realignDemoScheduleToShifts } from "../../../prisma/realign-demo-schedu
 import { reconcileLabAlliedDueDatesWithPlanner } from "../../../prisma/reconcile-lab-allied-due-dates-with-planner";
 import { syncLabAlliedDueDatesAfterSchedule } from "../../../prisma/sync-lab-allied-due-dates";
 import { syncLabAlliedOrderWorkstations } from "../../../prisma/sync-lab-allied-order-workstations";
+import { applyLabAlliedSteadyStateWip } from "../../../prisma/apply-lab-allied-steady-state-wip";
 
 const ELAPSED_CODES = new Set(["QUAR", "QC", "QC-HOLD"]);
 const HEARTBEAT_SUMMARY_PREFIX = "DEMO_HEARTBEAT ";
@@ -124,6 +125,14 @@ export async function runLabAlliedDemoHeartbeat(
       actorId: ctx.userId,
     },
   });
+
+  const tenant = await prisma.tenant.findUnique({ where: { id: ctx.tenantId }, select: { slug: true } });
+  if (tenant?.slug === LAB_ALLIED_DEMO_SLUG) {
+    const openAfter = await openRunningOperationIds(prisma, ctx.tenantId);
+    if (openAfter.size < 8) {
+      await applyLabAlliedSteadyStateWip(prisma, ctx.tenantId, ctx.userId);
+    }
+  }
 
   return {
     tenantId: ctx.tenantId,

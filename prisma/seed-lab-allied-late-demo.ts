@@ -14,11 +14,12 @@ export async function seedLabAlliedLateDemoOrders(prisma: PrismaClient, tenantId
         operations: { select: { plannedEnd: true }, where: { plannedEnd: { not: null } } },
       },
     });
-    const opEnds = order?.operations.map((row) => row.plannedEnd).filter(Boolean) as Date[];
+    if (!order) continue;
+    const opEnds = order.operations.map((row) => row.plannedEnd).filter(Boolean) as Date[];
     const achievableEnd =
       opEnds.length > 0
         ? opEnds.reduce((latest, row) => (row.getTime() > latest.getTime() ? row : latest))
-        : order?.plannedEnd;
+        : order.plannedEnd;
     if (!achievableEnd) continue;
     const dueDate = new Date(achievableEnd.getTime() - 7 * 86_400_000);
     await prisma.productionOrder.update({

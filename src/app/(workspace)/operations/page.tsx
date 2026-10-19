@@ -17,6 +17,7 @@ import { getWorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
 import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 120;
 
 export default async function OperationsPage({
   searchParams,

@@ -178,6 +178,7 @@ export async function maybeRunStaleDemoCatchup(
   });
   const ageMs = Date.now() - (last?.createdAt.getTime() ?? 0);
   if (ageMs < staleMinutes * 60_000) return false;
-  await runLabAlliedDemoCatchup(prisma, ctx);
+  // One tick only — full catchup belongs in cron/CLI (would timeout serverless page loads).
+  await runLabAlliedDemoHeartbeat(prisma, ctx);
   return true;
 }

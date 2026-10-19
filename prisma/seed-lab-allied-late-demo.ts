@@ -8,13 +8,22 @@ export async function seedLabAlliedLateDemoOrders(prisma: PrismaClient, tenantId
   for (const orderNumber of LATE_DEMO_ORDERS) {
     const order = await prisma.productionOrder.findFirst({
       where: { tenantId, orderNumber, orderKind: "FIRM" },
-      select: { id: true, plannedEnd: true },
+      select: {
+        id: true,
+        plannedEnd: true,
+        operations: { select: { plannedEnd: true }, where: { plannedEnd: { not: null } } },
+      },
     });
-    if (!order?.plannedEnd) continue;
-    const dueDate = new Date(order.plannedEnd.getTime() - 4 * 86_400_000);
+    const opEnds = order?.operations.map((row) => row.plannedEnd).filter(Boolean) as Date[];
+    const achievableEnd =
+      opEnds.length > 0
+        ? opEnds.reduce((latest, row) => (row.getTime() > latest.getTime() ? row : latest))
+        : order?.plannedEnd;
+    if (!achievableEnd) continue;
+    const dueDate = new Date(achievableEnd.getTime() - 7 * 86_400_000);
     await prisma.productionOrder.update({
       where: { id: order.id },
-      data: { dueDate },
+      data: { dueDate, plannedEnd: achievableEnd },
     });
     updated += 1;
   }

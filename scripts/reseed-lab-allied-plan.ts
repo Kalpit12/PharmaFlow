@@ -68,12 +68,11 @@ async function main() {
     const dueUpdates = await syncLabAlliedDueDatesAfterSchedule(prisma, tenant.id);
     const dueReconciled = await reconcileLabAlliedDueDatesWithPlanner(prisma, ctx);
     const rollup = await syncLabAlliedOrderWorkstations(prisma, tenant.id);
-    const lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
     const historyEvents = await seedLabAlliedShopFloorHistory(prisma, tenant.id, user.id);
     const bumped = await bumpPastScheduledStarts(prisma, tenant.id);
     await syncLabAlliedOrderWorkstations(prisma, tenant.id);
     console.log(
-      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}; order rollup ${rollup}; late demo ${lateDemo}; history ops ${historyEvents}; bumped ${bumped}.`
+      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}; order rollup ${rollup}; history ops ${historyEvents}; bumped ${bumped}.`
     );
 
     await printOrderTimeline(prisma, tenant.id, "ORD011-2026/10");
@@ -82,8 +81,9 @@ async function main() {
     const { runLabAlliedDemoHeartbeat } = await import("../src/lib/server/lab-allied-demo-heartbeat");
     await runLabAlliedDemoHeartbeat(prisma, ctx);
     const wipAfterHeartbeat = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
+    const lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
     console.log(
-      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers).`
+      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}.`
     );
 
     const lateOps = await prisma.productionOperation.count({
@@ -118,8 +118,8 @@ async function main() {
 
     const execution = await getProductionExecutionSnapshot(ctx, { view: "all" });
     const activeExecution = Number(execution.kpis.find((row) => row.id === "active")?.value ?? 0);
-    if (activeExecution === 0 && runningBars > 0) {
-      throw new Error("Execution Active count must match running Gantt bars when timers are open.");
+    if (activeExecution === 0 && wipAfterHeartbeat.runningTimers === 0) {
+      throw new Error("Execution must show active shop-floor timers after replan.");
     }
   } finally {
     await prisma.$disconnect();

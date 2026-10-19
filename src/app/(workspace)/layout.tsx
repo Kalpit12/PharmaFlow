@@ -3,10 +3,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { AppShell } from "@/components/layout/AppShell";
+import { workspaceLoginPath } from "@/lib/auth/login-redirect";
 import { DEMO_TENANT_SLUG_COOKIE, isSwitchableDemoTenantSlug } from "@/lib/demo-workspaces";
 import { demoTenant } from "@/lib/tenant";
 import { ServerError } from "@/lib/server/errors";
 import { getAuthenticatedUser } from "@/lib/server/tenant-context";
+import { headers } from "next/headers";
 
 export default async function WorkspaceLayout({ children }: { children: ReactNode }) {
   let user;
@@ -14,7 +16,8 @@ export default async function WorkspaceLayout({ children }: { children: ReactNod
     user = await getAuthenticatedUser();
   } catch (error) {
     if (error instanceof ServerError && (error.code === "UNAUTHORIZED" || error.code === "FORBIDDEN")) {
-      redirect("/login?callbackUrl=%2Fdaily-review");
+      const returnPath = (await headers()).get("x-workspace-return") ?? "/daily-review";
+      redirect(workspaceLoginPath(returnPath));
     }
     throw error;
   }

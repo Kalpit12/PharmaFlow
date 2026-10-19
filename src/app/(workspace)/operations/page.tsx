@@ -11,8 +11,10 @@ import { getOperationsGanttSnapshot } from "@/lib/server/operations-gantt";
 import { getPlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 import { getPlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
 import { getProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
+import { workspaceLoginPath } from "@/lib/auth/login-redirect";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 import { getWorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
+import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
 
@@ -76,7 +78,10 @@ export default async function OperationsPage({
       </WorkspacePage>
     );
   } catch (error) {
-    if (error instanceof ServerError && error.code === "UNAUTHORIZED") redirect("/login");
+    if (error instanceof ServerError && error.code === "UNAUTHORIZED") {
+      const returnPath = (await headers()).get("x-workspace-return") ?? "/operations";
+      redirect(workspaceLoginPath(returnPath));
+    }
     console.error("Operations workspace failed", error);
     return (
       <WorkspacePage width="full">

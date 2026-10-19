@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 
 import { LAB_ALLIED_DEMO_SLUG } from "@/lib/demo-tenant";
 import { getPrisma } from "@/lib/server/db";
-import { runLabAlliedDemoHeartbeat } from "@/lib/server/lab-allied-demo-heartbeat";
+import { runLabAlliedDemoCatchup } from "@/lib/server/lab-allied-demo-heartbeat";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -28,11 +28,8 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "No active demo user" }, { status: 500 });
   }
 
-  const result = await runLabAlliedDemoHeartbeat(prisma, {
-    tenantId: tenant.id,
-    userId: user.id,
-    role: user.role,
-  });
+  const ctx = { tenantId: tenant.id, userId: user.id, role: user.role };
+  const ticks = await runLabAlliedDemoCatchup(prisma, ctx);
 
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({ ok: true, ticks, tenantId: tenant.id });
 }

@@ -1,7 +1,7 @@
 import { toneForOperation } from "@/lib/operations/planner-gantt-colors";
 import { assignParallelSubLanes } from "@/lib/operations/gantt-parallel-lanes";
 import { jobStatusIsLate, jobStatusIsScheduleSlip, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
-import { formatRoutingIssueDetail } from "@/lib/operations/schedule-issue-format";
+import { formatRoutingIssueDetail, formatSlippedStartDetail } from "@/lib/operations/schedule-issue-format";
 import {
   capacityStateFromLoad,
   scheduledOperationMinutesInWindow,
@@ -285,11 +285,7 @@ function buildOrderTableRows(
         rows.push({
           ...base,
           tab: "error",
-          reason: formatRoutingIssueDetail(
-            "SLIPPED_START",
-            `Planned start ${new Date(op.plannedStart).toISOString()} is before now; reschedule or start the job.`,
-            now
-          ),
+          reason: formatSlippedStartDetail(new Date(op.plannedStart), now),
         });
       } else if (jobStatusIsLate(status)) {
         rows.push({ ...base, tab: "late", reason: null });
@@ -585,12 +581,8 @@ export async function getOperationsGanttSnapshot(
       orderPlannedEnd: orderPlannedEnd.get(bar.orderId) ?? null,
       now,
     });
-    if (jobStatusIsScheduleSlip(status)) {
-      bar.warningReason = formatRoutingIssueDetail(
-        "SLIPPED_START",
-        `Planned start ${bar.start} is before now; reschedule or start the job.`,
-        now
-      );
+    if (jobStatusIsScheduleSlip(status) && bar.start) {
+      bar.warningReason = formatSlippedStartDetail(new Date(bar.start), now);
     }
   }
 

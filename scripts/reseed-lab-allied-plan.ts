@@ -83,8 +83,9 @@ async function main() {
     await runLabAlliedDemoHeartbeat(prisma, ctx);
     const wipAfterHeartbeat = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
     const lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
+    const bumpedAfterLate = await bumpPastScheduledStarts(prisma, tenant.id);
     console.log(
-      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}.`
+      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}; bumped ${bumpedAfterLate}.`
     );
 
     const lateOps = await prisma.productionOperation.count({
@@ -105,7 +106,8 @@ async function main() {
       `[summary] Gantt 36h — late rows: ${lateRows.length}, error rows: ${errorRows.length}, running bars: ${runningBars}, late orders: ${gantt.lateSummary.lateOrders}`
     );
     const blockingErrors = errorRows.filter(
-      (row) => !row.reason?.includes("Planned start") && !row.reason?.includes("Finite schedule finishes")
+      (row) =>
+        !row.reason?.startsWith("Not started:") && !row.reason?.startsWith("Schedule finishes")
     );
     if (blockingErrors.length > 0) {
       for (const row of blockingErrors.slice(0, 25)) {

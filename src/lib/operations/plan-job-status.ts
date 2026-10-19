@@ -1,3 +1,5 @@
+import { SLIPPED_START_GRACE_MS } from "@/lib/operations/schedule-feasibility";
+
 /** Canonical planner job status — use for Gantt, dashboard, engine, integrations. */
 
 export type JobPlanStatus =
@@ -35,7 +37,7 @@ export function resolveJobPlanStatus(input: {
 
   if (input.plannedStart) {
     const startMs = new Date(input.plannedStart).getTime();
-    if (startMs < now.getTime()) return "LATE";
+    if (startMs + SLIPPED_START_GRACE_MS < now.getTime()) return "LATE";
   }
 
   if (!input.plannedStart || !input.plannedEnd) return "UNSCHEDULED";

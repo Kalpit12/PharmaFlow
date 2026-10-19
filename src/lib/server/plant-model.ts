@@ -1,9 +1,15 @@
 import { requirePermission } from "@/lib/auth/authorization";
 import { buildRoutingDagEdges, type RoutingDagEdge, type RoutingDagNode } from "@/lib/operations/routing-dag-layout";
 import {
+  crewLabelForCode,
+  skillGroupLabelForCode,
+} from "@/lib/operations/lab-allied-roster-staffing";
+import {
   PLANT_CAPACITY_HOURS_PER_DAY,
   PLANT_LOGICAL_SHIFTS_PER_WEEK,
 } from "@/lib/operations/plant-shift-template";
+import { addPlantDays, startOfPlantDay } from "@/lib/operations/plant-time";
+import { mondayOfPlantWeek } from "@/lib/server/workstation-roster";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
 
@@ -67,6 +73,9 @@ export type PlantModelSnapshot = {
     status: string;
     groupCodes: string[];
     skillCodes: string[];
+    skillGroup: string | null;
+    crewLabel: string | null;
+    hoursThisWeek: number | null;
   }>;
   subAssemblies: Array<{
     id: string;
@@ -184,6 +193,28 @@ export async function getPlantModelSnapshot(ctx: TenantContext): Promise<PlantMo
   const wsCountByGroup = new Map<string, number>();
   for (const row of workstations) {
     if (row.groupId) wsCountByGroup.set(row.groupId, (wsCountByGroup.get(row.groupId) ?? 0) + 1);
+  }
+
+  const weekStart = mondayOfPlantWeek(startOfPlantDay(new Date()));
+  const weekEnd = addPlantDays(weekStart, 6);
+  const weekStartDate = startOfPlantDay(weekStart);
+  const weekEndDate = startOfPlantDay(weekEnd);
+  const rosterWeek = await prisma.workstationRosterAssignment.findMany({
+    where: {
+      tenantId: ctx.tenantId,
+      date: { gte: weekStartDate, lte: weekEndDate },
+      employeeId: { not: null },
+    },
+    select: { employeeId: true, startMinute: true, endMinute: true },
+  });
+  const hoursByEmployee = new Map<string, number>();
+  for (const row of rosterWeek) {
+    if (!row.employeeId) continue;
+    let minutes = row.endMinute - row.startMinute;
+    if (minutes < 0) minutes += 1_440;
+    if (row.endMinute > 1_440) minutes = row.endMinute - row.startMinute;
+    const hours = minutes / 60;
+    hoursByEmployee.set(row.employeeId, (hoursByEmployee.get(row.employeeId) ?? 0) + hours);
   }
 
   const routingGraphs: PlantRoutingGraph[] = [];
@@ -304,6 +335,9 @@ export async function getPlantModelSnapshot(ctx: TenantContext): Promise<PlantMo
       status: row.status,
       groupCodes: row.groupLinks.map((link) => link.group.code),
       skillCodes: row.skills.map((skill) => skill.operationCode),
+      skillGroup: skillGroupLabelForCode(row.code),
+      crewLabel: crewLabelForCode(row.code),
+      hoursThisWeek: hoursByEmployee.get(row.id) ?? 0,
     })),
     subAssemblies: subAssemblies.map((row) => ({
       id: row.id,

@@ -196,14 +196,14 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
         <TabsContent value="people" className="mt-3">
           <DataTable
             title="Plant personnel"
-            columns={["Code", "Name", "Dept", "Status", "Groups", "Skills"]}
+            columns={["Code", "Name", "Skill group", "Crew", "Hours this week", "Status"]}
             rows={data.employees.map((row) => [
               row.code,
               row.name,
-              row.departmentCode ?? "—",
+              row.skillGroup ?? "—",
+              row.crewLabel ?? "—",
+              row.hoursThisWeek != null ? `${row.hoursThisWeek.toFixed(1)}h` : "—",
               row.status,
-              row.groupCodes.join(", ") || "—",
-              row.skillCodes.join(", ") || "—",
             ])}
             empty="No employees. Import personnel CSV (Operations → Data import) or run demo seed."
           />
@@ -269,16 +269,6 @@ export function PlantModelWorkspace({ data }: { data: PlantModelSnapshot }) {
         </TabsContent>
       </Tabs>
 
-      <p className="text-xs text-muted-foreground">
-        Design reference:{" "}
-        <Link href="/reports?view=operations" className="text-primary hover:underline">
-          Operations report
-        </Link>
-        {" · "}
-        <Link href="/execution/production" className="text-primary hover:underline">
-          Shop floor execution
-        </Link>
-      </p>
 
       <WorkstationSettingsDialog
         workstationId={settingsWorkstationId}

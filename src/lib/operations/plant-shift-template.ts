@@ -33,3 +33,8 @@ export const PLANT_LOGICAL_SHIFTS_PER_WEEK = 11;
 
 /** Typical Mon–Fri capacity: 9.5h day + 12h night = 21.5h per calendar day (Lab & Allied layout). */
 export const PLANT_CAPACITY_HOURS_PER_DAY = 21.5;
+
+export function displayCapacityHoursPerDay(workstationCode: string): number {
+  if (workstationCode === "SFG-QUAR" || workstationCode === "QC-PROC") return 24;
+  return PLANT_CAPACITY_HOURS_PER_DAY;
+}

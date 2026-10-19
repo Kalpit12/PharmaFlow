@@ -142,7 +142,14 @@ export function WorkstationRosterWorkspace({ data }: { data: WorkstationRosterSn
       <section className="work-surface flex flex-wrap items-center justify-between gap-3 p-4">
         <div>
           <p className="text-sm font-medium">Workstation scheduling</p>
-          <p className="text-xs text-muted-foreground">{data.weekLabel} · EAT · Ctrl+drag a chip to duplicate to another day</p>
+          <p className="text-xs text-muted-foreground">
+            {data.weekLabel} · EAT · Ctrl+drag a chip to duplicate to another day
+            {data.warningCount > 0 ? (
+              <span className="ml-2 font-medium text-destructive">
+                · {data.warningCount} staffing warning{data.warningCount === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant={groupByGroup ? "secondary" : "outline"} onClick={() => setGroupByGroup((v) => !v)}>
@@ -244,9 +251,14 @@ export function WorkstationRosterWorkspace({ data }: { data: WorkstationRosterSn
                                   chip.endMinute > 1_440 || chip.startMinute >= 19 * 60
                                     ? "border-indigo-800/40 bg-indigo-950/80 text-indigo-50"
                                     : "border-sky-800/30 bg-sky-900/70 text-sky-50",
-                                  chip.employeeOnLeave && "opacity-60 line-through decoration-red-400"
+                                  chip.employeeOnLeave && "opacity-60 line-through decoration-red-400",
+                                  chip.warnings.length > 0 && "ring-2 ring-destructive border-destructive"
                                 )}
-                                title={`${chip.timeLabel}${chip.shiftLabel ? ` · ${chip.shiftLabel}` : ""}`}
+                                title={
+                                  chip.warnings.length > 0
+                                    ? chip.warnings.join(" ")
+                                    : `${chip.timeLabel}${chip.shiftLabel ? ` · ${chip.shiftLabel}` : ""}`
+                                }
                               >
                                 <span className="block font-semibold">{chip.timeLabel}</span>
                                 <span className="block truncate">{chip.employeeName ?? "Unassigned"}</span>

@@ -1167,6 +1167,7 @@ model Workstation {
   cleanHoldExpiresAt  DateTime?       @db.Timestamptz(6)
   allowedParallelJobs Int             @default(1)
   dedicatedTo         WorkstationDedicatedHazard @default(ANY)
+  displayColor        String?
   createdAt           DateTime @default(now()) @db.Timestamptz(6)
   updatedAt           DateTime @updatedAt @db.Timestamptz(6)
 

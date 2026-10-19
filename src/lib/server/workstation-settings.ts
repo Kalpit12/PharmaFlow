@@ -1,5 +1,5 @@
 import { requirePermission } from "@/lib/auth/authorization";
-import { buildStandardPlantShiftRows } from "@/lib/operations/plant-shift-template";
+import { buildStandardPlantShiftRows, displayCapacityHoursPerDay } from "@/lib/operations/plant-shift-template";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 
@@ -40,12 +40,24 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
   });
   if (!row) throw new ServerError("Workstation not found.", "NOT_FOUND");
 
-  const auditLogs = await prisma.auditLog.findMany({
+  const [groups, sites, auditLogs] = await Promise.all([
+    prisma.workstationGroup.findMany({
+      where: { tenantId: ctx.tenantId, code: { startsWith: "LA-" } },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.plantSite.findMany({
+      where: { tenantId: ctx.tenantId },
+      orderBy: { code: "asc" },
+      select: { id: true, code: true, name: true },
+    }),
+    prisma.auditLog.findMany({
     where: { tenantId: ctx.tenantId, entityType: "Workstation", entityId: workstationId },
     orderBy: { createdAt: "desc" },
     take: 40,
-    include: { actor: { select: { name: true } } },
-  });
+      include: { actor: { select: { name: true } } },
+    }),
+  ]);
 
   const routingSteps = row.routingResources.map((link) => ({
     id: link.id,
@@ -67,7 +79,11 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
     allowedParallelJobs: row.allowedParallelJobs,
     efficiencyCoefficient: Number(row.efficiencyCoefficient),
     dedicatedTo: row.dedicatedTo,
-    capacityHoursPerDay: row.capacityHoursPerDay,
+    displayColor: row.displayColor,
+    capacityHoursPerDay: displayCapacityHoursPerDay(row.code),
+    efficiencyPercent: Math.round(Number(row.efficiencyCoefficient) * 100),
+    groups,
+    sites,
     qualificationStatus: row.qualificationStatus,
     calibrationDueDate: row.calibrationDueDate?.toISOString().slice(0, 10) ?? null,
     cleanStatus: row.cleanStatus,
@@ -91,11 +107,16 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
 }
 
 export type WorkstationSettingsPatch = {
+  code?: string;
   name?: string;
   active?: boolean;
   allowedParallelJobs?: number;
   efficiencyCoefficient?: number;
+  efficiencyPercent?: number;
   dedicatedTo?: "ANY" | "GENERAL_ONLY" | "BETA_LACTAM";
+  groupId?: string | null;
+  siteId?: string | null;
+  displayColor?: string | null;
   qualificationStatus?: "QUALIFIED" | "DUE" | "EXPIRED";
   calibrationDueDate?: string | null;
   cleanStatus?: "CLEAN" | "DIRTY";
@@ -114,14 +135,23 @@ export async function patchWorkstationSettings(
   });
   if (!existing) throw new ServerError("Workstation not found.", "NOT_FOUND");
 
+  const efficiencyCoefficient =
+    patch.efficiencyPercent != null
+      ? patch.efficiencyPercent / 100
+      : patch.efficiencyCoefficient;
+
   await prisma.workstation.update({
     where: { id: workstationId },
     data: {
+      code: patch.code,
       name: patch.name,
       active: patch.active,
       allowedParallelJobs: patch.allowedParallelJobs,
-      efficiencyCoefficient: patch.efficiencyCoefficient,
+      efficiencyCoefficient,
       dedicatedTo: patch.dedicatedTo,
+      groupId: patch.groupId,
+      siteId: patch.siteId,
+      displayColor: patch.displayColor,
       qualificationStatus: patch.qualificationStatus,
       calibrationDueDate: patch.calibrationDueDate ? new Date(patch.calibrationDueDate) : undefined,
       cleanStatus: patch.cleanStatus,

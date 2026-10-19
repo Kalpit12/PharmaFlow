@@ -11,9 +11,14 @@ import {
   PLANT_CAPACITY_HOURS_PER_DAY,
   buildStandardPlantShiftRows,
 } from "../src/lib/operations/plant-shift-template";
-import { pickRosterEmployee } from "../src/lib/operations/roster-staffing";
+import {
+  LAB_ALLIED_OPERATORS,
+  assignOperatorForSlot,
+  registerRosterEmployees,
+  resetRosterAssignmentLoads,
+} from "../src/lib/operations/lab-allied-roster-staffing";
 import { rosterBandsForWorkstation } from "../src/lib/operations/roster-shift-bands";
-import { mondayOfPlantWeek, shiftTimeLabel } from "../src/lib/server/workstation-roster";
+import { mondayOfPlantWeek } from "../src/lib/server/workstation-roster";
 
 type GroupDef = { code: string; name: string };
 type MachineDef = {
@@ -210,6 +215,41 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
       dosageForm: "Dry powder for suspension",
       validatedBatchSize: 6000,
     },
+    {
+      sku: "PARA-500-FC",
+      name: "Paracetamol 500mg film-coated",
+      category: "Analgesic",
+      dosageForm: "Film-coated tablet",
+      validatedBatchSize: 7500,
+    },
+    {
+      sku: "IBU-400-TAB",
+      name: "Ibuprofen 400mg",
+      category: "NSAID",
+      dosageForm: "Tablet",
+      validatedBatchSize: 9000,
+    },
+    {
+      sku: "MET-500-TAB",
+      name: "Metformin 500mg",
+      category: "Antidiabetic",
+      dosageForm: "Tablet",
+      validatedBatchSize: 10000,
+    },
+    {
+      sku: "CIP-250-TAB",
+      name: "Ciprofloxacin 250mg",
+      category: "Antibiotic",
+      dosageForm: "Tablet",
+      validatedBatchSize: 8000,
+    },
+    {
+      sku: "VIT-C-1000",
+      name: "Vitamin C 1000mg effervescent",
+      category: "Supplement",
+      dosageForm: "Effervescent tablet",
+      validatedBatchSize: 5000,
+    },
   ];
   for (const row of products) {
     await prisma.product.upsert({
@@ -236,6 +276,7 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
   }
 
   await syncLabAlliedRoutings(prisma, tenant.id, wsByCode);
+  await syncLabAlliedChangeovers(prisma, tenant.id, wsByCode);
 
   await prisma.schedulePlanOperation.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.schedulePlanOrder.deleteMany({ where: { tenantId: tenant.id } });
@@ -264,23 +305,18 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
 }
 
 async function ensureLabAlliedEmployees(prisma: PrismaClient, tenantId: string, departmentId: string) {
-  const operators = [
-    { code: "OP-001", name: "Grace Wanjiku" },
-    { code: "OP-002", name: "James Otieno" },
-    { code: "OP-003", name: "Mary Akinyi" },
-    { code: "OP-004", name: "Peter Kamau" },
-    { code: "OP-005", name: "Sarah Mwangi" },
-    { code: "OP-006", name: "David Ochieng" },
-    { code: "OP-007", name: "Lucy Njeri" },
-    { code: "OP-008", name: "Daniel Mutua" },
-  ];
-  for (const row of operators) {
+  for (const row of LAB_ALLIED_OPERATORS) {
     await prisma.plantEmployee.upsert({
       where: { tenantId_code: { tenantId, code: row.code } },
       create: { tenantId, departmentId, code: row.code, name: row.name, status: "ACTIVE" },
       update: { name: row.name, status: "ACTIVE", departmentId },
     });
   }
+
+  await prisma.plantEmployee.updateMany({
+    where: { tenantId, code: { notIn: LAB_ALLIED_OPERATORS.map((row) => row.code) } },
+    data: { status: "INACTIVE" },
+  });
 }
 
 async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
@@ -308,6 +344,8 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
     shiftLabel: string;
   }> = [];
 
+  registerRosterEmployees(employees.map((row) => ({ id: row.id, code: row.code, name: row.name })));
+
   for (let offset = -7 * 12; offset <= 7 * 16; offset += 1) {
     const day = addPlantDays(weekStart, offset);
     const weekday = plantWeekday(day);
@@ -315,16 +353,18 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
     const [y, m, d] = ymd.split("-").map(Number);
     const dateOnly = new Date(Date.UTC(y!, m! - 1, d!));
 
-    for (const ws of workstations) {
+    resetRosterAssignmentLoads();
+    const sortedWs = [...workstations].sort((a, b) => a.code.localeCompare(b.code));
+    for (const ws of sortedWs) {
       const bands = rosterBandsForWorkstation(ws.shifts, weekday);
       for (const band of bands) {
-        const employee = pickRosterEmployee({
-          employees,
+        const employee = assignOperatorForSlot({
+          dateYmd: ymd,
+          shiftLabel: band.shiftLabel,
+          startMinute: band.startMinute,
+          endMinute: band.endMinute,
           groupCode: ws.group?.code ?? null,
           workstationCode: ws.code,
-          shiftLabel: band.shiftLabel,
-          dateYmd: ymd,
-          startMinute: band.startMinute,
         });
         if (!employee) continue;
         rows.push({
@@ -345,6 +385,81 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
   }
 }
 
+async function syncLabAlliedChangeovers(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
+  const globalRules = [
+    {
+      workstationId: null as string | null,
+      fromFamily: "GENERAL_TABLET",
+      toFamily: "BETA_LACTAM",
+      durationMinutes: 120,
+      level: "MAJOR" as const,
+      maxCampaignBatches: null as number | null,
+    },
+    {
+      workstationId: null,
+      fromFamily: "BETA_LACTAM",
+      toFamily: "GENERAL_TABLET",
+      durationMinutes: 240,
+      level: "MAJOR" as const,
+      maxCampaignBatches: null,
+    },
+    {
+      workstationId: null,
+      fromFamily: "GENERAL_TABLET",
+      toFamily: "GENERAL_TABLET",
+      durationMinutes: 45,
+      level: "MINOR" as const,
+      maxCampaignBatches: 6,
+    },
+    {
+      workstationId: null,
+      fromFamily: "BETA_LACTAM",
+      toFamily: "BETA_LACTAM",
+      durationMinutes: 60,
+      level: "MINOR" as const,
+      maxCampaignBatches: 4,
+    },
+  ];
+
+  for (const rule of globalRules) {
+    const existing = await prisma.changeoverRule.findFirst({
+      where: {
+        tenantId,
+        workstationId: rule.workstationId,
+        fromFamily: rule.fromFamily,
+        toFamily: rule.toFamily,
+      },
+    });
+    if (!existing) {
+      await prisma.changeoverRule.create({ data: { tenantId, ...rule } });
+    }
+  }
+
+  const blisterId = wsByCode.get("BPD-090");
+  if (blisterId) {
+    await prisma.changeoverRule.upsert({
+      where: {
+        tenantId_workstationId_fromFamily_toFamily: {
+          tenantId,
+          workstationId: blisterId,
+          fromFamily: "GENERAL_TABLET",
+          toFamily: "GENERAL_TABLET",
+        },
+      },
+      create: {
+        tenantId,
+        workstationId: blisterId,
+        fromFamily: "GENERAL_TABLET",
+        toFamily: "GENERAL_TABLET",
+        durationMinutes: 75,
+        level: "MINOR",
+        maxCampaignBatches: 5,
+      },
+      update: { durationMinutes: 75, level: "MINOR", maxCampaignBatches: 5 },
+    });
+  }
+}
+
 type RouteStep = {
   code: string;
   name: string;
@@ -361,8 +476,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       name: "Tablet blend, compress, pack",
       family: "GENERAL_TABLET",
       steps: [
-        { code: "BLND", name: "Blending", runMinutes: 360, setupMinutes: 45, wsCodes: ["BPD-061", "BPD-062"] },
-        { code: "COMP", name: "Compression", runMinutes: 720, setupMinutes: 60, wsCodes: ["BPD-075"] },
+        { code: "BLND", name: "Blending", runMinutes: 360, setupMinutes: 45, wsCodes: ["BPD-061"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 480, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 240, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         {
@@ -403,11 +517,73 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       name: "Dry powder blend and DPS line",
       family: "BETA_LACTAM",
       steps: [
-        { code: "BLND", name: "Blending", runMinutes: 320, setupMinutes: 45, wsCodes: ["BPD-062", "BPD-061"] },
+        { code: "BLND", name: "Blending", runMinutes: 320, setupMinutes: 45, wsCodes: ["BPD-062"] },
         { code: "DPS", name: "DPS line", runMinutes: 900, setupMinutes: 60, wsCodes: ["DPS-LINE-1", "BPD-096"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 180, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Bulk packing", runMinutes: 480, setupMinutes: 30, wsCodes: ["BPD-009"] },
+      ],
+    },
+    {
+      sku: "PARA-500-FC",
+      name: "Film coat, Alu/Alu blister",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 340, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COAT", name: "Film coating", runMinutes: 540, setupMinutes: 90, wsCodes: ["BPD-078"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 480, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 240, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        {
+          code: "PACK",
+          name: "Alu/Alu blister",
+          runMinutes: 960,
+          setupMinutes: 45,
+          wsCodes: ["BPD-051", "BPD-090"],
+        },
+      ],
+    },
+    {
+      sku: "IBU-400-TAB",
+      name: "Tablet blend, compress, blister",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 320, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 200, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Blister packing", runMinutes: 880, setupMinutes: 40, wsCodes: ["CPD-010", "BPD-090"] },
+      ],
+    },
+    {
+      sku: "MET-500-TAB",
+      name: "Metformin tablet pack",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 300, setupMinutes: 40, wsCodes: ["BPD-061"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 400, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 180, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Bulk packing", runMinutes: 520, setupMinutes: 30, wsCodes: ["BPD-009"] },
+      ],
+    },
+    {
+      sku: "CIP-250-TAB",
+      name: "Ciprofloxacin tablet",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 310, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 220, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Blister packing", runMinutes: 760, setupMinutes: 40, wsCodes: ["BPD-051"] },
+      ],
+    },
+    {
+      sku: "VIT-C-1000",
+      name: "Effervescent bulk pack",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 280, setupMinutes: 35, wsCodes: ["BPD-061"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 160, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009", "BPD-099"] },
       ],
     },
   ];
@@ -533,7 +709,8 @@ type SeedOrder = {
 };
 
 const TABLET_PACK_LINES = ["BPD-090", "BPD-051", "CPD-010"] as const;
-const TABLET_BLEND_LINES = ["BPD-061", "BPD-062"] as const;
+const GENERAL_BLEND = "BPD-061" as const;
+const BETA_BLEND = "BPD-062" as const;
 const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
 const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
@@ -546,10 +723,9 @@ function tabletRoutePara(_blendIdx: number, packIdx: number, scale: number): See
   ];
 }
 
-function tabletRoute(blendIdx: number, packIdx: number, scale: number): SeedStep[] {
+function tabletRoute(_blendIdx: number, packIdx: number, scale: number): SeedStep[] {
   return [
-    { code: "BLND", ws: TABLET_BLEND_LINES[blendIdx % TABLET_BLEND_LINES.length]!, mins: Math.round(280 * scale + 80) },
-    { code: "COMP", ws: "BPD-075", mins: Math.round(600 * scale + 120) },
+    { code: "BLND", ws: GENERAL_BLEND, mins: Math.round(280 * scale + 80) },
     { code: "QUAR", ws: "SFG-QUAR", mins: 420, qc: true },
     { code: "QC", ws: "QC-PROC", mins: 200, qc: true },
     { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
@@ -568,7 +744,7 @@ function capsuleRoute(fillIdx: number, packIdx: number, scale: number): SeedStep
 
 function dpsRoute(lineIdx: number, scale: number): SeedStep[] {
   return [
-    { code: "BLND", ws: TABLET_BLEND_LINES[lineIdx % 2]!, mins: Math.round(300 * scale + 40) },
+    { code: "BLND", ws: BETA_BLEND, mins: Math.round(300 * scale + 40) },
     { code: "DPS", ws: DPS_LINES[lineIdx % DPS_LINES.length]!, mins: Math.round(780 * scale + 200) },
     { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
     { code: "QC", ws: "QC-PROC", mins: 180, qc: true },

@@ -21,13 +21,17 @@ type WorkstationSettingsPayload = {
   active: boolean;
   allowedParallelJobs: number;
   efficiencyCoefficient: number;
+  efficiencyPercent: number;
   dedicatedTo: string;
+  displayColor: string | null;
   capacityHoursPerDay: number;
   qualificationStatus: string;
   calibrationDueDate: string | null;
   cleanStatus: string;
-  site: { code: string; name: string } | null;
-  group: { code: string; name: string } | null;
+  site: { id: string; code: string; name: string } | null;
+  group: { id: string; code: string; name: string } | null;
+  groups: Array<{ id: string; code: string; name: string }>;
+  sites: Array<{ id: string; code: string; name: string }>;
   shifts: Array<{ weekday: number; startMinute: number; endMinute: number }>;
   exceptions: Array<{ id: string; date: string; reason: string; closed: boolean }>;
   routingSteps: Array<{ id: string; operationCode: string; operationName: string; productSku: string; productName: string }>;
@@ -35,6 +39,13 @@ type WorkstationSettingsPayload = {
 };
 
 const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function defaultColor(code: string): string {
+  let hash = 0;
+  for (let i = 0; i < code.length; i += 1) hash = code.charCodeAt(i) + ((hash << 5) - hash);
+  const hue = Math.abs(hash) % 360;
+  return `hsl(${hue} 45% 42%)`;
+}
 
 export function WorkstationSettingsDialog({
   workstationId,
@@ -48,9 +59,13 @@ export function WorkstationSettingsDialog({
   onSaved?: () => void;
 }) {
   const [data, setData] = useState<WorkstationSettingsPayload | null>(null);
+  const [code, setCode] = useState("");
   const [name, setName] = useState("");
+  const [groupId, setGroupId] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [displayColor, setDisplayColor] = useState("#3b82f6");
   const [parallel, setParallel] = useState(1);
-  const [efficiency, setEfficiency] = useState(1);
+  const [efficiencyPercent, setEfficiencyPercent] = useState(100);
   const [dedicatedTo, setDedicatedTo] = useState("ANY");
   const [active, setActive] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -67,9 +82,13 @@ export function WorkstationSettingsDialog({
         return;
       }
       setData(payload);
+      setCode(payload.code);
       setName(payload.name);
+      setGroupId(payload.group?.id ?? "");
+      setSiteId(payload.site?.id ?? "");
+      setDisplayColor(payload.displayColor ?? defaultColor(payload.code));
       setParallel(payload.allowedParallelJobs);
-      setEfficiency(payload.efficiencyCoefficient);
+      setEfficiencyPercent(payload.efficiencyPercent ?? Math.round(payload.efficiencyCoefficient * 100));
       setDedicatedTo(payload.dedicatedTo);
       setActive(payload.active);
     });
@@ -83,11 +102,15 @@ export function WorkstationSettingsDialog({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          code,
           name,
           active,
           allowedParallelJobs: parallel,
-          efficiencyCoefficient: efficiency,
+          efficiencyPercent,
           dedicatedTo,
+          groupId: groupId || null,
+          siteId: siteId || null,
+          displayColor,
         }),
       });
       const payload = (await response.json()) as WorkstationSettingsPayload & { message?: string };
@@ -103,28 +126,90 @@ export function WorkstationSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-full max-w-[720px] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{data ? `${data.name} (${data.code})` : "Workstation settings"}</DialogTitle>
         </DialogHeader>
         {message ? <p className="text-sm text-destructive">{message}</p> : null}
         {data ? (
           <Tabs defaultValue="general">
-            <TabsList className="flex h-auto flex-wrap gap-1">
-              <TabsTrigger value="general">General</TabsTrigger>
-              <TabsTrigger value="shifts">Shifts</TabsTrigger>
-              <TabsTrigger value="products">Eligible products</TabsTrigger>
-              <TabsTrigger value="qual">Qualification</TabsTrigger>
-              <TabsTrigger value="history">History</TabsTrigger>
+            <TabsList className="grid w-full grid-cols-5 gap-0">
+              <TabsTrigger value="general" className="text-xs sm:text-sm">
+                General
+              </TabsTrigger>
+              <TabsTrigger value="shifts" className="text-xs sm:text-sm">
+                Shifts
+              </TabsTrigger>
+              <TabsTrigger value="products" className="text-xs sm:text-sm">
+                Eligible products
+              </TabsTrigger>
+              <TabsTrigger value="qual" className="text-xs sm:text-sm">
+                Qualification
+              </TabsTrigger>
+              <TabsTrigger value="history" className="text-xs sm:text-sm">
+                History
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="general" className="grid gap-3 pt-3">
-              <div className="grid gap-1">
-                <Label htmlFor="ws-name">Name</Label>
-                <Input id="ws-name" value={name} onChange={(event) => setName(event.target.value)} />
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label htmlFor="ws-code">Code</Label>
+                  <Input id="ws-code" value={code} onChange={(event) => setCode(event.target.value)} />
+                </div>
+                <div className="grid gap-1">
+                  <Label htmlFor="ws-name">Name</Label>
+                  <Input id="ws-name" value={name} onChange={(event) => setName(event.target.value)} />
+                </div>
               </div>
-              <p className="text-xs text-muted-foreground">
-                Site: {data.site?.name ?? "—"} · Group: {data.group?.name ?? "—"} · Capacity {data.capacityHoursPerDay}h/d
-              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label htmlFor="ws-group">Group</Label>
+                  <select
+                    id="ws-group"
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={groupId}
+                    onChange={(event) => setGroupId(event.target.value)}
+                  >
+                    <option value="">—</option>
+                    {data.groups.map((group) => (
+                      <option key={group.id} value={group.id}>
+                        {group.code} · {group.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="grid gap-1">
+                  <Label htmlFor="ws-site">Site</Label>
+                  <select
+                    id="ws-site"
+                    className="h-9 rounded-md border border-input bg-background px-2 text-sm"
+                    value={siteId}
+                    onChange={(event) => setSiteId(event.target.value)}
+                  >
+                    <option value="">—</option>
+                    {data.sites.map((site) => (
+                      <option key={site.id} value={site.id}>
+                        {site.code} · {site.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-1">
+                  <Label htmlFor="ws-color">Colour</Label>
+                  <Input
+                    id="ws-color"
+                    type="color"
+                    className="h-9 cursor-pointer p-1"
+                    value={displayColor.startsWith("#") ? displayColor : "#64748b"}
+                    onChange={(event) => setDisplayColor(event.target.value)}
+                  />
+                </div>
+                <p className="self-end text-xs text-muted-foreground">
+                  Capacity {data.capacityHoursPerDay} h/d (from shift template)
+                </p>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-1">
                   <Label htmlFor="ws-parallel">Parallel capacity</Label>
@@ -137,15 +222,15 @@ export function WorkstationSettingsDialog({
                   />
                 </div>
                 <div className="grid gap-1">
-                  <Label htmlFor="ws-eff">Efficiency</Label>
+                  <Label htmlFor="ws-eff">Efficiency (%)</Label>
                   <Input
                     id="ws-eff"
                     type="number"
-                    step="0.01"
-                    min={0.1}
-                    max={2}
-                    value={efficiency}
-                    onChange={(event) => setEfficiency(Number(event.target.value))}
+                    step={1}
+                    min={10}
+                    max={200}
+                    value={efficiencyPercent}
+                    onChange={(event) => setEfficiencyPercent(Number(event.target.value))}
                   />
                 </div>
               </div>

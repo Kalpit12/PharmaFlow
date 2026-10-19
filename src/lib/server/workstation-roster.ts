@@ -1,5 +1,10 @@
 import { requirePermission } from "@/lib/auth/authorization";
-import { pickRosterEmployee } from "@/lib/operations/roster-staffing";
+import {
+  assignOperatorForSlot,
+  registerRosterEmployees,
+  resetRosterAssignmentLoads,
+} from "@/lib/operations/lab-allied-roster-staffing";
+import { validateRosterChips } from "@/lib/operations/roster-shift-validation";
 import { rosterBandsForWorkstation } from "@/lib/operations/roster-shift-bands";
 import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "@/lib/operations/plant-time";
 import { getPrisma } from "@/lib/server/db";
@@ -17,6 +22,7 @@ export type RosterShiftChip = {
   employeeId: string | null;
   employeeName: string | null;
   employeeOnLeave: boolean;
+  warnings: string[];
 };
 
 export type RosterWorkstationRow = {
@@ -36,6 +42,7 @@ export type WorkstationRosterSnapshot = {
   workstations: RosterWorkstationRow[];
   assignments: RosterShiftChip[];
   employees: Array<{ id: string; code: string; name: string }>;
+  warningCount: number;
 };
 
 export function formatPlantClock(minute: number): string {
@@ -95,7 +102,7 @@ export async function getWorkstationRosterSnapshot(
     };
   });
 
-  const [workstations, assignments, employees, exceptions, leaves, shiftRows] = await Promise.all([
+  const [workstations, rosterRows, employees, exceptions, leaves, shiftRows] = await Promise.all([
     prisma.workstation.findMany({
       where: { tenantId: ctx.tenantId, active: true },
       include: { group: { select: { name: true, code: true } } },
@@ -142,8 +149,8 @@ export async function getWorkstationRosterSnapshot(
     shiftsByWs.set(row.workstationId, list);
   }
 
-  const assignmentByKey = new Map<string, (typeof assignments)[number]>();
-  for (const row of assignments) {
+  const assignmentByKey = new Map<string, (typeof rosterRows)[number]>();
+  for (const row of rosterRows) {
     assignmentByKey.set(`${row.workstationId}|${plantYmd(row.date)}|${row.startMinute}`, row);
   }
 
@@ -165,6 +172,87 @@ export async function getWorkstationRosterSnapshot(
     }
   }
 
+  type DraftChip = RosterShiftChip & { employeeCode: string | null; groupCode: string | null };
+  registerRosterEmployees(employees);
+  const draftChips: DraftChip[] = [];
+  for (const day of days) {
+    resetRosterAssignmentLoads();
+    const sortedWs = [...workstations].sort((a, b) => a.code.localeCompare(b.code));
+    for (const ws of sortedWs) {
+      const wsShifts = shiftsByWs.get(ws.id) ?? [];
+      const bands = rosterBandsForWorkstation(wsShifts, day.weekday);
+      for (const band of bands) {
+        const key = `${ws.id}|${day.date}|${band.startMinute}`;
+        const stored = assignmentByKey.get(key);
+        const startMinute = stored?.startMinute ?? band.startMinute;
+        const endMinute = stored?.endMinute ?? band.endMinute;
+        const dateKey = day.date;
+        let employeeId = stored?.employeeId ?? null;
+        let employeeName = stored?.employee?.name ?? null;
+        let employeeCode = stored?.employee?.code ?? null;
+        if (!employeeId) {
+          const fallback = assignOperatorForSlot({
+            dateYmd: dateKey,
+            shiftLabel: band.shiftLabel,
+            startMinute,
+            endMinute,
+            groupCode: ws.group?.code ?? null,
+            workstationCode: ws.code,
+          });
+          employeeId = fallback?.id ?? null;
+          employeeName = fallback?.name ?? null;
+          employeeCode = fallback?.code ?? null;
+        }
+        draftChips.push({
+          id: stored?.id ?? `tpl:${key}:${randomUUID()}`,
+          workstationId: ws.id,
+          date: dateKey,
+          startMinute,
+          endMinute,
+          timeLabel: shiftTimeLabel(startMinute, endMinute),
+          shiftLabel: stored?.shiftLabel ?? band.shiftLabel,
+          employeeId,
+          employeeName,
+          employeeOnLeave: employeeId ? leaveSet.has(`${employeeId}|${dateKey}`) : false,
+          warnings: [],
+          employeeCode,
+          groupCode: ws.group?.code ?? null,
+        });
+      }
+    }
+  }
+
+  const warningMap = validateRosterChips(
+    draftChips.map((chip) => ({
+      id: chip.id,
+      employeeId: chip.employeeId,
+      employeeCode: chip.employeeCode ?? employees.find((e) => e.id === chip.employeeId)?.code,
+      date: chip.date,
+      startMinute: chip.startMinute,
+      endMinute: chip.endMinute,
+      groupCode: chip.groupCode,
+      workstationId: chip.workstationId,
+    }))
+  );
+  let warningCount = 0;
+  const assignments: RosterShiftChip[] = draftChips.map((chip) => {
+    const warnings = warningMap.get(chip.id) ?? [];
+    if (warnings.length > 0) warningCount += 1;
+    return {
+      id: chip.id,
+      workstationId: chip.workstationId,
+      date: chip.date,
+      startMinute: chip.startMinute,
+      endMinute: chip.endMinute,
+      timeLabel: chip.timeLabel,
+      shiftLabel: chip.shiftLabel,
+      employeeId: chip.employeeId,
+      employeeName: chip.employeeName,
+      employeeOnLeave: chip.employeeOnLeave,
+      warnings,
+    };
+  });
+
   return {
     weekStart: plantYmd(weekStart),
     weekEnd: plantYmd(weekEnd),
@@ -178,49 +266,9 @@ export async function getWorkstationRosterSnapshot(
       groupCode: row.group?.code ?? null,
       maintenanceDates: maintenanceByWs.get(row.id) ?? [],
     })),
-    assignments: (() => {
-      const chips: WorkstationRosterSnapshot["assignments"] = [];
-      for (const ws of workstations) {
-        const wsShifts = shiftsByWs.get(ws.id) ?? [];
-        for (const day of days) {
-          const bands = rosterBandsForWorkstation(wsShifts, day.weekday);
-          for (const band of bands) {
-            const key = `${ws.id}|${day.date}|${band.startMinute}`;
-            const stored = assignmentByKey.get(key);
-            const startMinute = stored?.startMinute ?? band.startMinute;
-            const endMinute = stored?.endMinute ?? band.endMinute;
-            const dateKey = day.date;
-            const fallbackEmployee =
-              stored?.employeeId == null
-                ? pickRosterEmployee({
-                    employees,
-                    groupCode: ws.group?.code ?? null,
-                    workstationCode: ws.code,
-                    shiftLabel: band.shiftLabel,
-                    dateYmd: dateKey,
-                    startMinute,
-                  })
-                : null;
-            const employeeId = stored?.employeeId ?? fallbackEmployee?.id ?? null;
-            const employeeName = stored?.employee?.name ?? fallbackEmployee?.name ?? null;
-            chips.push({
-              id: stored?.id ?? `tpl:${key}:${randomUUID()}`,
-              workstationId: ws.id,
-              date: dateKey,
-              startMinute,
-              endMinute,
-              timeLabel: shiftTimeLabel(startMinute, endMinute),
-              shiftLabel: stored?.shiftLabel ?? band.shiftLabel,
-              employeeId,
-              employeeName,
-              employeeOnLeave: employeeId ? leaveSet.has(`${employeeId}|${dateKey}`) : false,
-            });
-          }
-        }
-      }
-      return chips;
-    })(),
+    assignments,
     employees,
+    warningCount,
   };
 }
 

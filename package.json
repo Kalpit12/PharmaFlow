@@ -15,6 +15,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:deploy:direct": "node scripts/migrate-deploy-neon-direct.mjs",
+    "db:check-migrations": "tsx scripts/check-db-migrations.ts",
     "db:seed": "prisma db seed",
     "db:seed:verify": "tsx scripts/seed-verify-prerequisites.ts",
     "db:seed:lab-allied": "tsx prisma/run-seed-lab-allied-demo.ts",

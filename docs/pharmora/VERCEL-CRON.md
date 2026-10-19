@@ -8,9 +8,7 @@ Vercel **Hobby** allows **one cron invocation per day** per project. `vercel.jso
 
 Set **`CRON_SECRET`** in the project env. Vercel sends `Authorization: Bearer <CRON_SECRET>` on cron requests.
 
-Between daily runs, the **lab-allied-demo** Gantt still runs `maybeRunStaleDemoCatchup` when autopilot is on and the last heartbeat is older than 15 minutes.
-
-Manual catch-up: `npm run demo:lab-allied:catchup` (local, with `DATABASE_URL`).
+Do **not** run full catchup on Gantt page load (serverless timeout). Manual catch-up: `npm run demo:lab-allied:catchup` (local, with `DATABASE_URL`).
 
 ## Pro plan
 

@@ -84,12 +84,19 @@ export default async function OperationsPage({
       redirect(workspaceLoginPath(returnPath));
     }
     console.error("Operations workspace failed", error);
+    const prismaCode =
+      error && typeof error === "object" && "code" in error ? String((error as { code: string }).code) : "";
+    const migrationHint =
+      prismaCode === "P2022" || (error instanceof Error && /column|does not exist|hazardClass|dedicatedTo/i.test(error.message))
+        ? "Database schema is behind the app — run prisma migrate deploy on the same DATABASE_URL Vercel uses (see npm run db:check-migrations)."
+        : prismaCode === "P1001" || prismaCode === "P1002"
+          ? "Database connection failed — check DATABASE_URL on Vercel (Production + Preview) and Neon status."
+          : "If this persists after deploy, check Vercel function logs for the /operations request.";
     return (
       <WorkspacePage width="full">
         <PageHeader context="Operations" title="Operations planner" description="Configure production resources and orders." />
         <p className="text-sm text-muted-foreground">
-          Unable to load operations data. If you recently pulled schema changes, run{" "}
-          <code className="text-xs">npm run db:deploy:direct</code> then <code className="text-xs">npm run db:generate</code>.
+          Unable to load operations data. {migrationHint}
         </p>
       </WorkspacePage>
     );

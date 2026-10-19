@@ -24,7 +24,6 @@ import { resolvePlannerAccess } from "@/lib/auth/planner-access";
 import { requirePermission } from "@/lib/auth/authorization";
 import { loadWorkstationCalendars } from "@/lib/server/aps-plan";
 import { getPrisma } from "@/lib/server/db";
-import { maybeRunStaleDemoCatchup } from "@/lib/server/lab-allied-demo-heartbeat";
 import type { TenantContext } from "@/lib/server/errors";
 import { buildOrderMaterialConstraints } from "@/lib/operations/material-constraints";
 import type { RoutingIssue } from "@/lib/operations/routing";
@@ -319,8 +318,6 @@ export async function getOperationsGanttSnapshot(
   }
 ): Promise<OperationsGanttSnapshot> {
   requirePermission(ctx, "production.read");
-  const prismaForCatchup = getPrisma();
-  await maybeRunStaleDemoCatchup(prismaForCatchup, ctx).catch(() => false);
   const ganttWindow = resolveGanttWindow(options);
   const window = { start: ganttWindow.start, end: ganttWindow.end, weeks: 2 as const };
   const materials = await getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null);

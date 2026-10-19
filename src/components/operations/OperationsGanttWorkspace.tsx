@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { toast } from "sonner";
 
 import { GanttOrderBottomPanel } from "@/components/operations/GanttOrderBottomPanel";
 import { GanttPlannerToolbar } from "@/components/operations/GanttPlannerToolbar";
@@ -54,8 +55,7 @@ function formatTooltip(bar: GanttBar, wsCode: string): string {
 }
 
 function barHasWarning(bar: GanttBar): boolean {
-  const tone = bar.tone as GanttBarTone;
-  return tone === "late" || tone === "qcHold";
+  return Boolean(bar.warningReason);
 }
 
 type DragState = {
@@ -275,11 +275,11 @@ export function OperationsGanttWorkspace({
       setDragOffsetPct(0);
 
       if (!drag.bar.qualifiedWorkstationIds.includes(workstationId)) {
-        setMessage("Target line is not qualified for this step.");
+        toast.error("Target line is not qualified for this step.");
         return;
       }
       if (drag.bar.isLocked) {
-        setMessage("Order is locked.");
+        toast.error("Order is locked.");
         return;
       }
 
@@ -297,10 +297,10 @@ export function OperationsGanttWorkspace({
         });
         const payload = (await response.json().catch(() => ({}))) as { message?: string };
         if (!response.ok) {
-          setMessage(payload.message ?? "Move could not be proposed.");
+          toast.error(payload.message ?? "Move could not be proposed.");
           return;
         }
-        setMessage("Move proposed — ghost outline shows the current plan.");
+        toast.success("Move proposed — ghost outline shows the current plan.");
         router.refresh();
       });
     };
@@ -502,8 +502,8 @@ export function OperationsGanttWorkspace({
             index === labelSegmentIndex
               ? bar.label
               : widthPx >= 72
-                ? `${bar.orderNumber.includes("/") ? bar.orderNumber : bar.shortBatchLabel || bar.orderNumber} cont.`
-                : "cont.";
+                ? `${bar.orderNumber} cont.`
+                : `${bar.orderNumber} cont.`;
           return (
             <div
               key={`${bar.id}-${index}`}
@@ -519,7 +519,7 @@ export function OperationsGanttWorkspace({
                 event.preventDefault();
                 setContextMenu({ bar, x: event.clientX, y: event.clientY });
               }}
-              title={formatTooltip(bar, ws?.code ?? wsId)}
+                title={bar.warningReason ?? formatTooltip(bar, ws?.code ?? wsId)}
               className={cn(
                 "absolute z-10 overflow-visible rounded-[3px] px-1 text-xs leading-[26px] text-white shadow-sm",
                 fillClass,
@@ -528,7 +528,7 @@ export function OperationsGanttWorkspace({
                 dimmed && "opacity-35"
               )}
               style={{
-                top: BAR_TOP,
+                top: BAR_TOP + bar.subLane * (BAR_HEIGHT + 4),
                 height: BAR_HEIGHT,
                 left: `${left}%`,
                 width: `${widthPct}%`,
@@ -628,7 +628,8 @@ export function OperationsGanttWorkspace({
                     return (
                       <div
                         key={day.start}
-                        className="absolute inset-y-0 border-r border-[var(--planner-grid-line)] px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                        className="absolute inset-y-0 min-w-0 overflow-hidden text-ellipsis whitespace-nowrap border-r border-[var(--planner-grid-line)] px-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+                        title={day.label}
                         style={{ left: `${left}%`, width: `${width}%` }}
                       >
                         {day.label}
@@ -687,7 +688,10 @@ export function OperationsGanttWorkspace({
                         if (!ws) return null;
                         const rowBars = barsByWs.get(wsId) ?? [];
                         const maint = maintenanceByWs.get(wsId) ?? [];
-                        const rowHeight = showCapacity && !ws.elapsedOnly ? ROW_HEIGHT + 10 : ROW_HEIGHT;
+                        const laneCount = Math.max(1, ...rowBars.map((bar) => bar.laneCount), 1);
+                        const laneExtra = (laneCount - 1) * (BAR_HEIGHT + 4);
+                        const rowHeight =
+                          (showCapacity && !ws.elapsedOnly ? ROW_HEIGHT + 10 : ROW_HEIGHT) + laneExtra;
                         return (
                           <div
                             key={wsId}

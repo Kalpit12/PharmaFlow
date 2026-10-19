@@ -107,12 +107,28 @@ export function registerRosterEmployees(employees: EmployeeRef[]): void {
 
 /** Tracks concurrent assignments per person per calendar day + shift band. */
 const slotLoad = new Map<string, number>();
+const lastEndByEmployee = new Map<string, number>();
+
+const MIN_REST_MS = 11 * 3_600_000;
 
 function loadKey(employeeId: string, dateYmd: string, shift: ShiftKind): string {
   return `${employeeId}|${dateYmd}|${shift}`;
 }
 
+function slotTimes(slot: RosterAssignmentSlot): { startMs: number; endMs: number } {
+  const [y, m, d] = slot.dateYmd.split("-").map(Number);
+  const dayStart = Date.UTC(y!, m! - 1, d!);
+  const startMs = dayStart + slot.startMinute * 60_000;
+  const endMs = dayStart + slot.endMinute * 60_000;
+  return { startMs, endMs };
+}
+
 export function resetRosterAssignmentLoads(): void {
+  slotLoad.clear();
+  lastEndByEmployee.clear();
+}
+
+export function resetRosterSlotLoads(): void {
   slotLoad.clear();
 }
 
@@ -128,27 +144,38 @@ export function assignOperatorForSlot(slot: RosterAssignmentSlot): EmployeeRef |
     slot.workstationCode.split("").reduce((sum, ch) => sum + ch.charCodeAt(0), 0) +
     slot.dateYmd.split("-").reduce((sum, part) => sum + Number(part), 0);
 
+  const { startMs, endMs } = slotTimes(slot);
   pool.sort((a, b) => a.code.localeCompare(b.code));
   let best: { emp: EmployeeRef; load: number } | null = null;
   for (let i = 0; i < pool.length; i += 1) {
     const pick = pool[(wsHash + i) % pool.length]!;
     const emp = codeToEmployee.get(pick.code);
     if (!emp) continue;
+    const prevEnd = lastEndByEmployee.get(emp.id);
+    if (prevEnd != null && startMs - prevEnd < MIN_REST_MS) continue;
     const key = loadKey(emp.id, slot.dateYmd, shift);
     const load = slotLoad.get(key) ?? 0;
     if (load >= 2) continue;
     if (!best || load < best.load) best = { emp, load };
   }
   if (!best) {
-    const fallback = pool[wsHash % pool.length]!;
-    const emp = codeToEmployee.get(fallback.code);
-    if (!emp) return null;
-    const key = loadKey(emp.id, slot.dateYmd, shift);
-    slotLoad.set(key, (slotLoad.get(key) ?? 0) + 1);
-    return emp;
+    for (let i = 0; i < pool.length; i += 1) {
+      const pick = pool[(wsHash + i) % pool.length]!;
+      const emp = codeToEmployee.get(pick.code);
+      if (!emp) continue;
+      const prevEnd = lastEndByEmployee.get(emp.id);
+      if (prevEnd != null && startMs - prevEnd < MIN_REST_MS) continue;
+      const key = loadKey(emp.id, slot.dateYmd, shift);
+      if ((slotLoad.get(key) ?? 0) >= 2) continue;
+      slotLoad.set(key, (slotLoad.get(key) ?? 0) + 1);
+      lastEndByEmployee.set(emp.id, Math.max(lastEndByEmployee.get(emp.id) ?? 0, endMs));
+      return emp;
+    }
+    return null;
   }
   const key = loadKey(best.emp.id, slot.dateYmd, shift);
   slotLoad.set(key, (slotLoad.get(key) ?? 0) + 1);
+  lastEndByEmployee.set(best.emp.id, Math.max(lastEndByEmployee.get(best.emp.id) ?? 0, endMs));
   return best.emp;
 }
 

@@ -3,6 +3,7 @@ import {
   assignOperatorForSlot,
   registerRosterEmployees,
   resetRosterAssignmentLoads,
+  resetRosterSlotLoads,
 } from "@/lib/operations/lab-allied-roster-staffing";
 import { validateRosterChips } from "@/lib/operations/roster-shift-validation";
 import { rosterBandsForWorkstation } from "@/lib/operations/roster-shift-bands";
@@ -174,9 +175,10 @@ export async function getWorkstationRosterSnapshot(
 
   type DraftChip = RosterShiftChip & { employeeCode: string | null; groupCode: string | null };
   registerRosterEmployees(employees);
+  resetRosterAssignmentLoads();
   const draftChips: DraftChip[] = [];
   for (const day of days) {
-    resetRosterAssignmentLoads();
+    resetRosterSlotLoads();
     const sortedWs = [...workstations].sort((a, b) => a.code.localeCompare(b.code));
     for (const ws of sortedWs) {
       const wsShifts = shiftsByWs.get(ws.id) ?? [];

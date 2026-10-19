@@ -126,27 +126,27 @@ export function WorkstationSettingsDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] w-full max-w-[720px] overflow-y-auto">
+      <DialogContent className="max-h-[90vh] w-[min(800px,95vw)] max-w-[800px] overflow-x-hidden overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{data ? `${data.name} (${data.code})` : "Workstation settings"}</DialogTitle>
         </DialogHeader>
         {message ? <p className="text-sm text-destructive">{message}</p> : null}
         {data ? (
           <Tabs defaultValue="general">
-            <TabsList className="grid w-full grid-cols-5 gap-0">
-              <TabsTrigger value="general" className="text-xs sm:text-sm">
+            <TabsList className="flex w-full flex-nowrap gap-1 overflow-x-auto">
+              <TabsTrigger value="general" className="shrink-0 px-2 text-xs">
                 General
               </TabsTrigger>
-              <TabsTrigger value="shifts" className="text-xs sm:text-sm">
+              <TabsTrigger value="shifts" className="shrink-0 px-2 text-xs">
                 Shifts
               </TabsTrigger>
-              <TabsTrigger value="products" className="text-xs sm:text-sm">
-                Eligible products
+              <TabsTrigger value="products" className="shrink-0 px-2 text-xs">
+                Products
               </TabsTrigger>
-              <TabsTrigger value="qual" className="text-xs sm:text-sm">
+              <TabsTrigger value="qual" className="shrink-0 px-2 text-xs">
                 Qualification
               </TabsTrigger>
-              <TabsTrigger value="history" className="text-xs sm:text-sm">
+              <TabsTrigger value="history" className="shrink-0 px-2 text-xs">
                 History
               </TabsTrigger>
             </TabsList>

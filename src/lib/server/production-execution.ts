@@ -320,9 +320,7 @@ export async function getProductionExecutionSnapshot(
     (row) => row.executionState === "WAITING" || row.executionState === "RELEASED"
   ).length;
   const completed = allOrders.filter((row) => row.executionState === "COMPLETED").length;
-  const atRisk = allOrders.filter(
-    (row) => row.risk === "AT_RISK" || row.risk === "LATE" || row.risk === "BLOCKED"
-  ).length;
+  const atRisk = allOrders.filter((row) => row.risk === "AT_RISK" || row.risk === "BLOCKED").length;
 
   const openWithDuration = allOrders.filter(
     (row) =>

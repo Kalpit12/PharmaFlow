@@ -982,8 +982,14 @@ export async function proposeGanttOperationMove(
   if (!anchor) throw new ServerError("Operation not found.", "NOT_FOUND");
   const order = anchor.productionOrder;
   if (order.isLocked) throw new ServerError("Locked orders cannot be moved from the Gantt.", "FORBIDDEN");
-  if (anchor.isLocked || anchor.status === "IN_PROGRESS" || anchor.status === "COMPLETED") {
-    throw new ServerError("This operation cannot be moved.", "FORBIDDEN");
+  if (anchor.status === "IN_PROGRESS") {
+    throw new ServerError("Running operations are locked and cannot be moved.", "FORBIDDEN");
+  }
+  if (anchor.status === "COMPLETED") {
+    throw new ServerError("Completed operations cannot be moved.", "FORBIDDEN");
+  }
+  if (anchor.isLocked) {
+    throw new ServerError("This operation is inside a running-time lock and cannot be moved.", "FORBIDDEN");
   }
   const qualified = anchor.routingOperation?.resources.some((resource) => resource.workstationId === input.workstationId);
   if (!qualified) throw new ServerError("Target workstation is not qualified for this step.", "FORBIDDEN");

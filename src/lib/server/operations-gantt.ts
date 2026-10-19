@@ -1,5 +1,7 @@
 import { toneForOperation } from "@/lib/operations/planner-gantt-colors";
-import { jobStatusIsLate, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
+import { assignParallelSubLanes } from "@/lib/operations/gantt-parallel-lanes";
+import { jobStatusIsLate, jobStatusIsScheduleSlip, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
+import { formatRoutingIssueDetail } from "@/lib/operations/schedule-issue-format";
 import {
   capacityStateFromLoad,
   scheduledOperationMinutesInWindow,
@@ -53,6 +55,9 @@ export type GanttBar = {
   durationMinutes: number;
   changeoverMinutes: number;
   tone: ReturnType<typeof toneForOperation> | "ghost";
+  warningReason: string | null;
+  subLane: number;
+  laneCount: number;
   label: string;
   shortBatchLabel: string;
   workSegments: GanttWorkSegment[];
@@ -230,7 +235,8 @@ function buildOrderTableRows(
   orderBatch: Map<string, string>,
   orderPlannedEnd: Map<string, string | null>,
   now: Date,
-  activeTimers: Set<string>
+  activeTimers: Set<string>,
+  customerByOrderId: Map<string, string>
 ): GanttOrderTableRow[] {
   const rows: GanttOrderTableRow[] = [];
   for (const order of planner.orders) {
@@ -251,11 +257,15 @@ function buildOrderTableRows(
         begin: op.plannedStart,
         end: op.plannedEnd,
         dueDate: order.dueDate,
-        customer: null as string | null,
-        reason: issue?.detail ?? null,
+        customer: customerByOrderId.get(order.id) ?? null,
+        reason: issue?.detail ? formatRoutingIssueDetail(issue.kind, issue.detail, now) : null,
       };
       if (issue) {
-        rows.push({ ...base, tab: "error", reason: issue.detail });
+        rows.push({
+          ...base,
+          tab: "error",
+          reason: formatRoutingIssueDetail(issue.kind, issue.detail, now),
+        });
         continue;
       }
       const status = resolveJobPlanStatus({
@@ -271,6 +281,16 @@ function buildOrderTableRows(
       });
       if (status === "UNSCHEDULED") {
         rows.push({ ...base, tab: "unscheduled", reason: base.reason });
+      } else if (jobStatusIsScheduleSlip(status) && op.plannedStart) {
+        rows.push({
+          ...base,
+          tab: "error",
+          reason: formatRoutingIssueDetail(
+            "SLIPPED_START",
+            `Planned start ${new Date(op.plannedStart).toISOString()} is before now; reschedule or start the job.`,
+            now
+          ),
+        });
       } else if (jobStatusIsLate(status)) {
         rows.push({ ...base, tab: "late", reason: null });
       } else if (op.plannedStart && op.plannedEnd) {
@@ -484,6 +504,9 @@ export async function getOperationsGanttSnapshot(
       status: dbOp.status,
       durationMinutes: dbOp.durationMinutes,
       changeoverMinutes: changed ? proposed!.changeoverMinutes : dbOp.setupMinutes,
+      warningReason: null as string | null,
+      subLane: 0,
+      laneCount: 1,
       tone: changed
         ? toneForOperation({
             orderKind: order.orderKind as "FIRM" | "PROSPECT",
@@ -536,6 +559,39 @@ export async function getOperationsGanttSnapshot(
     const list = flowByOrder.get(order.id) ?? [];
     list.push(dbOp);
     flowByOrder.set(order.id, list);
+  }
+
+  const parallelCapacity = new Map(wsRows.map((row) => [row.id, row.allowedParallelJobs]));
+  const laneAssignments = assignParallelSubLanes(bars, parallelCapacity);
+  for (const bar of bars) {
+    const lane = laneAssignments.get(bar.id);
+    if (lane) {
+      bar.subLane = lane.subLane;
+      bar.laneCount = lane.laneCount;
+    }
+    const issue = planner.routingIssuesByOperationId[bar.operationId];
+    if (issue) {
+      bar.warningReason = formatRoutingIssueDetail(issue.kind, issue.detail, now);
+      continue;
+    }
+    const status = resolveJobPlanStatus({
+      operationStatus: bar.status,
+      orderKind: (orderMeta.get(bar.orderId)?.orderKind as "FIRM" | "PROSPECT" | undefined) ?? "FIRM",
+      plannedStart: bar.start,
+      plannedEnd: bar.end,
+      dueDate: bar.dueDate,
+      isQcHold: bar.tone === "qcHold",
+      hasActiveTimer: activeTimers.has(bar.operationId),
+      orderPlannedEnd: orderPlannedEnd.get(bar.orderId) ?? null,
+      now,
+    });
+    if (jobStatusIsScheduleSlip(status)) {
+      bar.warningReason = formatRoutingIssueDetail(
+        "SLIPPED_START",
+        `Planned start ${bar.start} is before now; reschedule or start the job.`,
+        now
+      );
+    }
   }
 
   for (const [orderId, ops] of flowByOrder) {
@@ -751,7 +807,23 @@ export async function getOperationsGanttSnapshot(
     );
   }
   const unscheduledReasonByOp = new Map(unscheduledJobs.map((row) => [row.operationId, row.reason]));
-  const orderTableRows = buildOrderTableRows(planner, orderBatch, orderEndForStatus, now, activeTimers).map(
+  const customerRows = await prisma.productionOrder.findMany({
+    where: { tenantId: ctx.tenantId, id: { in: [...orderMeta.keys()] } },
+    select: { id: true, customer: { select: { name: true } } },
+  });
+  const customerByOrderId = new Map<string, string>();
+  for (const row of customerRows) {
+    if (row.customer?.name) customerByOrderId.set(row.id, row.customer.name);
+  }
+
+  const orderTableRows = buildOrderTableRows(
+    planner,
+    orderBatch,
+    orderEndForStatus,
+    now,
+    activeTimers,
+    customerByOrderId
+  ).map(
     (row) =>
       row.tab === "unscheduled" && unscheduledReasonByOp.has(row.operationId)
         ? { ...row, reason: unscheduledReasonByOp.get(row.operationId)! }

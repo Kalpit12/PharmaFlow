@@ -16,6 +16,7 @@ import {
   assignOperatorForSlot,
   registerRosterEmployees,
   resetRosterAssignmentLoads,
+  resetRosterSlotLoads,
 } from "../src/lib/operations/lab-allied-roster-staffing";
 import { rosterBandsForWorkstation } from "../src/lib/operations/roster-shift-bands";
 import { mondayOfPlantWeek } from "../src/lib/server/workstation-roster";
@@ -43,6 +44,7 @@ const GROUPS: GroupDef[] = [
 const MACHINES: MachineDef[] = [
   { code: "BPD-061", name: "Blender octagonal 1000kg", groupCode: "LA-BLEND", shift: "plant" },
   { code: "BPD-062", name: "LabClav Blending 500kg", groupCode: "LA-BLEND", shift: "plant" },
+  { code: "BPD-076", name: "Kilian KTP 2200 (General tablet press)", groupCode: "LA-COMP", shift: "plant" },
   { code: "BPD-075", name: "LabClav Compression", groupCode: "LA-COMP", shift: "plant" },
   { code: "BPD-078", name: "ACG Coating", groupCode: "LA-COAT", shift: "plant" },
   { code: "BPD-092", name: "Capsule Filling-ACG", groupCode: "LA-FILL", shift: "plant" },
@@ -184,7 +186,7 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     data: { dedicatedTo: "BETA_LACTAM" },
   });
   await prisma.workstation.updateMany({
-    where: { tenantId: tenant.id, code: "BPD-061" },
+    where: { tenantId: tenant.id, code: { in: ["BPD-061", "BPD-076"] } },
     data: { dedicatedTo: "GENERAL_ONLY" },
   });
 
@@ -275,8 +277,14 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     });
   }
 
+  await prisma.product.updateMany({
+    where: { tenantId: tenant.id, sku: "COUGH-SYR-100" },
+    data: { status: "DISCONTINUED" },
+  });
+
   await syncLabAlliedRoutings(prisma, tenant.id, wsByCode);
   await syncLabAlliedChangeovers(prisma, tenant.id, wsByCode);
+  await verifyLabAlliedTabletCompression(prisma, tenant.id);
 
   await prisma.schedulePlanOperation.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.schedulePlanOrder.deleteMany({ where: { tenantId: tenant.id } });
@@ -285,7 +293,8 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
   await prisma.productionBatch.deleteMany({ where: { tenantId: tenant.id } });
   await prisma.productionOrder.deleteMany({ where: { tenantId: tenant.id } });
 
-  await seedLabAlliedOrders(prisma, tenant.id, wsByCode);
+  const customerIds = await ensureLabAlliedCustomers(prisma, tenant.id);
+  await seedLabAlliedOrders(prisma, tenant.id, wsByCode, customerIds);
   await linkLabAlliedOrdersToRoutings(prisma, tenant.id, wsByCode);
   await prisma.productionOperation.deleteMany({
     where: { tenantId: tenant.id, productionOrder: { orderKind: "PROSPECT" } },
@@ -345,6 +354,7 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
   }> = [];
 
   registerRosterEmployees(employees.map((row) => ({ id: row.id, code: row.code, name: row.name })));
+  resetRosterAssignmentLoads();
 
   for (let offset = -7 * 12; offset <= 7 * 16; offset += 1) {
     const day = addPlantDays(weekStart, offset);
@@ -353,7 +363,7 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
     const [y, m, d] = ymd.split("-").map(Number);
     const dateOnly = new Date(Date.UTC(y!, m! - 1, d!));
 
-    resetRosterAssignmentLoads();
+    resetRosterSlotLoads();
     const sortedWs = [...workstations].sort((a, b) => a.code.localeCompare(b.code));
     for (const ws of sortedWs) {
       const bands = rosterBandsForWorkstation(ws.shifts, weekday);
@@ -477,6 +487,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 360, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 680, setupMinutes: 60, wsCodes: ["BPD-076"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 480, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 240, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         {
@@ -530,6 +541,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 340, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 660, setupMinutes: 60, wsCodes: ["BPD-076"] },
         { code: "COAT", name: "Film coating", runMinutes: 540, setupMinutes: 90, wsCodes: ["BPD-078"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 480, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 240, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
@@ -544,10 +556,12 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
     },
     {
       sku: "IBU-400-TAB",
-      name: "Tablet blend, compress, blister",
+      name: "Ibuprofen 400mg film-coated blister",
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 320, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 640, setupMinutes: 55, wsCodes: ["BPD-076"] },
+        { code: "COAT", name: "Film coating", runMinutes: 520, setupMinutes: 85, wsCodes: ["BPD-078"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 200, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Blister packing", runMinutes: 880, setupMinutes: 40, wsCodes: ["CPD-010", "BPD-090"] },
@@ -555,13 +569,15 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
     },
     {
       sku: "MET-500-TAB",
-      name: "Metformin tablet pack",
+      name: "Metformin 500mg film-coated blister",
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 300, setupMinutes: 40, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 620, setupMinutes: 50, wsCodes: ["BPD-076"] },
+        { code: "COAT", name: "Film coating", runMinutes: 500, setupMinutes: 80, wsCodes: ["BPD-078"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 400, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 180, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
-        { code: "PACK", name: "Bulk packing", runMinutes: 520, setupMinutes: 30, wsCodes: ["BPD-009"] },
+        { code: "PACK", name: "Alu/Alu blister", runMinutes: 760, setupMinutes: 40, wsCodes: ["BPD-051", "BPD-090"] },
       ],
     },
     {
@@ -570,6 +586,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 310, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 600, setupMinutes: 55, wsCodes: ["BPD-076"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 220, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Blister packing", runMinutes: 760, setupMinutes: 40, wsCodes: ["BPD-051"] },
@@ -581,6 +598,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
       family: "GENERAL_TABLET",
       steps: [
         { code: "BLND", name: "Blending", runMinutes: 280, setupMinutes: 35, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 480, setupMinutes: 45, wsCodes: ["BPD-076"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 160, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009", "BPD-099"] },
@@ -702,11 +720,59 @@ type SeedStep = { code: string; ws: string; mins: number; qc?: boolean };
 type SeedOrder = {
   orderNumber: string;
   productId: string;
+  customerId?: string;
   batch: string;
   dueDays: number;
   priority: "HIGH" | "NORMAL" | "LOW";
   steps: SeedStep[];
 };
+
+const LAB_ALLIED_CUSTOMERS = [
+  { name: "Nairobi Central Hospital", type: "HOSPITAL" as const },
+  { name: "Kenya Pharma Distributors Ltd", type: "DISTRIBUTOR" as const },
+  { name: "Mombasa County Referral", type: "HOSPITAL" as const },
+  { name: "East Africa MedSupply", type: "DISTRIBUTOR" as const },
+  { name: "Kisumu Faith Community Pharmacy", type: "PHARMACY" as const },
+  { name: "Coast General Hospital", type: "HOSPITAL" as const },
+];
+
+async function ensureLabAlliedCustomers(prisma: PrismaClient, tenantId: string): Promise<string[]> {
+  const ids: string[] = [];
+  for (const row of LAB_ALLIED_CUSTOMERS) {
+    const existing = await prisma.customer.findFirst({
+      where: { tenantId, name: row.name },
+      select: { id: true },
+    });
+    if (existing) {
+      ids.push(existing.id);
+      continue;
+    }
+    const created = await prisma.customer.create({
+      data: { tenantId, name: row.name, type: row.type, status: "ACTIVE" },
+    });
+    ids.push(created.id);
+  }
+  return ids;
+}
+
+/** Fail replan if any active tablet routing lacks a compression step. */
+export async function verifyLabAlliedTabletCompression(prisma: PrismaClient, tenantId: string): Promise<void> {
+  const tabletProducts = await prisma.product.findMany({
+    where: { tenantId, dosageForm: { contains: "Tablet", mode: "insensitive" } },
+    select: { sku: true, id: true },
+  });
+  for (const product of tabletProducts) {
+    const routing = await prisma.productRouting.findFirst({
+      where: { tenantId, productId: product.id, active: true },
+      include: { operations: { select: { code: true } } },
+    });
+    if (!routing) continue;
+    const hasComp = routing.operations.some((op) => op.code === "COMP" || op.code === "ENC");
+    if (!hasComp) {
+      throw new Error(`Tablet product ${product.sku} active routing has no compression step (COMP).`);
+    }
+  }
+}
 
 const TABLET_PACK_LINES = ["BPD-090", "BPD-051", "CPD-010"] as const;
 const GENERAL_BLEND = "BPD-061" as const;
@@ -715,10 +781,14 @@ const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
 const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
 
-/** Paracetamol: blend on general line; compression step omitted until L&A confirms a non–beta-lactam press. */
+const GENERAL_COMP = "BPD-076" as const;
+
 function tabletRoutePara(_blendIdx: number, packIdx: number, scale: number): SeedStep[] {
   return [
     { code: "BLND", ws: "BPD-061", mins: Math.round(280 * scale + 80) },
+    { code: "COMP", ws: GENERAL_COMP, mins: Math.round(520 * scale + 100) },
+    { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
+    { code: "QC", ws: "QC-PROC", mins: 180, qc: true },
     { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
   ];
 }
@@ -726,6 +796,7 @@ function tabletRoutePara(_blendIdx: number, packIdx: number, scale: number): See
 function tabletRoute(_blendIdx: number, packIdx: number, scale: number): SeedStep[] {
   return [
     { code: "BLND", ws: GENERAL_BLEND, mins: Math.round(280 * scale + 80) },
+    { code: "COMP", ws: GENERAL_COMP, mins: Math.round(520 * scale + 100) },
     { code: "QUAR", ws: "SFG-QUAR", mins: 420, qc: true },
     { code: "QC", ws: "QC-PROC", mins: 200, qc: true },
     { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
@@ -752,7 +823,12 @@ function dpsRoute(lineIdx: number, scale: number): SeedStep[] {
   ];
 }
 
-function buildBulkLabAlliedOrders(paraId: string, amoxId: string, dpsId: string): SeedOrder[] {
+function buildBulkLabAlliedOrders(
+  paraId: string,
+  amoxId: string,
+  dpsId: string,
+  customerIds: string[]
+): SeedOrder[] {
   const rows: SeedOrder[] = [];
   for (let n = 0; n < 32; n += 1) {
     const item = 13 + n;
@@ -774,6 +850,7 @@ function buildBulkLabAlliedOrders(paraId: string, amoxId: string, dpsId: string)
     rows.push({
       orderNumber,
       productId,
+      customerId: customerIds[n % customerIds.length],
       batch: `B-${String(100 + n).padStart(3, "0")}`,
       dueDays,
       priority: n % 9 === 0 ? "HIGH" : n % 7 === 0 ? "LOW" : "NORMAL",
@@ -795,6 +872,7 @@ async function createLabAlliedOrder(
       tenantId,
       orderNumber: row.orderNumber,
       productId: row.productId,
+      customerId: row.customerId,
       quantity: 6000 + (index % 12) * 750,
       priority: row.priority,
       status: "SCHEDULED",
@@ -830,7 +908,12 @@ async function createLabAlliedOrder(
   }
 }
 
-async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
+async function seedLabAlliedOrders(
+  prisma: PrismaClient,
+  tenantId: string,
+  wsByCode: Map<string, string>,
+  customerIds: string[]
+) {
   const para = await prisma.product.findFirst({ where: { tenantId, sku: "PARA-500-TAB" }, select: { id: true } });
   const amox = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-500-CAP" }, select: { id: true } });
   const dps = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-DPS-125" }, select: { id: true } });
@@ -843,8 +926,10 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       batch: "B-024",
       dueDays: 14,
       priority: "HIGH",
+      customerId: customerIds[0],
       steps: [
         { code: "BLND", ws: "BPD-061", mins: 360 },
+        { code: "COMP", ws: GENERAL_COMP, mins: 620 },
         { code: "QUAR", ws: "SFG-QUAR", mins: 480, qc: true },
         { code: "QC", ws: "QC-PROC", mins: 240, qc: true },
         { code: "PACK", ws: "BPD-090", mins: 1350 },
@@ -856,8 +941,10 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       batch: "B-025",
       dueDays: 18,
       priority: "NORMAL",
+      customerId: customerIds[1],
       steps: [
         { code: "BLND", ws: "BPD-061", mins: 300 },
+        { code: "COMP", ws: GENERAL_COMP, mins: 580 },
         { code: "QUAR", ws: "SFG-QUAR", mins: 480, qc: true },
         { code: "QC", ws: "QC-PROC", mins: 240, qc: true },
         { code: "PACK", ws: "CPD-010", mins: 840 },
@@ -885,7 +972,7 @@ async function seedLabAlliedOrders(prisma: PrismaClient, tenantId: string, wsByC
       priority: "NORMAL",
       steps: dpsRoute(0, 1),
     },
-    ...buildBulkLabAlliedOrders(para.id, amox.id, dps.id),
+    ...buildBulkLabAlliedOrders(para.id, amox.id, dps.id, customerIds),
   ];
 
   for (let i = 0; i < orders.length; i += 1) {

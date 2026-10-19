@@ -59,14 +59,23 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
     }),
   ]);
 
-  const routingSteps = row.routingResources.map((link) => ({
-    id: link.id,
-    operationCode: link.routingOperation.code,
-    operationName: link.routingOperation.name,
-    productSku: link.routingOperation.routing.product.sku,
-    productName: link.routingOperation.routing.product.name,
-    eligible: true,
-  }));
+  const routingSeen = new Set<string>();
+  const routingSteps = row.routingResources
+    .map((link) => ({
+      id: link.id,
+      operationCode: link.routingOperation.code,
+      operationName: link.routingOperation.name,
+      productSku: link.routingOperation.routing.product.sku,
+      productName: link.routingOperation.routing.product.name,
+      eligible: true,
+    }))
+    .filter((step) => {
+      const key = `${step.productSku}|${step.operationCode}`;
+      if (routingSeen.has(key)) return false;
+      routingSeen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.productSku.localeCompare(b.productSku) || a.operationCode.localeCompare(b.operationCode));
 
   return {
     id: row.id,

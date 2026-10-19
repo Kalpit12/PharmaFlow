@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 import { LAB_ALLIED_DEMO_SLUG } from "../src/lib/demo-tenant";
 import { acceptSchedulePlan, proposeRescheduleAll } from "../src/lib/server/aps-plan";
 import { applyLabAlliedSteadyStateWip } from "../prisma/apply-lab-allied-steady-state-wip";
-import { ensureLabAlliedDemoSeed } from "../prisma/seed-lab-allied-demo";
+import { ensureLabAlliedDemoSeed, verifyLabAlliedTabletCompression } from "../prisma/seed-lab-allied-demo";
 import { realignDemoScheduleToShifts } from "../prisma/realign-demo-schedule-to-shifts";
 import { reconcileLabAlliedDueDatesWithPlanner } from "../prisma/reconcile-lab-allied-due-dates-with-planner";
 import { syncLabAlliedDueDatesAfterSchedule } from "../prisma/sync-lab-allied-due-dates";
@@ -52,6 +52,7 @@ async function main() {
 
     const tenant = await prisma.tenant.findUnique({ where: { slug: LAB_ALLIED_DEMO_SLUG } });
     if (!tenant) throw new Error(`Tenant ${LAB_ALLIED_DEMO_SLUG} missing after seed.`);
+    await verifyLabAlliedTabletCompression(prisma, tenant.id);
 
     const user = await prisma.user.findFirst({
       where: { tenantId: tenant.id, status: "ACTIVE" },

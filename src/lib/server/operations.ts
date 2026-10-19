@@ -332,7 +332,13 @@ export async function getOperationsPlanner(
       issue.orderNumber,
       (routingIssuesByOrderNumber.get(issue.orderNumber) ?? 0) + 1
     );
-    routingIssuesByOperationId[issue.operationId] = { kind: issue.kind, detail: issue.detail };
+    routingIssuesByOperationId[issue.operationId] = {
+      kind: issue.kind,
+      detail:
+        issue.kind === "SLIPPED_START" || issue.kind === "PAST_DUE"
+          ? issue.detail
+          : issue.detail,
+    };
   }
   const ordersWithUnscheduledSteps = new Set(
     operationPlan.operations.filter((op) => !op.plannedStart || !op.plannedEnd).map((op) => op.orderId)

@@ -1,5 +1,6 @@
 import type { RoutingIssue, ScheduledOperation } from "@/lib/operations/routing";
 import type { RoutingOrder } from "@/lib/operations/routing";
+import { formatPastDueDetail, formatSlippedStartDetail } from "@/lib/operations/schedule-issue-format";
 
 /**
  * Surfaces deterministic infeasibility after a forward schedule is built.
@@ -32,13 +33,16 @@ export function appendDueDateFeasibilityIssues(input: {
         operationId: operations[operations.length - 1]?.id ?? order.id,
         orderNumber: order.orderNumber,
         kind: "PAST_DUE",
-        detail: `Finite schedule finishes ${lateMinutes} minutes after due date (${order.dueDate.toISOString()}).`,
+        detail: formatPastDueDetail(lateMinutes, order.dueDate),
       });
     }
   }
 
   return issues;
 }
+
+/** Grace before a not-started job is flagged as slipped (shop floor clock). */
+export const SLIPPED_START_GRACE_MS = 15 * 60_000;
 
 /** Flag scheduled steps whose planned start is before now without shop-floor activity. */
 export function appendSlippedStartIssues(input: {
@@ -55,12 +59,12 @@ export function appendSlippedStartIssues(input: {
     const status = input.operationStatusById.get(operation.id) ?? "SCHEDULED";
     if (status === "COMPLETED" || status === "IN_PROGRESS") continue;
     if (input.activeTimerOperationIds.has(operation.id)) continue;
-    if (operation.plannedStart.getTime() >= now.getTime()) continue;
+    if (operation.plannedStart.getTime() + SLIPPED_START_GRACE_MS >= now.getTime()) continue;
     issues.push({
       operationId: operation.id,
       orderNumber: operation.orderNumber,
       kind: "SLIPPED_START",
-      detail: `Planned start ${operation.plannedStart.toISOString()} is before now; reschedule or start the job.`,
+      detail: formatSlippedStartDetail(operation.plannedStart, now),
     });
   }
   return issues;

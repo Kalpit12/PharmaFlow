@@ -82,16 +82,51 @@ export function validateRosterChips(chips: RosterChipForValidation[]): Map<strin
       end: chipEndMs(chip.date, chip.endMinute),
     }));
 
+    function mergedMinutesInWindow(anchorStart: number, windowMs: number): number {
+      const windowEnd = anchorStart + windowMs;
+      const clipped = intervals
+        .map(({ start, end }) => ({
+          start: Math.max(start, anchorStart),
+          end: Math.min(end, windowEnd),
+        }))
+        .filter((span) => span.end > span.start)
+        .sort((a, b) => a.start - b.start);
+      let total = 0;
+      let curStart = -1;
+      let curEnd = -1;
+      for (const span of clipped) {
+        if (curStart < 0) {
+          curStart = span.start;
+          curEnd = span.end;
+          continue;
+        }
+        if (span.start <= curEnd) {
+          curEnd = Math.max(curEnd, span.end);
+        } else {
+          total += (curEnd - curStart) / 60_000;
+          curStart = span.start;
+          curEnd = span.end;
+        }
+      }
+      if (curStart >= 0) total += (curEnd - curStart) / 60_000;
+      return total;
+    }
+
     for (let i = 0; i < intervals.length; i += 1) {
       const anchor = intervals[i]!;
-      let minutesInWindow = 0;
-      for (const span of intervals) {
-        const overlapStart = Math.max(anchor.start, span.start);
-        const overlapEnd = Math.min(anchor.start + 24 * 60 * 60_000, span.end);
-        if (overlapEnd > overlapStart) minutesInWindow += (overlapEnd - overlapStart) / 60_000;
-      }
+      const minutesInWindow = mergedMinutesInWindow(anchor.start, 24 * 60 * 60_000);
       if (minutesInWindow > 12 * 60) {
         add(anchor.chip.id, "More than 12 hours scheduled in 24h.");
+      }
+    }
+
+    for (let i = 1; i < intervals.length; i += 1) {
+      const prev = intervals[i - 1]!;
+      const cur = intervals[i]!;
+      const restHours = (cur.start - prev.end) / 3_600_000;
+      if (restHours >= 0 && restHours < 11) {
+        add(cur.chip.id, "Less than 11 hours rest since previous shift.");
+        add(prev.chip.id, "Less than 11 hours rest before next shift.");
       }
     }
 
@@ -115,18 +150,6 @@ export function validateRosterChips(chips: RosterChipForValidation[]): Map<strin
       }
     }
 
-    const byDate = new Map<string, RosterChipForValidation[]>();
-    for (const chip of sorted) {
-      const dayList = byDate.get(chip.date) ?? [];
-      dayList.push(chip);
-      byDate.set(chip.date, dayList);
-    }
-    for (const dayChips of byDate.values()) {
-      const bands = new Set(dayChips.map((c) => shiftBand(c.startMinute, c.endMinute)));
-      if (bands.has("Day") && bands.has("Night")) {
-        for (const chip of dayChips) add(chip.id, "Day and night shift on the same day.");
-      }
-    }
   }
 
   return warnings;

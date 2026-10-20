@@ -124,6 +124,9 @@ type ResourceState = {
 
 const DEFAULT_CAMPAIGN_MAJOR_CLEAN_MINUTES = 120;
 
+/** One-shot reseed log across optimizer iterations (see LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG). */
+let labAlliedCapsulePackDebugLogged = false;
+
 export type PlanningWeights = {
   priorityWeight: number;
   dueDateWeight: number;
@@ -232,7 +235,6 @@ export function buildOperationSchedule(input: {
   freezeUntil?: Date | null;
   weights?: PlanningWeights;
 }): { operations: ScheduledOperation[]; issues: RoutingIssue[] } {
-  let capsulePackCandidateDebugPrinted = false;
   const workstationById = new Map(input.workstations.map((row) => [row.id, row]));
   const workstationCodeById = new Map(
     input.workstations.map((row) => [row.id, row.code ?? row.id])
@@ -451,8 +453,9 @@ export function buildOperationSchedule(input: {
         const selected = candidates[0];
         if (
           process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG === "1" &&
-          !capsulePackCandidateDebugPrinted &&
-          operation.operationCode === "PACK"
+          !labAlliedCapsulePackDebugLogged &&
+          operation.operationCode === "PACK" &&
+          operation.workstationId == null
         ) {
           const resourceCodes = new Set(
             operation.resources
@@ -460,11 +463,11 @@ export function buildOperationSchedule(input: {
               .filter((code): code is string => Boolean(code))
           );
           if (resourceCodes.has("BPD-089") && resourceCodes.has("BPD-099")) {
-            capsulePackCandidateDebugPrinted = true;
+            labAlliedCapsulePackDebugLogged = true;
             const debugRows = debugResourceCandidates({
               workstationById,
               workstationCodeById,
-              resources: resourcePool.length > 0 ? resourcePool : operation.resources,
+              resources: operation.resources,
               resourceState,
               changeovers: input.changeovers,
               predecessorReady,

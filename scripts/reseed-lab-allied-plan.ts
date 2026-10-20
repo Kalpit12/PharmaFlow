@@ -63,7 +63,9 @@ async function main() {
     if (!user) throw new Error("No active user on lab-allied-demo tenant.");
 
     const ctx = { tenantId: tenant.id, userId: user.id, role: user.role };
+    process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG = "1";
     const proposal = await proposeRescheduleAll(ctx, new Date().toISOString());
+    delete process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG;
     if (!proposal.id) throw new Error("Reschedule all did not return a plan id.");
     await acceptSchedulePlan(ctx, proposal.id);
     const wip = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
@@ -117,7 +119,7 @@ async function main() {
       }
       throw new Error(`Unexpected Gantt errors after replan (got ${blockingErrors.length}).`);
     }
-    await printLabAlliedUtilizationTable(prisma, tenant.id);
+    await printLabAlliedUtilizationTable(prisma, tenant.id, { minUtilPercent: 25 });
     await printLabAlliedRosterWarnings(prisma, tenant.id, user.id);
 
     if (gantt.lateSummary.lateOrders < 1 || gantt.lateSummary.lateOrders > 4) {

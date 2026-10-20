@@ -71,10 +71,15 @@ export function GanttOrderBottomPanel({
     return grouped;
   }, [filter, rows, tab]);
 
+  const lateStepCount = counts.late;
+  const lateOrderLabel =
+    lateOrderCount === 1 ? "1 order" : `${lateOrderCount} orders`;
+  const lateStepLabel = lateStepCount === 1 ? "1 step" : `${lateStepCount} steps`;
+
   const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
     { key: "unscheduled", label: "Unscheduled", count: counts.unscheduled },
     { key: "scheduled", label: "Scheduled", count: counts.scheduled },
-    { key: "late", label: `Late (${lateOrderCount} orders · ${lateJobCount} steps)`, count: lateJobCount },
+    { key: "late", label: `Late (${lateOrderLabel} · ${lateStepLabel})` },
     { key: "error", label: "Errors", count: counts.error },
   ];
 

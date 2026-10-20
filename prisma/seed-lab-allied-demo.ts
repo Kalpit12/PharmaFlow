@@ -271,6 +271,20 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
       dosageForm: "Tablet",
       validatedBatchSize: 8500,
     },
+    {
+      sku: "PARA-500-JAR1000",
+      name: "Paracetamol 500mg — hospital jar ×1000",
+      category: "Analgesic",
+      dosageForm: "Tablet",
+      validatedBatchSize: 8000,
+    },
+    {
+      sku: "AMOX-500-JAR500",
+      name: "Amoxicillin 500mg — hospital jar ×500",
+      category: "Antibiotic",
+      dosageForm: "Capsule",
+      validatedBatchSize: 10000,
+    },
   ];
   for (const row of products) {
     await prisma.product.upsert({
@@ -315,6 +329,8 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
   const customerIds = await ensureLabAlliedCustomers(prisma, tenant.id);
   await seedLabAlliedOrders(prisma, tenant.id, wsByCode, customerIds);
   await linkLabAlliedOrdersToRoutings(prisma, tenant.id, wsByCode);
+  const { seedLabAlliedAwaitingPackingWip } = await import("./seed-lab-allied-packing-wip");
+  await seedLabAlliedAwaitingPackingWip(prisma, tenant.id, wsByCode, customerIds);
   await prisma.productionOperation.deleteMany({
     where: { tenantId: tenant.id, productionOrder: { orderKind: "PROSPECT" } },
   });
@@ -547,7 +563,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
           name: "Capsule line packing",
           runMinutes: 600,
           setupMinutes: 40,
-          wsCodes: ["BPD-089", "BPD-099", "BPD-009"],
+          wsCodes: ["BPD-089", "BPD-099"],
         },
       ],
     },
@@ -630,6 +646,30 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
         { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 160, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
         { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009"] },
+      ],
+    },
+    {
+      sku: "PARA-500-JAR1000",
+      name: "Hospital bulk jar pack (paracetamol)",
+      family: "GENERAL_TABLET",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 340, setupMinutes: 45, wsCodes: ["BPD-061"] },
+        { code: "COMP", name: "Compression", runMinutes: 640, setupMinutes: 55, wsCodes: ["BPD-076"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 200, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Bulk (counting) packing", runMinutes: 720, setupMinutes: 35, wsCodes: ["BPD-009"] },
+      ],
+    },
+    {
+      sku: "AMOX-500-JAR500",
+      name: "Hospital bulk jar pack (amoxicillin)",
+      family: "BETA_LACTAM",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 280, setupMinutes: 45, wsCodes: ["BPD-062"] },
+        { code: "ENC", name: "Capsule filling", runMinutes: 780, setupMinutes: 85, wsCodes: ["BPD-092", "BPD-036"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 180, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        { code: "PACK", name: "Bulk (counting) packing", runMinutes: 660, setupMinutes: 30, wsCodes: ["BPD-009"] },
       ],
     },
     {
@@ -814,7 +854,7 @@ const BETA_BLEND = "BPD-062" as const;
 const BETA_COMP = "BPD-075" as const;
 const COAT_LINE = "BPD-078" as const;
 const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
-const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
+const CAP_PACK_LINES = ["BPD-089", "BPD-099"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
 
 const GENERAL_COMP = "BPD-076" as const;
@@ -985,6 +1025,8 @@ async function seedLabAlliedOrders(
   const coAmox = await prisma.product.findFirst({ where: { tenantId, sku: "COAMOX-625-TAB" }, select: { id: true } });
   const amox = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-500-CAP" }, select: { id: true } });
   const dps = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-DPS-125" }, select: { id: true } });
+  const paraJar = await prisma.product.findFirst({ where: { tenantId, sku: "PARA-500-JAR1000" }, select: { id: true } });
+  const amoxJar = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-500-JAR500" }, select: { id: true } });
   if (!para || !ibu || !met || !coAmox || !amox || !dps) return;
 
   const orders: SeedOrder[] = [
@@ -1040,6 +1082,44 @@ async function seedLabAlliedOrders(
       priority: "NORMAL",
       steps: dpsRoute(0, 1),
     },
+    ...(paraJar
+      ? [
+          {
+            orderNumber: "ORD-JAR-2026/01",
+            productId: paraJar.id,
+            batch: "B-JAR-01",
+            dueDays: 21,
+            priority: "HIGH" as const,
+            customerId: customerIds[0],
+            steps: [
+              { code: "BLND", ws: "BPD-061", mins: 340 },
+              { code: "COMP", ws: GENERAL_COMP, mins: 600 },
+              { code: "QUAR", ws: "SFG-QUAR", mins: 420, qc: true },
+              { code: "QC", ws: "QC-PROC", mins: 200, qc: true },
+              { code: "PACK", ws: "BPD-009", mins: 720 },
+            ],
+          },
+        ]
+      : []),
+    ...(amoxJar
+      ? [
+          {
+            orderNumber: "ORD-JAR-2026/02",
+            productId: amoxJar.id,
+            batch: "B-JAR-02",
+            dueDays: 24,
+            priority: "HIGH" as const,
+            customerId: customerIds[0],
+            steps: [
+              { code: "BLND", ws: "BPD-062", mins: 280 },
+              { code: "ENC", ws: "BPD-092", mins: 760 },
+              { code: "QUAR", ws: "SFG-QUAR", mins: 360, qc: true },
+              { code: "QC", ws: "QC-PROC", mins: 180, qc: true },
+              { code: "PACK", ws: "BPD-009", mins: 660 },
+            ],
+          },
+        ]
+      : []),
     ...buildBulkLabAlliedOrders(para.id, ibu.id, met.id, coAmox.id, amox.id, dps.id, customerIds),
   ];
 

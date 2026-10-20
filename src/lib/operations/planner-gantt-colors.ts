@@ -26,7 +26,7 @@ export const ganttBarFillClass: Record<GanttBarTone, string> = {
     "bg-[repeating-linear-gradient(45deg,#374151_0,#374151_3px,#1f2937_3px,#1f2937_6px)] border border-[#374151]",
   ghost: "bg-transparent border border-dashed border-[var(--planner-slate)]",
   maintenance: "bg-[repeating-linear-gradient(45deg,#6b7280_0,#6b7280_4px,#4b5563_4px,#4b5563_8px)]",
-  elapsedPlanned: "bg-violet-700 border border-violet-500",
+  elapsedPlanned: "bg-[#8B7FC7] border border-[#7A6FB8]",
 };
 
 export const ganttBarSelectedClass =

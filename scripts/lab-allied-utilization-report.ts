@@ -12,7 +12,11 @@ const PRODUCTION_GROUPS = new Set([
   "LA-LINE",
 ]);
 
-export async function printLabAlliedUtilizationTable(prisma: PrismaClient, tenantId: string): Promise<void> {
+export async function printLabAlliedUtilizationTable(
+  prisma: PrismaClient,
+  tenantId: string,
+  options?: { minUtilPercent?: number }
+): Promise<void> {
   const now = new Date();
   const horizon = new Date(now.getTime() + 7 * 86_400_000);
   const workstations = await prisma.workstation.findMany({
@@ -45,6 +49,7 @@ export async function printLabAlliedUtilizationTable(prisma: PrismaClient, tenan
   console.log("\n[utilization] Next 7 days (production lines)");
   console.log("workstation | planned h | shift h | util %");
   console.log("---|---:|---:|---:");
+  const lowUtil: string[] = [];
   for (const ws of workstations) {
     if (!ws.group?.code || !PRODUCTION_GROUPS.has(ws.group.code)) continue;
     const shiftHours =
@@ -52,5 +57,13 @@ export async function printLabAlliedUtilizationTable(prisma: PrismaClient, tenan
     const plannedH = (plannedMinutesByWs.get(ws.id) ?? 0) / 60;
     const util = shiftHours > 0 ? Math.round((plannedH / shiftHours) * 100) : 0;
     console.log(`${ws.name} (${ws.code}) | ${plannedH.toFixed(1)} | ${shiftHours.toFixed(1)} | ${util}%`);
+    if (options?.minUtilPercent != null && util < options.minUtilPercent) {
+      lowUtil.push(`${ws.code} (${util}%)`);
+    }
+  }
+  if (options?.minUtilPercent != null && lowUtil.length > 0) {
+    throw new Error(
+      `Production lines below ${options.minUtilPercent}% util in next 7 days: ${lowUtil.join(", ")}`
+    );
   }
 }

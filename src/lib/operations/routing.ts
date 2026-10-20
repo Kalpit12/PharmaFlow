@@ -11,6 +11,7 @@ import {
 } from "@/lib/operations/changeover-segregation";
 import { appendMaxHoldIssues } from "@/lib/operations/gmp-schedule-validation";
 import { appendDueDateFeasibilityIssues } from "@/lib/operations/schedule-feasibility";
+import { debugResourceCandidates, printCandidateDebugTable } from "@/lib/operations/schedule-candidate-debug";
 import { PRIORITY_RANK, type PlannerPriority } from "@/lib/operations/schedule";
 import {
   canScheduleOnWorkstation,
@@ -20,7 +21,7 @@ import {
 
 export type RoutingWorkstation = {
   id: string;
-  code: string;
+  code?: string;
   capacityHoursPerDay: number;
   calendar?: WorkCalendar;
   gmp?: WorkstationGmpProfile;
@@ -230,7 +231,11 @@ export function buildOperationSchedule(input: {
   freezeUntil?: Date | null;
   weights?: PlanningWeights;
 }): { operations: ScheduledOperation[]; issues: RoutingIssue[] } {
+  let capsulePackCandidateDebugPrinted = false;
   const workstationById = new Map(input.workstations.map((row) => [row.id, row]));
+  const workstationCodeById = new Map(
+    input.workstations.map((row) => [row.id, row.code ?? row.id])
+  );
   const resourceState = new Map<string, ResourceState>();
   for (const workstation of input.workstations) {
     const calendar = workstation.calendar ?? createStandardWorkCalendar(workstation.capacityHoursPerDay);
@@ -427,40 +432,48 @@ export function buildOperationSchedule(input: {
           })
           .filter((row): row is NonNullable<typeof row> => row != null)
           .sort((a, b) => {
-            const weights = input.weights;
-            if (!weights) {
-              const loadA = resourceState.get(a.resource.workstationId)?.availableAt.getTime() ?? 0;
-              const loadB = resourceState.get(b.resource.workstationId)?.availableAt.getTime() ?? 0;
-              return (
-                a.end.getTime() - b.end.getTime() ||
-                loadA - loadB ||
-                Number(b.resource.preferred) - Number(a.resource.preferred) ||
-                a.resource.workstationId.localeCompare(b.resource.workstationId)
-              );
-            }
-            const score = (candidate: typeof a) => {
-              const rolePenalty =
-                candidate.resource.resourceRole === "SUBCONTRACT"
-                  ? 4 * 60 * 60_000
-                  : candidate.resource.resourceRole === "ALTERNATE"
-                    ? 30 * 60_000
-                    : 0;
-              return (
-              candidate.end.getTime() +
-              rolePenalty +
-              weights.changeoverWeight * candidate.changeoverMinutes * 60_000 -
-              weights.utilizationWeight * (candidate.resource.preferred ? 1 : 0) * 300_000 -
-              weights.utilizationWeight * candidate.resource.efficiencyPercent * 1_000
-              );
-            };
+            const loadA = resourceState.get(a.resource.workstationId)?.availableAt.getTime() ?? 0;
+            const loadB = resourceState.get(b.resource.workstationId)?.availableAt.getTime() ?? 0;
             return (
-              score(a) - score(b) ||
-              Number(b.resource.preferred) - Number(a.resource.preferred) ||
+              a.end.getTime() - b.end.getTime() ||
+              loadA - loadB ||
               a.resource.workstationId.localeCompare(b.resource.workstationId)
             );
           });
 
         const selected = candidates[0];
+        if (
+          process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG === "1" &&
+          !capsulePackCandidateDebugPrinted &&
+          operation.operationCode === "PACK"
+        ) {
+          const resourceCodes = new Set(
+            operation.resources
+              .map((resource) => workstationCodeById.get(resource.workstationId))
+              .filter((code): code is string => Boolean(code))
+          );
+          if (resourceCodes.has("BPD-089") && resourceCodes.has("BPD-099")) {
+            capsulePackCandidateDebugPrinted = true;
+            const debugRows = debugResourceCandidates({
+              workstationById,
+              workstationCodeById,
+              resources: operation.resources,
+              resourceState,
+              changeovers: input.changeovers,
+              predecessorReady,
+              durationMinutes: operation.durationMinutes,
+              setupMinutes: operation.setupMinutes,
+              teardownMinutes: operation.teardownMinutes,
+              changeoverFamily: operation.changeoverFamily,
+              selectedWorkstationId: selected?.resource.workstationId ?? null,
+            });
+            printCandidateDebugTable(
+              debugRows,
+              `${order.orderNumber} capsule PACK (scheduler pick: ${selected ? workstationCodeById.get(selected.resource.workstationId) : "none"})`
+            );
+          }
+        }
+
         if (!selected) {
           const unscheduled: ScheduledOperation = {
             ...operation,

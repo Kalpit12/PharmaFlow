@@ -26,7 +26,7 @@ const ZOOMS: GanttZoom[] = ["8h", "day", "week", "month"];
 
 const LEGEND: Array<{ tone: GanttBarTone; label: string }> = [
   { tone: "scheduled", label: "Scheduled (production)" },
-  { tone: "elapsedPlanned", label: "Quarantine / QC — planned wait" },
+  { tone: "elapsedPlanned", label: "Quarantine / QC — planned wait (#8B7FC7)" },
   { tone: "running", label: "Running" },
   { tone: "late", label: "Late vs due" },
   { tone: "completed", label: "Completed" },

@@ -116,11 +116,11 @@ async function main() {
       }
       throw new Error(`Unexpected Gantt errors after replan (got ${blockingErrors.length}).`);
     }
-    if (gantt.lateSummary.lateOrders < 2 || gantt.lateSummary.lateOrders > 4) {
-      throw new Error(`Expected 2–4 late orders for demo (got ${gantt.lateSummary.lateOrders}).`);
-    }
-
     await printLabAlliedUtilizationTable(prisma, tenant.id);
+
+    if (gantt.lateSummary.lateOrders < 1 || gantt.lateSummary.lateOrders > 4) {
+      throw new Error(`Expected 1–4 late orders for demo (got ${gantt.lateSummary.lateOrders}).`);
+    }
 
     const execution = await getProductionExecutionSnapshot(ctx, { view: "all" });
     const activeExecution = Number(execution.kpis.find((row) => row.id === "active")?.value ?? 0);

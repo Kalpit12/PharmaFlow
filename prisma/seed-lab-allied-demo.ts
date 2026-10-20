@@ -122,8 +122,14 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
 
   await prisma.planningPolicy.upsert({
     where: { tenantId: tenant.id },
-    create: { tenantId: tenant.id, autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0 },
-    update: { autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0 },
+    create: {
+      tenantId: tenant.id,
+      autopilotMode: "AUTO_ACCEPT_UNLOCKED",
+      freezeMinutes: 0,
+      utilizationWeight: 45,
+      useGlobalOptimizer: true,
+    },
+    update: { autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0, utilizationWeight: 45 },
   });
 
   let site = await prisma.plantSite.findFirst({ where: { tenantId: tenant.id, code: "LA-DEMO" } });

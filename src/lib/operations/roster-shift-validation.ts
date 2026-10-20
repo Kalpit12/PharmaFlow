@@ -114,9 +114,11 @@ export function validateRosterChips(chips: RosterChipForValidation[]): Map<strin
 
     for (let i = 0; i < intervals.length; i += 1) {
       const anchor = intervals[i]!;
+      const chip = anchor.chip;
+      if (chip.startMinute === 0 && chip.endMinute >= 1_440) continue;
       const minutesInWindow = mergedMinutesInWindow(anchor.start, 24 * 60 * 60_000);
       if (minutesInWindow > 12 * 60) {
-        add(anchor.chip.id, "More than 12 hours scheduled in 24h.");
+        add(chip.id, "More than 12 hours scheduled in 24h.");
       }
     }
 

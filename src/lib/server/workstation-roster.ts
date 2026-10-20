@@ -60,6 +60,7 @@ export function formatPlantClock(minute: number): string {
 }
 
 export function shiftTimeLabel(startMinute: number, endMinute: number): string {
+  if (startMinute === 0 && endMinute >= 1_440) return "24h elapsed";
   if (endMinute > 1_440) {
     return `${formatPlantClock(startMinute)}–${formatPlantClock(endMinute - 1_440)} (+1)`;
   }

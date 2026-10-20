@@ -429,8 +429,11 @@ export function buildOperationSchedule(input: {
           .sort((a, b) => {
             const weights = input.weights;
             if (!weights) {
+              const loadA = resourceState.get(a.resource.workstationId)?.availableAt.getTime() ?? 0;
+              const loadB = resourceState.get(b.resource.workstationId)?.availableAt.getTime() ?? 0;
               return (
                 a.end.getTime() - b.end.getTime() ||
+                loadA - loadB ||
                 Number(b.resource.preferred) - Number(a.resource.preferred) ||
                 a.resource.workstationId.localeCompare(b.resource.workstationId)
               );

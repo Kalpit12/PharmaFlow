@@ -130,7 +130,9 @@ export function optimizeOperationSchedule(
   input: OptimizerInput,
   options?: { maxIterations?: number }
 ): OptimizedScheduleResult {
-  const maxIterations = options?.maxIterations ?? 240;
+  const maxIterations =
+    options?.maxIterations ??
+    (process.env.LAB_ALLIED_RESEED_FAST_OPTIMIZER === "1" ? 48 : 240);
   let bestOrders = cloneOrders(input.orders);
   let best = buildOperationSchedule({ ...input, orders: bestOrders });
   let bestScore = scoreScheduleObjective({

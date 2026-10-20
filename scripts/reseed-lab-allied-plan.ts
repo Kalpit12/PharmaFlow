@@ -47,10 +47,16 @@ async function printOrderTimeline(prisma: PrismaClient, tenantId: string, orderN
   }
 }
 
+function logStep(label: string) {
+  console.log(`[reseed] ${new Date().toISOString()} ${label}`);
+}
+
 async function main() {
   const prisma = new PrismaClient();
   try {
+    logStep("seed start (full wipe + orders — often 2–5 min on Neon)");
     await ensureLabAlliedDemoSeed(prisma);
+    logStep("seed done");
 
     const tenant = await prisma.tenant.findUnique({ where: { slug: LAB_ALLIED_DEMO_SLUG } });
     if (!tenant) throw new Error(`Tenant ${LAB_ALLIED_DEMO_SLUG} missing after seed.`);
@@ -63,9 +69,13 @@ async function main() {
     if (!user) throw new Error("No active user on lab-allied-demo tenant.");
 
     const ctx = { tenantId: tenant.id, userId: user.id, role: user.role };
+    logStep("reschedule all start (global optimizer — often 15–25 min; output is live, not stuck)");
     process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG = "1";
+    process.env.LAB_ALLIED_RESEED_FAST_OPTIMIZER = "1";
     const proposal = await proposeRescheduleAll(ctx, new Date().toISOString());
     delete process.env.LAB_ALLIED_PRINT_CAPSULE_PACK_DEBUG;
+    delete process.env.LAB_ALLIED_RESEED_FAST_OPTIMIZER;
+    logStep("reschedule all done");
     if (!proposal.id) throw new Error("Reschedule all did not return a plan id.");
     await acceptSchedulePlan(ctx, proposal.id);
     const wip = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);

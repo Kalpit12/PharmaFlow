@@ -383,7 +383,11 @@ export function buildOperationSchedule(input: {
           continue;
         }
 
-        const candidates = operation.resources
+        const resourcePool =
+          operation.workstationId != null
+            ? operation.resources.filter((resource) => resource.workstationId === operation.workstationId)
+            : operation.resources;
+        const candidates = resourcePool
           .filter((resource) => workstationById.has(resource.workstationId))
           .map((resource) => {
             const workstation = workstationById.get(resource.workstationId)!;
@@ -434,10 +438,12 @@ export function buildOperationSchedule(input: {
           .sort((a, b) => {
             const loadA = resourceState.get(a.resource.workstationId)?.availableAt.getTime() ?? 0;
             const loadB = resourceState.get(b.resource.workstationId)?.availableAt.getTime() ?? 0;
+            const codeA = workstationCodeById.get(a.resource.workstationId) ?? a.resource.workstationId;
+            const codeB = workstationCodeById.get(b.resource.workstationId) ?? b.resource.workstationId;
             return (
               a.end.getTime() - b.end.getTime() ||
               loadA - loadB ||
-              a.resource.workstationId.localeCompare(b.resource.workstationId)
+              codeA.localeCompare(codeB)
             );
           });
 
@@ -457,7 +463,7 @@ export function buildOperationSchedule(input: {
             const debugRows = debugResourceCandidates({
               workstationById,
               workstationCodeById,
-              resources: operation.resources,
+              resources: resourcePool.length > 0 ? resourcePool : operation.resources,
               resourceState,
               changeovers: input.changeovers,
               predecessorReady,

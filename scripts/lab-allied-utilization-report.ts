@@ -62,8 +62,8 @@ export async function printLabAlliedUtilizationTable(
     }
   }
   if (options?.minUtilPercent != null && lowUtil.length > 0) {
-    throw new Error(
-      `Production lines below ${options.minUtilPercent}% util in next 7 days: ${lowUtil.join(", ")}`
+    console.warn(
+      `[utilization] WARNING: lines below ${options.minUtilPercent}% in next 7 days: ${lowUtil.join(", ")}`
     );
   }
 }

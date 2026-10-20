@@ -51,7 +51,12 @@ function formatTooltip(bar: GanttBar, wsCode: string): string {
     `Order: ${bar.orderNumber}`,
     `Due: ${formatGanttDateOnly(bar.dueDate)}`,
     `Status: ${formatOperationStatusLabel(bar.status)}`,
-  ].join("\n");
+    bar.alternativeWorkstationNames.length > 0
+      ? `Alternatives: ${bar.alternativeWorkstationNames.join(", ")}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 function barHasWarning(bar: GanttBar): boolean {
@@ -692,10 +697,15 @@ export function OperationsGanttWorkspace({
                         const laneExtra = (laneCount - 1) * (BAR_HEIGHT + 4);
                         const rowHeight =
                           (showCapacity && !ws.elapsedOnly ? ROW_HEIGHT + 10 : ROW_HEIGHT) + laneExtra;
+                        const dragIneligible =
+                          drag != null && !drag.bar.qualifiedWorkstationIds.includes(wsId);
                         return (
                           <div
                             key={wsId}
-                            className="mb-1 grid bg-background"
+                            className={cn(
+                              "mb-1 grid bg-background transition-opacity",
+                              dragIneligible && "opacity-35"
+                            )}
                             style={{ gridTemplateColumns: `${LABEL_WIDTH}px 1fr` }}
                           >
                             <button
@@ -838,6 +848,7 @@ export function OperationsGanttWorkspace({
             onScheduleUnscheduled={scheduleUnscheduled}
             pending={pending}
             lateJobCount={lateSummary.lateJobs}
+            lateOrderCount={lateSummary.lateOrders}
             scheduleToolbar={
               <GanttReschedulePill
                 proposal={data.proposal}

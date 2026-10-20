@@ -25,11 +25,12 @@ import { cn } from "@/lib/utils";
 const ZOOMS: GanttZoom[] = ["8h", "day", "week", "month"];
 
 const LEGEND: Array<{ tone: GanttBarTone; label: string }> = [
-  { tone: "scheduled", label: "Scheduled" },
+  { tone: "scheduled", label: "Scheduled (production)" },
+  { tone: "elapsedPlanned", label: "Quarantine / QC — planned wait" },
   { tone: "running", label: "Running" },
+  { tone: "late", label: "Late vs due" },
+  { tone: "completed", label: "Completed" },
   { tone: "prospect", label: "Prospect" },
-  { tone: "late", label: "Late" },
-  { tone: "qcHold", label: "QC hold" },
   { tone: "changeover", label: "Changeover" },
   { tone: "ghost", label: "Current plan (ghost)" },
 ];

@@ -20,6 +20,7 @@ export function GanttOrderBottomPanel({
   onScheduleUnscheduled,
   pending,
   lateJobCount,
+  lateOrderCount,
   scheduleToolbar,
 }: {
   rows: GanttOrderTableRow[];
@@ -31,6 +32,7 @@ export function GanttOrderBottomPanel({
   onScheduleUnscheduled: () => void;
   pending: boolean;
   lateJobCount: number;
+  lateOrderCount: number;
   scheduleToolbar?: ReactNode;
 }) {
   const [tab, setTab] = useState<TabKey>("unscheduled");
@@ -72,7 +74,7 @@ export function GanttOrderBottomPanel({
   const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
     { key: "unscheduled", label: "Unscheduled", count: counts.unscheduled },
     { key: "scheduled", label: "Scheduled", count: counts.scheduled },
-    { key: "late", label: "Late", count: lateJobCount },
+    { key: "late", label: `Late (${lateOrderCount} orders · ${lateJobCount} steps)`, count: lateJobCount },
     { key: "error", label: "Errors", count: counts.error },
   ];
 

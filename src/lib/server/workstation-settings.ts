@@ -122,6 +122,8 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
         weekday,
         dayLabel: dayNames[weekday] ?? String(weekday),
         shiftLabel: band.shiftLabel,
+        startMinute: band.startMinute,
+        endMinute: band.endMinute,
         timeLabel: shiftTimeLabel(band.startMinute, band.endMinute),
       }));
     }),
@@ -165,6 +167,7 @@ export type WorkstationSettingsPatch = {
   qualificationStatus?: "QUALIFIED" | "DUE" | "EXPIRED";
   calibrationDueDate?: string | null;
   cleanStatus?: "CLEAN" | "DIRTY";
+  shiftBands?: Array<{ weekday: number; startMinute: number; endMinute: number }>;
 };
 
 export async function patchWorkstationSettings(
@@ -203,13 +206,29 @@ export async function patchWorkstationSettings(
     },
   });
 
+  if (patch.shiftBands?.length) {
+    await prisma.workstationShift.deleteMany({ where: { tenantId: ctx.tenantId, workstationId } });
+    await prisma.workstationShift.createMany({
+      data: patch.shiftBands.map((band) => ({
+        tenantId: ctx.tenantId,
+        workstationId,
+        weekday: band.weekday,
+        startMinute: band.startMinute,
+        endMinute: band.endMinute,
+      })),
+    });
+    await markWorkstationScheduleStale(ctx, `Shifts updated on ${existing.code} — reschedule needed.`);
+  }
+
   await prisma.auditLog.create({
     data: {
       tenantId: ctx.tenantId,
       entityType: "Workstation",
       entityId: workstationId,
       action: "UPDATE",
-      reason: `Updated workstation ${existing.code}`,
+      reason: patch.shiftBands?.length
+        ? `Updated shifts on ${existing.code}`
+        : `Updated workstation ${existing.code}`,
       actorUserId: ctx.userId,
     },
   });

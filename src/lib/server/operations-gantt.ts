@@ -42,6 +42,7 @@ export type GanttBar = {
   sequence: number;
   isLocked: boolean;
   qualifiedWorkstationIds: string[];
+  alternativeWorkstationNames: string[];
   workstationId: string;
   orderNumber: string;
   batchLabel: string;
@@ -443,6 +444,7 @@ export async function getOperationsGanttSnapshot(
     }
   }
 
+  const wsNameById = new Map(wsRows.map((row) => [row.id, row.name]));
   const bars: GanttBar[] = [];
   const flowEdges: GanttFlowEdge[] = [];
   const flowByOrder = new Map<string, typeof dbOperations>();
@@ -462,6 +464,7 @@ export async function getOperationsGanttSnapshot(
     const plannedEnd = dbOp.plannedEnd!.toISOString();
     const batchLabel = orderBatch.get(order.id) ?? order.orderNumber;
     const isQcHold = dbOp.routingOperation?.isQcHold ?? routingOp?.isQcHold ?? false;
+    const workstationCode = wsRows.find((row) => row.id === dbOp.workstationId)?.code ?? null;
     const tone = toneForOperation({
       orderKind: order.orderKind as "FIRM" | "PROSPECT",
       operationStatus: dbOp.status,
@@ -470,6 +473,7 @@ export async function getOperationsGanttSnapshot(
       plannedEnd,
       dueDate: order.dueDate,
       isQcHold,
+      workstationCode,
       hasActiveTimer: activeTimers.has(dbOp.id),
       orderPlannedEnd: orderPlannedEnd.get(order.id) ?? null,
       now,
@@ -481,6 +485,9 @@ export async function getOperationsGanttSnapshot(
         !sameInstant(proposed.start, plannedStart) ||
         !sameInstant(proposed.end, plannedEnd));
 
+    const qualifiedWorkstationIds =
+      routingOp?.qualifiedWorkstationIds ?? (dbOp.workstationId ? [dbOp.workstationId] : []);
+    const assignedWs = changed ? proposed!.workstationId : dbOp.workstationId!;
     bars.push({
       id: dbOp.id,
       layer: changed ? "proposed" : "live",
@@ -488,9 +495,12 @@ export async function getOperationsGanttSnapshot(
       operationId: dbOp.id,
       sequence: dbOp.sequence,
       isLocked: order.isLocked,
-      qualifiedWorkstationIds:
-        routingOp?.qualifiedWorkstationIds ?? (dbOp.workstationId ? [dbOp.workstationId] : []),
-      workstationId: changed ? proposed!.workstationId : dbOp.workstationId!,
+      qualifiedWorkstationIds,
+      alternativeWorkstationNames: qualifiedWorkstationIds
+        .filter((id) => id !== assignedWs)
+        .map((id) => wsNameById.get(id))
+        .filter((name): name is string => Boolean(name)),
+      workstationId: assignedWs,
       orderNumber: order.orderNumber,
       batchLabel,
       productName: order.productName,
@@ -514,6 +524,7 @@ export async function getOperationsGanttSnapshot(
             plannedEnd: proposed!.end,
             dueDate: order.dueDate,
             isQcHold,
+            workstationCode,
             hasActiveTimer: activeTimers.has(dbOp.id),
             orderPlannedEnd: orderPlannedEnd.get(order.id) ?? null,
             now,

@@ -33,7 +33,14 @@ type WorkstationSettingsPayload = {
   groups: Array<{ id: string; code: string; name: string }>;
   sites: Array<{ id: string; code: string; name: string }>;
   shifts: Array<{ weekday: number; startMinute: number; endMinute: number }>;
-  shiftGrid?: Array<{ weekday: number; dayLabel: string; shiftLabel: string; timeLabel: string }>;
+  shiftGrid?: Array<{
+    weekday: number;
+    dayLabel: string;
+    shiftLabel: string;
+    timeLabel: string;
+    startMinute: number;
+    endMinute: number;
+  }>;
   exceptions: Array<{ id: string; date: string; reason: string; closed: boolean }>;
   lastQualifiedAt?: string | null;
   nextQualificationDue?: string | null;
@@ -74,6 +81,9 @@ export function WorkstationSettingsDialog({
   const [dedicatedTo, setDedicatedTo] = useState("ANY");
   const [active, setActive] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
+  const [shiftRows, setShiftRows] = useState<
+    Array<{ weekday: number; shiftLabel: string; startMinute: number; endMinute: number }>
+  >([]);
   const [pending, startTransition] = useTransition();
 
   useEffect(() => {
@@ -96,6 +106,14 @@ export function WorkstationSettingsDialog({
       setEfficiencyPercent(payload.efficiencyPercent ?? Math.round(payload.efficiencyCoefficient * 100));
       setDedicatedTo(payload.dedicatedTo);
       setActive(payload.active);
+      setShiftRows(
+        (payload.shiftGrid ?? []).map((row) => ({
+          weekday: row.weekday,
+          shiftLabel: row.shiftLabel,
+          startMinute: row.startMinute,
+          endMinute: row.endMinute,
+        }))
+      );
     });
   }, [open, workstationId]);
 
@@ -116,6 +134,11 @@ export function WorkstationSettingsDialog({
           groupId: groupId || null,
           siteId: siteId || null,
           displayColor,
+          shiftBands: shiftRows.map((row) => ({
+            weekday: row.weekday,
+            startMinute: row.startMinute,
+            endMinute: row.endMinute,
+          })),
         }),
       });
       const payload = (await response.json()) as WorkstationSettingsPayload & { message?: string };
@@ -269,11 +292,42 @@ export function WorkstationSettingsDialog({
                     </tr>
                   </thead>
                   <tbody>
-                    {(data.shiftGrid ?? []).map((row) => (
-                      <tr key={`${row.weekday}-${row.shiftLabel}`} className="border-t border-border/60">
-                        <td className="px-2 py-1">{row.dayLabel}</td>
+                    {shiftRows.map((row, index) => (
+                      <tr key={`${row.weekday}-${row.shiftLabel}-${index}`} className="border-t border-border/60">
+                        <td className="px-2 py-1">{WEEKDAY[row.weekday]}</td>
                         <td className="px-2 py-1">{row.shiftLabel}</td>
-                        <td className="px-2 py-1 font-mono">{row.timeLabel}</td>
+                        <td className="px-2 py-1">
+                          <div className="flex items-center gap-1 font-mono text-[11px]">
+                            <Input
+                              className="h-7 w-14 px-1"
+                              type="number"
+                              min={0}
+                              max={1439}
+                              value={row.startMinute}
+                              onChange={(event) => {
+                                const startMinute = Number(event.target.value);
+                                setShiftRows((prev) =>
+                                  prev.map((item, i) => (i === index ? { ...item, startMinute } : item))
+                                );
+                              }}
+                            />
+                            <span>–</span>
+                            <Input
+                              className="h-7 w-16 px-1"
+                              type="number"
+                              min={0}
+                              max={2880}
+                              value={row.endMinute}
+                              onChange={(event) => {
+                                const endMinute = Number(event.target.value);
+                                setShiftRows((prev) =>
+                                  prev.map((item, i) => (i === index ? { ...item, endMinute } : item))
+                                );
+                              }}
+                            />
+                            {row.endMinute > 1_440 ? " (+1)" : ""}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>

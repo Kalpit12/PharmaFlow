@@ -623,7 +623,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
         { code: "COMP", name: "Compression", runMinutes: 480, setupMinutes: 45, wsCodes: ["BPD-076"] },
         { code: "QUAR", name: "sFG quarantine", runMinutes: 360, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
         { code: "QC", name: "QC process", runMinutes: 160, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
-        { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009", "BPD-099"] },
+        { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009"] },
       ],
     },
     {
@@ -689,6 +689,7 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
                     workstationId,
                     efficiencyPercent: resourceIndex === 0 ? 100 : 95,
                     preferred: resourceIndex === 0,
+                    resourceRole: resourceIndex === 0 ? "STANDARD" : "ALTERNATE",
                   },
                 ];
               }),
@@ -713,9 +714,9 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
   }
 }
 
-async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: string, wsByCode: Map<string, string>) {
+async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: string, _wsByCode: Map<string, string>) {
   const products = await prisma.product.findMany({
-    where: { tenantId, sku: { in: ["PARA-500-TAB", "AMOX-500-CAP", "AMOX-DPS-125"] } },
+    where: { tenantId, status: "ACTIVE" },
     select: { id: true },
   });
   for (const product of products) {
@@ -731,24 +732,11 @@ async function linkLabAlliedOrdersToRoutings(prisma: PrismaClient, tenantId: str
     });
     for (const order of orders) {
       for (const routeOp of routing.operations) {
-        const existing = await prisma.productionOperation.findFirst({
-          where: { tenantId, productionOrderId: order.id, operationCode: routeOp.code },
-          select: { workstationId: true },
-        });
-        const resourceIds = new Set(routeOp.resources.map((row) => row.workstationId));
-        const keepExisting =
-          existing?.workstationId && resourceIds.has(existing.workstationId) ? existing.workstationId : null;
-        const preferredWs =
-          keepExisting ??
-          routeOp.resources.find((row) => row.preferred)?.workstationId ??
-          routeOp.resources[0]?.workstationId ??
-          null;
         await prisma.productionOperation.updateMany({
           where: { tenantId, productionOrderId: order.id, operationCode: routeOp.code },
           data: {
             routingOperationId: routeOp.id,
             operationName: routeOp.name,
-            workstationId: preferredWs,
           },
         });
       }
@@ -886,7 +874,7 @@ function buildBulkLabAlliedOrders(
   customerIds: string[]
 ): SeedOrder[] {
   const rows: SeedOrder[] = [];
-  for (let n = 0; n < 32; n += 1) {
+  for (let n = 0; n < 42; n += 1) {
     const item = 13 + n;
     const orderNumber = `ORD${String(14 + n).padStart(3, "0")}-2026/${item}`;
     const dueDays = 8 + (n % 21);

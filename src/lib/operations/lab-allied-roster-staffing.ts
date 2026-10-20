@@ -73,6 +73,10 @@ export function skillAreaForWorkstationGroup(groupCode: string | null | undefine
 
 type ShiftKind = "Day" | "Night" | "24h";
 
+/** Fixed day vs night staff (no cross-over within the week). */
+const DAY_SHIFT_ONLY = new Set(["OP-BS-03", "OP-BS-04", "OP-BS-06"]);
+const NIGHT_SHIFT_ONLY = new Set(["OP-BS-01", "OP-BS-02", "OP-BS-05"]);
+
 function weekIndexFromYmd(ymd: string): number {
   const [y, m, d] = ymd.split("-").map(Number);
   const date = new Date(Date.UTC(y!, m! - 1, d!));
@@ -93,9 +97,13 @@ export function crewWorksShift(crew: "A" | "B", shift: ShiftKind, weekIndex: num
 }
 
 export function operatorsForSlot(area: SkillArea, shift: ShiftKind, weekIndex: number): LabAlliedOperatorSeed[] {
-  return LAB_ALLIED_OPERATORS.filter(
-    (row) => row.area === area && (shift === "24h" || crewWorksShift(row.crew, shift, weekIndex))
-  );
+  return LAB_ALLIED_OPERATORS.filter((row) => {
+    if (row.area !== area) return false;
+    if (shift === "24h") return true;
+    if (shift === "Day" && NIGHT_SHIFT_ONLY.has(row.code)) return false;
+    if (shift === "Night" && DAY_SHIFT_ONLY.has(row.code)) return false;
+    return crewWorksShift(row.crew, shift, weekIndex);
+  });
 }
 
 export type RosterAssignmentSlot = {

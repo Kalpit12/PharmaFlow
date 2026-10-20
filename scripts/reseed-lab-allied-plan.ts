@@ -14,6 +14,7 @@ import { syncLabAlliedOrderWorkstations } from "../prisma/sync-lab-allied-order-
 import { getOperationsGanttSnapshot } from "../src/lib/server/operations-gantt";
 import { getProductionExecutionSnapshot } from "../src/lib/server/production-execution";
 import { printLabAlliedUtilizationTable } from "./lab-allied-utilization-report";
+import { printLabAlliedRosterWarnings } from "./list-lab-allied-roster-warnings";
 
 async function printOrderTimeline(prisma: PrismaClient, tenantId: string, orderNumber: string) {
   const order = await prisma.productionOrder.findFirst({
@@ -117,6 +118,7 @@ async function main() {
       throw new Error(`Unexpected Gantt errors after replan (got ${blockingErrors.length}).`);
     }
     await printLabAlliedUtilizationTable(prisma, tenant.id);
+    await printLabAlliedRosterWarnings(prisma, tenant.id, user.id);
 
     if (gantt.lateSummary.lateOrders < 1 || gantt.lateSummary.lateOrders > 4) {
       throw new Error(`Expected 1–4 late orders for demo (got ${gantt.lateSummary.lateOrders}).`);

@@ -355,11 +355,13 @@ export function buildOperationSchedule(input: {
         }
 
         if (operation.isQcHold) {
+          const holdResource =
+            operation.resources.find((row) => row.preferred) ?? operation.resources[0] ?? null;
           const qcStart = predecessorReady;
           const qcEnd = new Date(qcStart.getTime() + Math.max(0, operation.durationMinutes) * 60_000);
           const qcScheduled: ScheduledOperation = {
             ...operation,
-            workstationId: null,
+            workstationId: holdResource?.workstationId ?? null,
             plannedStart: qcStart,
             plannedEnd: qcEnd,
             changeoverMinutes: 0,
@@ -367,6 +369,12 @@ export function buildOperationSchedule(input: {
           };
           result.push(qcScheduled);
           resultById.set(qcScheduled.id, qcScheduled);
+          if (holdResource?.workstationId) {
+            const wsState = resourceState.get(holdResource.workstationId);
+            if (wsState && qcEnd.getTime() > wsState.availableAt.getTime()) {
+              wsState.availableAt = qcEnd;
+            }
+          }
           continue;
         }
 

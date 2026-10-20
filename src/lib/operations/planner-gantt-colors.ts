@@ -1,5 +1,6 @@
 /** SkyPlanner-aligned Gantt bar tones for dark operations canvas (saturated, readable). */
 
+import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
 import { resolveJobPlanStatus, type JobPlanStatus } from "@/lib/operations/plan-job-status";
 
 export type GanttBarTone =
@@ -11,7 +12,8 @@ export type GanttBarTone =
   | "qcHold"
   | "changeover"
   | "ghost"
-  | "maintenance";
+  | "maintenance"
+  | "elapsedPlanned";
 
 export const ganttBarFillClass: Record<GanttBarTone, string> = {
   scheduled: "bg-[var(--planner-slate)] border border-[var(--planner-slate-border)]",
@@ -24,6 +26,7 @@ export const ganttBarFillClass: Record<GanttBarTone, string> = {
     "bg-[repeating-linear-gradient(45deg,#374151_0,#374151_3px,#1f2937_3px,#1f2937_6px)] border border-[#374151]",
   ghost: "bg-transparent border border-dashed border-[var(--planner-slate)]",
   maintenance: "bg-[repeating-linear-gradient(45deg,#6b7280_0,#6b7280_4px,#4b5563_4px,#4b5563_8px)]",
+  elapsedPlanned: "bg-violet-700 border border-violet-500",
 };
 
 export const ganttBarSelectedClass =
@@ -37,6 +40,7 @@ export function toneForOperation(input: {
   plannedEnd: string | null;
   dueDate: string;
   isQcHold?: boolean;
+  workstationCode?: string | null;
   hasActiveTimer?: boolean;
   orderPlannedEnd?: string | null;
   now?: Date;
@@ -47,18 +51,34 @@ export function toneForOperation(input: {
     plannedStart: input.plannedStart,
     plannedEnd: input.plannedEnd,
     dueDate: input.dueDate,
-    isQcHold: input.isQcHold,
+    isQcHold: false,
     hasActiveTimer: input.hasActiveTimer,
     orderPlannedEnd: input.orderPlannedEnd,
     now: input.now,
   });
+  if (input.workstationCode && isElapsedOnlyWorkstation(input.workstationCode)) {
+    return ganttToneFromElapsedJobStatus(status);
+  }
   return ganttToneFromJobStatus(status);
+}
+
+export function ganttToneFromElapsedJobStatus(status: JobPlanStatus): GanttBarTone {
+  switch (status) {
+    case "COMPLETED":
+      return "completed";
+    case "RUNNING":
+      return "running";
+    case "AT_RISK":
+      return "late";
+    default:
+      return "elapsedPlanned";
+  }
 }
 
 export function ganttToneFromJobStatus(status: JobPlanStatus): GanttBarTone {
   switch (status) {
     case "QC_HOLD":
-      return "qcHold";
+      return "elapsedPlanned";
     case "PROSPECT":
       return "prospect";
     case "COMPLETED":

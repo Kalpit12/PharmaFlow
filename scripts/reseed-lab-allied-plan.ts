@@ -96,8 +96,9 @@ async function main() {
     const { runLabAlliedDemoHeartbeat } = await import("../src/lib/server/lab-allied-demo-heartbeat");
     await runLabAlliedDemoHeartbeat(prisma, ctx);
     const wipAfterHeartbeat = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
-    const lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
+    let lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
     const bumpedAfterLate = await bumpPastScheduledStarts(prisma, tenant.id);
+    lateDemo += await seedLabAlliedLateDemoOrders(prisma, tenant.id);
     console.log(
       `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}; bumped ${bumpedAfterLate}.`
     );

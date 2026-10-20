@@ -801,16 +801,8 @@ export async function getOperationsGanttSnapshot(
     ];
   }
 
-  const orderEndForStatus = new Map<string, string | null>();
-  for (const order of planner.orders) {
-    const ends = order.routing.operations
-      .map((op) => op.plannedEnd)
-      .filter(Boolean) as string[];
-    orderEndForStatus.set(
-      order.id,
-      ends.length ? ends.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0]! : null
-    );
-  }
+  /** Use persisted operation ends for delivery-late / Late tab (not in-memory replan preview). */
+  const orderEndForStatus = new Map<string, string | null>(orderPlannedEnd);
   const unscheduledReasonByOp = new Map(unscheduledJobs.map((row) => [row.operationId, row.reason]));
   const customerRows = await prisma.productionOrder.findMany({
     where: { tenantId: ctx.tenantId, id: { in: [...orderMeta.keys()] } },

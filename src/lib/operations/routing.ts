@@ -40,6 +40,7 @@ export type RoutableOperation = {
   id: string;
   orderId: string;
   orderNumber: string;
+  operationCode?: string;
   sequence: number;
   durationMinutes: number;
   setupMinutes: number;

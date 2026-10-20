@@ -548,6 +548,7 @@ export async function proposeSchedule(
           id: operation.id,
           orderId: order.id,
           orderNumber: order.orderNumber,
+          operationCode: operation.operationCode,
           sequence: operation.sequence,
           durationMinutes: operation.durationMinutes,
           setupMinutes: operation.setupMinutes,

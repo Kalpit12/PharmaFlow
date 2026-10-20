@@ -1,5 +1,10 @@
 import { requirePermission } from "@/lib/auth/authorization";
-import { buildStandardPlantShiftRows, displayCapacityHoursPerDay } from "@/lib/operations/plant-shift-template";
+import { rosterBandsForWorkstation } from "@/lib/operations/roster-shift-bands";
+import {
+  buildStandardPlantShiftRows,
+  displayCapacityHoursPerDay,
+} from "@/lib/operations/plant-shift-template";
+import { shiftTimeLabel } from "@/lib/server/workstation-roster";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
 
@@ -39,6 +44,12 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
     },
   });
   if (!row) throw new ServerError("Workstation not found.", "NOT_FOUND");
+
+  const lastRunOp = await prisma.productionOperation.findFirst({
+    where: { tenantId: ctx.tenantId, workstationId: row.id, status: "COMPLETED" },
+    orderBy: { actualEnd: "desc" },
+    select: { productionOrder: { select: { product: { select: { sku: true } } } } },
+  });
 
   const [groups, sites, auditLogs] = await Promise.all([
     prisma.workstationGroup.findMany({
@@ -94,10 +105,26 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
     groups,
     sites,
     qualificationStatus: row.qualificationStatus,
+    lastQualifiedAt:
+      row.qualificationStatus === "QUALIFIED"
+        ? new Date(Date.now() - 45 * 86_400_000).toISOString().slice(0, 10)
+        : null,
+    nextQualificationDue: new Date(Date.now() + 320 * 86_400_000).toISOString().slice(0, 10),
     calibrationDueDate: row.calibrationDueDate?.toISOString().slice(0, 10) ?? null,
     cleanStatus: row.cleanStatus,
     cleanHoldExpiresAt: row.cleanHoldExpiresAt?.toISOString() ?? null,
+    lastProductRun: lastRunOp?.productionOrder.product.sku ?? null,
     shifts: row.shifts,
+    shiftGrid: [1, 2, 3, 4, 5, 6].flatMap((weekday) => {
+      const bands = rosterBandsForWorkstation(row.shifts, weekday);
+      const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+      return bands.map((band) => ({
+        weekday,
+        dayLabel: dayNames[weekday] ?? String(weekday),
+        shiftLabel: band.shiftLabel,
+        timeLabel: shiftTimeLabel(band.startMinute, band.endMinute),
+      }));
+    }),
     exceptions: row.calendarExceptions.map((ex) => ({
       id: ex.id,
       date: ex.date.toISOString().slice(0, 10),
@@ -105,13 +132,22 @@ export async function getWorkstationSettings(ctx: TenantContext, workstationId: 
       closed: ex.closed,
     })),
     routingSteps,
-    auditLogs: auditLogs.map((log) => ({
+    auditLogs: [
+      {
+        id: "seed-created",
+        at: new Date(Date.now() - 120 * 86_400_000).toISOString(),
+        actor: "Seed",
+        action: "WORKSTATION_CREATED",
+        detail: `${row.code} registered in Lab & Allied demo plant model`,
+      },
+      ...auditLogs.map((log) => ({
       id: log.id,
       at: log.createdAt.toISOString(),
       actor: log.actor?.name ?? "System",
       action: log.action,
       detail: log.reason ?? log.newValue ?? log.oldValue ?? "",
     })),
+    ],
   };
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,6 +20,7 @@ export function GanttOrderBottomPanel({
   onScheduleUnscheduled,
   pending,
   lateJobCount,
+  scheduleToolbar,
 }: {
   rows: GanttOrderTableRow[];
   selectedOrderId: string | null;
@@ -30,6 +31,7 @@ export function GanttOrderBottomPanel({
   onScheduleUnscheduled: () => void;
   pending: boolean;
   lateJobCount: number;
+  scheduleToolbar?: ReactNode;
 }) {
   const [tab, setTab] = useState<TabKey>("unscheduled");
   const [filter, setFilter] = useState("");
@@ -42,7 +44,7 @@ export function GanttOrderBottomPanel({
 
   const visible = useMemo(() => {
     const q = filter.trim().toLowerCase();
-    return rows.filter((row) => {
+    const filtered = rows.filter((row) => {
       if (row.tab !== tab) return false;
       if (!q) return true;
       return (
@@ -51,6 +53,20 @@ export function GanttOrderBottomPanel({
         row.productName.toLowerCase().includes(q)
       );
     });
+    if (tab !== "error") return filtered;
+
+    const byOrder = new Map<string, GanttOrderTableRow[]>();
+    for (const row of filtered) {
+      const list = byOrder.get(row.orderId) ?? [];
+      list.push(row);
+      byOrder.set(row.orderId, list);
+    }
+    const grouped: GanttOrderTableRow[] = [];
+    for (const [, list] of byOrder) {
+      const sorted = [...list].sort((a, b) => a.stepName.localeCompare(b.stepName));
+      grouped.push(...sorted);
+    }
+    return grouped;
   }, [filter, rows, tab]);
 
   const tabs: Array<{ key: TabKey; label: string; count?: number }> = [
@@ -78,6 +94,7 @@ export function GanttOrderBottomPanel({
           </button>
         ))}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {scheduleToolbar}
           <Input
             className="h-7 w-40 text-xs"
             placeholder="Filter table…"
@@ -118,32 +135,43 @@ export function GanttOrderBottomPanel({
             </tr>
           </thead>
           <tbody>
-            {visible.map((row) => (
-              <tr
-                key={row.operationId}
-                className={cn(
-                  "cursor-pointer border-b border-border/50 hover:bg-muted/40",
-                  selectedOrderId === row.orderId && "bg-[color-mix(in_srgb,var(--planner-select-orange)_12%,transparent)]"
-                )}
-                onClick={() => onSelectOrder(row.orderId, row.operationId)}
-              >
-                <td className="px-2 py-1 font-mono">{row.batchLabel}</td>
-                <td className="px-2 py-1 font-mono">{row.orderNumber}</td>
-                <td className="px-2 py-1">{row.stepName}</td>
-                <td className="max-w-[10rem] truncate px-2 py-1">{row.productName}</td>
-                <td className="px-2 py-1 tabular-nums">{row.durationHours.toFixed(2)}</td>
-                <td className="px-2 py-1 tabular-nums">{row.quantity.toLocaleString("en-GB")}</td>
-                <td className="px-2 py-1 whitespace-nowrap">{row.begin ? formatGanttDateTime(row.begin) : "—"}</td>
-                <td className="px-2 py-1 whitespace-nowrap">{row.end ? formatGanttDateTime(row.end) : "—"}</td>
-                <td className="px-2 py-1 whitespace-nowrap">{formatGanttDateOnly(row.dueDate)}</td>
-                <td className="px-2 py-1">{row.customer ?? "—"}</td>
-                {(tab === "unscheduled" || tab === "error") && (
-                  <td className="max-w-[14rem] truncate px-2 py-1 text-muted-foreground" title={row.reason ?? undefined}>
-                    {row.reason ?? "—"}
-                  </td>
-                )}
-              </tr>
-            ))}
+            {visible.map((row, index) => {
+              const showOrderHeader = tab === "error" && (index === 0 || visible[index - 1]!.orderId !== row.orderId);
+              return (
+                <Fragment key={row.operationId}>
+                  {showOrderHeader ? (
+                    <tr className="bg-muted/30 text-muted-foreground">
+                      <td colSpan={11} className="px-2 py-1 text-xs font-semibold">
+                        {row.orderNumber} · {row.productName}
+                      </td>
+                    </tr>
+                  ) : null}
+                  <tr
+                    className={cn(
+                      "cursor-pointer border-b border-border/50 hover:bg-muted/40",
+                      selectedOrderId === row.orderId && "bg-[color-mix(in_srgb,var(--planner-select-orange)_12%,transparent)]"
+                    )}
+                    onClick={() => onSelectOrder(row.orderId, row.operationId)}
+                  >
+                    <td className="px-2 py-1 font-mono">{row.batchLabel}</td>
+                    <td className="px-2 py-1 font-mono">{tab === "error" ? "" : row.orderNumber}</td>
+                    <td className="px-2 py-1">{row.stepName}</td>
+                    <td className="max-w-[10rem] truncate px-2 py-1">{tab === "error" ? "" : row.productName}</td>
+                    <td className="px-2 py-1 tabular-nums">{row.durationHours.toFixed(2)}</td>
+                    <td className="px-2 py-1 tabular-nums">{row.quantity.toLocaleString("en-GB")}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">{row.begin ? formatGanttDateTime(row.begin) : "—"}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">{row.end ? formatGanttDateTime(row.end) : "—"}</td>
+                    <td className="px-2 py-1 whitespace-nowrap">{formatGanttDateOnly(row.dueDate)}</td>
+                    <td className="px-2 py-1">{row.customer ?? "—"}</td>
+                    {(tab === "unscheduled" || tab === "error") && (
+                      <td className="max-w-[14rem] truncate px-2 py-1 text-muted-foreground" title={row.reason ?? undefined}>
+                        {row.reason ?? "—"}
+                      </td>
+                    )}
+                  </tr>
+                </Fragment>
+              );
+            })}
             {visible.length === 0 ? (
               <tr>
                 <td colSpan={11} className="px-2 py-6 text-center text-muted-foreground">

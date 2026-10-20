@@ -838,19 +838,20 @@ export function OperationsGanttWorkspace({
             onScheduleUnscheduled={scheduleUnscheduled}
             pending={pending}
             lateJobCount={lateSummary.lateJobs}
+            scheduleToolbar={
+              <GanttReschedulePill
+                proposal={data.proposal}
+                diffSummary={data.diffSummary}
+                canSchedule={canSchedule}
+                scheduleStatusLine={data.scheduleStatusLine}
+                lateSummary={lateSummary}
+                showComparePlan={showComparePlan}
+                onShowComparePlanChange={setShowComparePlan}
+                onMessage={setMessage}
+              />
+            }
           />
         </div>
-
-        <GanttReschedulePill
-          proposal={data.proposal}
-          diffSummary={data.diffSummary}
-          canSchedule={canSchedule}
-          scheduleStatusLine={data.scheduleStatusLine}
-          lateSummary={lateSummary}
-          showComparePlan={showComparePlan}
-          onShowComparePlanChange={setShowComparePlan}
-          onMessage={setMessage}
-        />
       </div>
 
       {contextMenu ? (

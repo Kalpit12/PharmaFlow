@@ -36,6 +36,12 @@ export const LAB_ALLIED_OPERATORS: LabAlliedOperatorSeed[] = [
   { code: "OP-BS-02", name: "Tom Omondi", area: "BLISTER", crew: "A" },
   { code: "OP-BS-03", name: "Catherine Wairimu", area: "BLISTER", crew: "B" },
   { code: "OP-BS-04", name: "Eric Langat", area: "BLISTER", crew: "B" },
+  { code: "OP-BS-05", name: "Florence Mutheu", area: "BLISTER", crew: "A" },
+  { code: "OP-BS-06", name: "Ian Ndungu", area: "BLISTER", crew: "B" },
+  { code: "OP-PK-07", name: "Janet Wanjiku", area: "PACK", crew: "A" },
+  { code: "OP-PK-08", name: "Kelvin Ouma", area: "PACK", crew: "B" },
+  { code: "OP-CT-05", name: "Lydia Atieno", area: "COAT", crew: "A" },
+  { code: "OP-CT-06", name: "Martin Koech", area: "COAT", crew: "B" },
   { code: "OP-DP-01", name: "Diana Nafula", area: "DPS", crew: "A" },
   { code: "OP-DP-02", name: "Victor Bett", area: "DPS", crew: "A" },
   { code: "OP-DP-03", name: "Naomi Jerotich", area: "DPS", crew: "B" },
@@ -69,16 +75,21 @@ type ShiftKind = "Day" | "Night" | "24h";
 
 function weekIndexFromYmd(ymd: string): number {
   const [y, m, d] = ymd.split("-").map(Number);
-  const t = Date.UTC(y!, m! - 1, d!);
-  return Math.floor(t / (7 * 86_400_000));
+  const date = new Date(Date.UTC(y!, m! - 1, d!));
+  const dow = date.getUTCDay();
+  const mondayOffset = dow === 0 ? -6 : 1 - dow;
+  const monday = new Date(date);
+  monday.setUTCDate(date.getUTCDate() + mondayOffset);
+  return Math.floor(monday.getTime() / (7 * 86_400_000));
 }
 
-/** Crew A on day / B on night, swapping each week. */
+/** Crew A = day Mon–Sat, Crew B = night Mon–Fri; swap bands every Monday (even week index → A days). */
 export function crewWorksShift(crew: "A" | "B", shift: ShiftKind, weekIndex: number): boolean {
   if (shift === "24h") return true;
   const aOnDay = weekIndex % 2 === 0;
-  if (shift === "Day") return crew === "A" ? aOnDay : !aOnDay;
-  return crew === "A" ? !aOnDay : aOnDay;
+  if (shift === "Day") return aOnDay ? crew === "A" : crew === "B";
+  if (shift === "Night") return aOnDay ? crew === "B" : crew === "A";
+  return false;
 }
 
 export function operatorsForSlot(area: SkillArea, shift: ShiftKind, weekIndex: number): LabAlliedOperatorSeed[] {

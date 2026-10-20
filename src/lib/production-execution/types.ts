@@ -71,6 +71,8 @@ export type ExecutionOrderRow = {
   progressLabel: string;
   plannedStart: string | null;
   plannedEnd: string | null;
+  dueDate: string;
+  orderKind: "FIRM" | "PROSPECT";
   actualStart: string | null;
   actualCompletion: string | null;
   plannedDurationMinutes: number | null;

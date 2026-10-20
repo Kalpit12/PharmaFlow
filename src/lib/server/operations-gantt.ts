@@ -334,6 +334,8 @@ export async function getOperationsGanttSnapshot(
   }
 ): Promise<OperationsGanttSnapshot> {
   requirePermission(ctx, "production.read");
+  const { ensurePlannerScheduleFreshOnLoad } = await import("@/lib/server/planner-schedule-refresh");
+  await ensurePlannerScheduleFreshOnLoad(ctx);
   const ganttWindow = resolveGanttWindow(options);
   const window = { start: ganttWindow.start, end: ganttWindow.end, weeks: 2 as const };
   const materials = await getMaterialsSnapshot(ctx, resolveMaterialsFilters({})).catch(() => null);

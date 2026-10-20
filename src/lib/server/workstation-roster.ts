@@ -7,6 +7,12 @@ import {
 } from "@/lib/operations/lab-allied-roster-staffing";
 import { validateRosterChips } from "@/lib/operations/roster-shift-validation";
 import { rosterBandsForWorkstation } from "@/lib/operations/roster-shift-bands";
+import {
+  PLANT_DAY_SHIFT_END,
+  PLANT_DAY_SHIFT_START,
+  PLANT_NIGHT_SHIFT_END,
+  PLANT_NIGHT_SHIFT_START,
+} from "@/lib/operations/plant-shift-template";
 import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "@/lib/operations/plant-time";
 import { getPrisma } from "@/lib/server/db";
 import { ServerError, type TenantContext } from "@/lib/server/errors";
@@ -186,8 +192,15 @@ export async function getWorkstationRosterSnapshot(
       for (const band of bands) {
         const key = `${ws.id}|${day.date}|${band.startMinute}`;
         const stored = assignmentByKey.get(key);
-        const startMinute = stored?.startMinute ?? band.startMinute;
-        const endMinute = stored?.endMinute ?? band.endMinute;
+        let startMinute = stored?.startMinute ?? band.startMinute;
+        let endMinute = stored?.endMinute ?? band.endMinute;
+        if (band.shiftLabel === "Day") {
+          startMinute = PLANT_DAY_SHIFT_START;
+          endMinute = PLANT_DAY_SHIFT_END;
+        } else if (band.shiftLabel === "Night") {
+          startMinute = PLANT_NIGHT_SHIFT_START;
+          endMinute = 1_440 + PLANT_NIGHT_SHIFT_END;
+        }
         const dateKey = day.date;
         let employeeId = stored?.employeeId ?? null;
         let employeeName = stored?.employee?.name ?? null;

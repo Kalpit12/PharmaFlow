@@ -20,8 +20,20 @@ export function formatSlippedStartDetail(plannedStart: Date, now: Date): string 
   return `Not started: planned ${formatPlantDateTime(plannedStart)}, now ${formatPlantDateTime(now)}.`;
 }
 
+export function formatLateDurationHuman(totalMinutes: number): string {
+  const minutes = Math.max(0, Math.round(totalMinutes));
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rem = minutes % 60;
+  if (hours < 24) return rem > 0 ? `${hours} h ${rem} min` : `${hours} h`;
+  const days = Math.floor(hours / 24);
+  const h = hours % 24;
+  if (h === 0) return `${days} d`;
+  return `${days} d ${h} h`;
+}
+
 export function formatPastDueDetail(lateMinutes: number, dueDate: Date): string {
-  return `Schedule finishes ${lateMinutes} min after due (${formatPlantDateTime(dueDate)}).`;
+  return `Schedule finishes ${formatLateDurationHuman(lateMinutes)} after due (${formatPlantDateTime(dueDate)}).`;
 }
 
 export function formatRoutingIssueDetail(kind: string, raw: string, now = new Date()): string {

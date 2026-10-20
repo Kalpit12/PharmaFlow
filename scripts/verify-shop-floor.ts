@@ -26,6 +26,8 @@ function row(partial: Partial<ExecutionOrderRow> & Pick<ExecutionOrderRow, "id" 
     progressLabel: "—",
     plannedStart: null,
     plannedEnd: null,
+    dueDate: new Date().toISOString(),
+    orderKind: "FIRM",
     actualStart: null,
     actualCompletion: null,
     plannedDurationMinutes: null,

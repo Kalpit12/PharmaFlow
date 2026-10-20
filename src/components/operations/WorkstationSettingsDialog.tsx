@@ -33,7 +33,12 @@ type WorkstationSettingsPayload = {
   groups: Array<{ id: string; code: string; name: string }>;
   sites: Array<{ id: string; code: string; name: string }>;
   shifts: Array<{ weekday: number; startMinute: number; endMinute: number }>;
+  shiftGrid?: Array<{ weekday: number; dayLabel: string; shiftLabel: string; timeLabel: string }>;
   exceptions: Array<{ id: string; date: string; reason: string; closed: boolean }>;
+  lastQualifiedAt?: string | null;
+  nextQualificationDue?: string | null;
+  cleanHoldExpiresAt?: string | null;
+  lastProductRun?: string | null;
   routingSteps: Array<{ id: string; operationCode: string; operationName: string; productSku: string; productName: string }>;
   auditLogs: Array<{ id: string; at: string; actor: string; action: string; detail: string }>;
 };
@@ -253,15 +258,27 @@ export function WorkstationSettingsDialog({
               </label>
             </TabsContent>
             <TabsContent value="shifts" className="pt-3">
-              <p className="mb-2 text-xs text-muted-foreground">Weekly template (EAT). Edit exceptions on the plant calendar.</p>
-              <ul className="max-h-48 space-y-1 overflow-y-auto text-sm">
-                {data.shifts.map((shift) => (
-                  <li key={`${shift.weekday}-${shift.startMinute}`} className="rounded border border-border px-2 py-1">
-                    {WEEKDAY[shift.weekday]} · {formatMin(shift.startMinute)}–
-                    {shift.endMinute > 1_440 ? `${formatMin(shift.endMinute - 1_440)} (+1)` : formatMin(shift.endMinute)}
-                  </li>
-                ))}
-              </ul>
+              <p className="mb-2 text-xs text-muted-foreground">Weekly template (EAT). Overnight shown as 18:00–06:00 (+1).</p>
+              <div className="max-h-52 overflow-y-auto rounded border border-border text-sm">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-muted/40 text-muted-foreground">
+                    <tr>
+                      <th className="px-2 py-1">Day</th>
+                      <th className="px-2 py-1">Shift</th>
+                      <th className="px-2 py-1">Hours</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.shiftGrid ?? []).map((row) => (
+                      <tr key={`${row.weekday}-${row.shiftLabel}`} className="border-t border-border/60">
+                        <td className="px-2 py-1">{row.dayLabel}</td>
+                        <td className="px-2 py-1">{row.shiftLabel}</td>
+                        <td className="px-2 py-1 font-mono">{row.timeLabel}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               {data.exceptions.length > 0 ? (
                 <ul className="mt-3 space-y-1 text-xs text-muted-foreground">
                   {data.exceptions.map((row) => (
@@ -288,10 +305,14 @@ export function WorkstationSettingsDialog({
               <p>
                 Qualification: <strong>{data.qualificationStatus}</strong>
               </p>
+              <p>Last qualified: {data.lastQualifiedAt ?? "—"}</p>
+              <p>Next qualification due: {data.nextQualificationDue ?? "—"}</p>
               <p>Calibration due: {data.calibrationDueDate ?? "—"}</p>
               <p>
                 Cleaning: <strong>{data.cleanStatus}</strong>
+                {data.cleanHoldExpiresAt ? ` · clean-by ${data.cleanHoldExpiresAt.slice(0, 16).replace("T", " ")}` : ""}
               </p>
+              <p>Last product run: {data.lastProductRun ?? "—"}</p>
               {data.qualificationStatus === "EXPIRED" ? (
                 <p className="text-destructive text-xs">Scheduling blocked until qualification is renewed.</p>
               ) : null}

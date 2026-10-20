@@ -19,6 +19,12 @@ import {
   resetRosterSlotLoads,
 } from "../src/lib/operations/lab-allied-roster-staffing";
 import { rosterBandsForWorkstation } from "../src/lib/operations/roster-shift-bands";
+import {
+  PLANT_DAY_SHIFT_END,
+  PLANT_DAY_SHIFT_START,
+  PLANT_NIGHT_SHIFT_END,
+  PLANT_NIGHT_SHIFT_START,
+} from "../src/lib/operations/plant-shift-template";
 import { mondayOfPlantWeek } from "../src/lib/server/workstation-roster";
 
 type GroupDef = { code: string; name: string };
@@ -44,7 +50,7 @@ const GROUPS: GroupDef[] = [
 const MACHINES: MachineDef[] = [
   { code: "BPD-061", name: "Blender octagonal 1000kg", groupCode: "LA-BLEND", shift: "plant" },
   { code: "BPD-062", name: "LabClav Blending 500kg", groupCode: "LA-BLEND", shift: "plant" },
-  { code: "BPD-076", name: "Kilian KTP 2200 (General tablet press)", groupCode: "LA-COMP", shift: "plant" },
+  { code: "BPD-076", name: "Tablet Press (General)", groupCode: "LA-COMP", shift: "plant" },
   { code: "BPD-075", name: "LabClav Compression", groupCode: "LA-COMP", shift: "plant" },
   { code: "BPD-078", name: "ACG Coating", groupCode: "LA-COAT", shift: "plant" },
   { code: "BPD-092", name: "Capsule Filling-ACG", groupCode: "LA-FILL", shift: "plant" },
@@ -252,6 +258,13 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
       dosageForm: "Effervescent tablet",
       validatedBatchSize: 5000,
     },
+    {
+      sku: "COAMOX-625-TAB",
+      name: "Co-amoxiclav 625mg tablets",
+      category: "Antibiotic",
+      dosageForm: "Tablet",
+      validatedBatchSize: 8500,
+    },
   ];
   for (const row of products) {
     await prisma.product.upsert({
@@ -265,14 +278,14 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
         unit: "pack",
         status: "ACTIVE",
         validatedBatchSize: row.validatedBatchSize,
-        hazardClass: row.sku.startsWith("AMOX") ? "BETA_LACTAM" : "GENERAL",
+        hazardClass: row.sku.startsWith("AMOX") || row.sku.startsWith("COAMOX") ? "BETA_LACTAM" : "GENERAL",
         description: "Demo SKU for scheduling layout only.",
       },
       update: {
         name: row.name,
         validatedBatchSize: row.validatedBatchSize,
         status: "ACTIVE",
-        hazardClass: row.sku.startsWith("AMOX") ? "BETA_LACTAM" : "GENERAL",
+        hazardClass: row.sku.startsWith("AMOX") || row.sku.startsWith("COAMOX") ? "BETA_LACTAM" : "GENERAL",
       },
     });
   }
@@ -377,12 +390,21 @@ async function syncLabAlliedRoster(prisma: PrismaClient, tenantId: string) {
           workstationCode: ws.code,
         });
         if (!employee) continue;
+        let startMinute = band.startMinute;
+        let endMinute = band.endMinute;
+        if (band.shiftLabel === "Day") {
+          startMinute = PLANT_DAY_SHIFT_START;
+          endMinute = PLANT_DAY_SHIFT_END;
+        } else if (band.shiftLabel === "Night") {
+          startMinute = PLANT_NIGHT_SHIFT_START;
+          endMinute = 1_440 + PLANT_NIGHT_SHIFT_END;
+        }
         rows.push({
           tenantId,
           workstationId: ws.id,
           date: dateOnly,
-          startMinute: band.startMinute,
-          endMinute: band.endMinute,
+          startMinute,
+          endMinute,
           employeeId: employee.id,
           shiftLabel: band.shiftLabel,
         });
@@ -604,6 +626,24 @@ async function syncLabAlliedRoutings(prisma: PrismaClient, tenantId: string, wsB
         { code: "PACK", name: "Bulk packing", runMinutes: 440, setupMinutes: 25, wsCodes: ["BPD-009", "BPD-099"] },
       ],
     },
+    {
+      sku: "COAMOX-625-TAB",
+      name: "Co-amoxiclav tablet (LabClav)",
+      family: "BETA_LACTAM",
+      steps: [
+        { code: "BLND", name: "Blending", runMinutes: 300, setupMinutes: 45, wsCodes: ["BPD-062"] },
+        { code: "COMP", name: "Compression", runMinutes: 720, setupMinutes: 75, wsCodes: ["BPD-075"] },
+        { code: "QUAR", name: "sFG quarantine", runMinutes: 420, setupMinutes: 0, wsCodes: ["SFG-QUAR"], isQcHold: true },
+        { code: "QC", name: "QC process", runMinutes: 200, setupMinutes: 0, wsCodes: ["QC-PROC"], isQcHold: true },
+        {
+          code: "PACK",
+          name: "Alu/Alu blister",
+          runMinutes: 880,
+          setupMinutes: 45,
+          wsCodes: ["BPD-051"],
+        },
+      ],
+    },
   ];
 
   for (const template of templates) {
@@ -774,9 +814,11 @@ export async function verifyLabAlliedTabletCompression(prisma: PrismaClient, ten
   }
 }
 
-const TABLET_PACK_LINES = ["BPD-090", "BPD-051", "CPD-010"] as const;
+const TABLET_PACK_LINES = ["BPD-090", "CPD-010", "BPD-051"] as const;
 const GENERAL_BLEND = "BPD-061" as const;
 const BETA_BLEND = "BPD-062" as const;
+const BETA_COMP = "BPD-075" as const;
+const COAT_LINE = "BPD-078" as const;
 const CAP_FILL_LINES = ["BPD-092", "BPD-036", "BPD-017"] as const;
 const CAP_PACK_LINES = ["BPD-089", "BPD-099", "BPD-009"] as const;
 const DPS_LINES = ["DPS-LINE-1", "BPD-096"] as const;
@@ -793,13 +835,24 @@ function tabletRoutePara(_blendIdx: number, packIdx: number, scale: number): See
   ];
 }
 
-function tabletRoute(_blendIdx: number, packIdx: number, scale: number): SeedStep[] {
+function filmCoatRoute(packIdx: number, scale: number): SeedStep[] {
   return [
     { code: "BLND", ws: GENERAL_BLEND, mins: Math.round(280 * scale + 80) },
     { code: "COMP", ws: GENERAL_COMP, mins: Math.round(520 * scale + 100) },
+    { code: "COAT", ws: COAT_LINE, mins: Math.round(480 * scale + 120) },
     { code: "QUAR", ws: "SFG-QUAR", mins: 420, qc: true },
     { code: "QC", ws: "QC-PROC", mins: 200, qc: true },
     { code: "PACK", ws: TABLET_PACK_LINES[packIdx % TABLET_PACK_LINES.length]!, mins: Math.round(640 * scale + 160) },
+  ];
+}
+
+function coAmoxTabletRoute(packIdx: number, scale: number): SeedStep[] {
+  return [
+    { code: "BLND", ws: BETA_BLEND, mins: Math.round(260 * scale + 70) },
+    { code: "COMP", ws: BETA_COMP, mins: Math.round(560 * scale + 140) },
+    { code: "QUAR", ws: "SFG-QUAR", mins: 400, qc: true },
+    { code: "QC", ws: "QC-PROC", mins: 190, qc: true },
+    { code: "PACK", ws: "BPD-051", mins: Math.round(620 * scale + 150) },
   ];
 }
 
@@ -825,6 +878,9 @@ function dpsRoute(lineIdx: number, scale: number): SeedStep[] {
 
 function buildBulkLabAlliedOrders(
   paraId: string,
+  ibuId: string,
+  metId: string,
+  coAmoxId: string,
   amoxId: string,
   dpsId: string,
   customerIds: string[]
@@ -833,14 +889,23 @@ function buildBulkLabAlliedOrders(
   for (let n = 0; n < 32; n += 1) {
     const item = 13 + n;
     const orderNumber = `ORD${String(14 + n).padStart(3, "0")}-2026/${item}`;
-    const dueDays = 21 + (n % 14);
+    const dueDays = 8 + (n % 21);
     const scale = 0.85 + (n % 5) * 0.08;
-    const kind = n % 6;
+    const kind = n % 12;
     let productId = paraId;
     let steps: SeedStep[];
     if (kind <= 2) {
-      steps = tabletRoutePara(n, n + 1, scale);
-    } else if (kind <= 4) {
+      steps = tabletRoutePara(n, n, scale);
+    } else if (kind === 3 || kind === 4) {
+      productId = ibuId;
+      steps = filmCoatRoute(n, scale);
+    } else if (kind === 5 || kind === 6) {
+      productId = metId;
+      steps = filmCoatRoute(n + 1, scale);
+    } else if (kind === 7 || kind === 8) {
+      productId = coAmoxId;
+      steps = coAmoxTabletRoute(n, scale);
+    } else if (kind <= 10) {
       productId = amoxId;
       steps = capsuleRoute(n, n + 2, scale);
     } else {
@@ -888,8 +953,14 @@ async function createLabAlliedOrder(
     const step = row.steps[s]!;
     const wsId = wsByCode.get(step.ws);
     if (!wsId) continue;
-    const family =
-      step.qc ? null : step.code === "ENC" || step.code === "DPS" ? "BETA_LACTAM" : "GENERAL_TABLET";
+    const family = step.qc
+      ? null
+      : step.code === "ENC" ||
+          step.code === "DPS" ||
+          step.ws === BETA_BLEND ||
+          step.ws === BETA_COMP
+        ? "BETA_LACTAM"
+        : "GENERAL_TABLET";
     await prisma.productionOperation.create({
       data: {
         tenantId,
@@ -915,9 +986,12 @@ async function seedLabAlliedOrders(
   customerIds: string[]
 ) {
   const para = await prisma.product.findFirst({ where: { tenantId, sku: "PARA-500-TAB" }, select: { id: true } });
+  const ibu = await prisma.product.findFirst({ where: { tenantId, sku: "IBU-400-TAB" }, select: { id: true } });
+  const met = await prisma.product.findFirst({ where: { tenantId, sku: "MET-500-TAB" }, select: { id: true } });
+  const coAmox = await prisma.product.findFirst({ where: { tenantId, sku: "COAMOX-625-TAB" }, select: { id: true } });
   const amox = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-500-CAP" }, select: { id: true } });
   const dps = await prisma.product.findFirst({ where: { tenantId, sku: "AMOX-DPS-125" }, select: { id: true } });
-  if (!para || !amox || !dps) return;
+  if (!para || !ibu || !met || !coAmox || !amox || !dps) return;
 
   const orders: SeedOrder[] = [
     {
@@ -972,7 +1046,7 @@ async function seedLabAlliedOrders(
       priority: "NORMAL",
       steps: dpsRoute(0, 1),
     },
-    ...buildBulkLabAlliedOrders(para.id, amox.id, dps.id, customerIds),
+    ...buildBulkLabAlliedOrders(para.id, ibu.id, met.id, coAmox.id, amox.id, dps.id, customerIds),
   ];
 
   for (let i = 0; i < orders.length; i += 1) {

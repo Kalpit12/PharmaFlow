@@ -31,7 +31,7 @@ export function rosterBandsForWorkstation(shiftRows: Array<{ weekday: number; st
   const hasDay = onDay.some(
     (row) => row.startMinute === PLANT_DAY_SHIFT_START && row.endMinute === PLANT_DAY_SHIFT_END
   );
-  if (hasDay) {
+  if (hasDay || onDay.some((row) => row.startMinute === PLANT_DAY_SHIFT_START)) {
     bands.push({
       startMinute: PLANT_DAY_SHIFT_START,
       endMinute: PLANT_DAY_SHIFT_END,
@@ -57,9 +57,22 @@ export function rosterBandsForWorkstation(shiftRows: Array<{ weekday: number; st
 
   return onDay
     .filter((row) => row.endMinute > row.startMinute)
-    .map((row) => ({
-      startMinute: row.startMinute,
-      endMinute: row.endMinute,
-      shiftLabel: row.startMinute >= PLANT_NIGHT_SHIFT_START ? "Night" : "Day",
-    }));
+    .filter((row) => !(row.startMinute === 0 && row.endMinute === PLANT_NIGHT_SHIFT_END))
+    .map((row) => {
+      if (row.startMinute === PLANT_DAY_SHIFT_START && row.endMinute === PLANT_DAY_SHIFT_END) {
+        return { startMinute: row.startMinute, endMinute: row.endMinute, shiftLabel: "Day" as const };
+      }
+      if (row.startMinute >= PLANT_NIGHT_SHIFT_START || row.endMinute > 1_440) {
+        return {
+          startMinute: PLANT_NIGHT_SHIFT_START,
+          endMinute: 1_440 + PLANT_NIGHT_SHIFT_END,
+          shiftLabel: "Night" as const,
+        };
+      }
+      return {
+        startMinute: row.startMinute,
+        endMinute: row.endMinute,
+        shiftLabel: "Day" as const,
+      };
+    });
 }

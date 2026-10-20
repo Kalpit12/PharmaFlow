@@ -27,6 +27,7 @@ import { computeOrderMaterialReadiness } from "@/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
 import { filterOpenStationJobs, sortStationQueue } from "@/lib/production-execution/shop-floor";
 import { loadActiveShopFloorTimerOperationIds } from "@/lib/server/active-shop-floor-timers";
+import { countDeliveryLateOrders } from "@/lib/operations/schedule-issue-format";
 import { listRecentShopFloorEvents } from "@/lib/server/production-operation-events";
 
 export type ProductionExecutionFilters = {
@@ -232,6 +233,8 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       progressLabel: progress.progressLabel,
       plannedStart: taskStartDisplay,
       plannedEnd: order.plannedEnd?.toISOString() ?? null,
+      dueDate: order.dueDate.toISOString(),
+      orderKind: order.orderKind,
       actualStart: actualStart?.toISOString() ?? null,
       actualCompletion: actualCompletion?.toISOString() ?? null,
       plannedDurationMinutes: durations.plannedDurationMinutes,
@@ -276,6 +279,8 @@ export async function getProductionExecutionSnapshot(
   options?: { includeMaterials?: boolean }
 ): Promise<ProductionExecutionSnapshot> {
   requirePermission(ctx, "production.read");
+  const { ensurePlannerScheduleFreshOnLoad } = await import("@/lib/server/planner-schedule-refresh");
+  await ensurePlannerScheduleFreshOnLoad(ctx);
   const access = await resolvePlannerAccess(ctx);
   let allOrders = await loadExecutionOrders(ctx, options);
   if (access.scopedWorkstationIds?.length) {
@@ -320,7 +325,20 @@ export async function getProductionExecutionSnapshot(
     (row) => row.executionState === "WAITING" || row.executionState === "RELEASED"
   ).length;
   const completed = allOrders.filter((row) => row.executionState === "COMPLETED").length;
-  const atRisk = allOrders.filter((row) => row.risk === "AT_RISK" || row.risk === "BLOCKED").length;
+  const orderPlannedEnd = new Map(allOrders.map((row) => [row.id, row.plannedEnd]));
+  const atRisk = countDeliveryLateOrders(
+    allOrders.map((row) => ({
+      id: row.id,
+      orderKind: row.orderKind,
+      dueDate: row.dueDate,
+      routing: {
+        operations: [{ id: row.id, status: row.planningStatus, plannedStart: row.plannedStart, plannedEnd: row.plannedEnd }],
+      },
+    })),
+    orderPlannedEnd,
+    new Set<string>(),
+    new Date()
+  );
 
   const openWithDuration = allOrders.filter(
     (row) =>

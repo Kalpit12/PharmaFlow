@@ -13,6 +13,7 @@ import { bumpPastScheduledStarts } from "../prisma/bump-past-scheduled-starts";
 import { syncLabAlliedOrderWorkstations } from "../prisma/sync-lab-allied-order-workstations";
 import { getOperationsGanttSnapshot } from "../src/lib/server/operations-gantt";
 import { getProductionExecutionSnapshot } from "../src/lib/server/production-execution";
+import { printLabAlliedUtilizationTable } from "./lab-allied-utilization-report";
 
 async function printOrderTimeline(prisma: PrismaClient, tenantId: string, orderNumber: string) {
   const order = await prisma.productionOrder.findFirst({
@@ -118,6 +119,8 @@ async function main() {
     if (gantt.lateSummary.lateOrders < 2 || gantt.lateSummary.lateOrders > 4) {
       throw new Error(`Expected 2–4 late orders for demo (got ${gantt.lateSummary.lateOrders}).`);
     }
+
+    await printLabAlliedUtilizationTable(prisma, tenant.id);
 
     const execution = await getProductionExecutionSnapshot(ctx, { view: "all" });
     const activeExecution = Number(execution.kpis.find((row) => row.id === "active")?.value ?? 0);

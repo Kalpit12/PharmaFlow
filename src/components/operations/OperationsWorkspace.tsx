@@ -13,6 +13,7 @@ import { PlannerIntegrationsWorkspace } from "@/components/operations/PlannerInt
 import { PlannerEngineWorkspace } from "@/components/operations/PlannerEngineWorkspace";
 import { PlantModelWorkspace } from "@/components/operations/PlantModelWorkspace";
 import { ProductionOrdersWorkspace } from "@/components/operations/ProductionOrdersWorkspace";
+import { ShopFloorTimerWorkspace } from "@/components/operations/ShopFloorTimerWorkspace";
 import { WorkstationRosterWorkspace } from "@/components/operations/WorkstationRosterWorkspace";
 import type { WorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
 import type { PlannerEngineSnapshot } from "@/lib/server/aps-plan";
@@ -21,6 +22,7 @@ import type { PlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 import type { PlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
 import type { PlantModelSnapshot } from "@/lib/server/plant-model";
 import type { ProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
+import type { ProductionExecutionSnapshot } from "@/lib/production-execution/types";
 import { cn } from "@/lib/utils";
 
 const VIEWS: PlannerShellView[] = [
@@ -34,6 +36,7 @@ const VIEWS: PlannerShellView[] = [
   "import",
   "api",
   "assistant",
+  "timer",
 ];
 
 function parseView(value: string | undefined): PlannerShellView {
@@ -51,16 +54,18 @@ export function OperationsWorkspace({
   roster,
   canGlobalRules,
   initialView,
+  timer,
 }: {
   plant: PlantModelSnapshot;
-  orders: ProductionOrdersSnapshot;
-  planner: PlannerEngineSnapshot;
-  gantt: OperationsGanttSnapshot;
-  integrations: PlannerIntegrationSnapshot;
-  dashboard: PlannerDashboardPageData;
+  orders: ProductionOrdersSnapshot | null;
+  planner: PlannerEngineSnapshot | null;
+  gantt: OperationsGanttSnapshot | null;
+  integrations: PlannerIntegrationSnapshot | null;
+  dashboard: PlannerDashboardPageData | null;
   roster: WorkstationRosterSnapshot | null;
   canGlobalRules: boolean;
   initialView?: string;
+  timer?: ProductionExecutionSnapshot | null;
 }) {
   const view = parseView(initialView);
   const { setNavChromeHidden } = useShell();
@@ -72,16 +77,18 @@ export function OperationsWorkspace({
 
   return (
     <OperationsPlannerShell activeView={view}>
-      {view === "gantt" ? (
+      {view === "gantt" && gantt ? (
         <OperationsGanttWorkspace data={gantt} canGlobalRules={canGlobalRules} />
+      ) : view === "timer" && timer ? (
+        <ShopFloorTimerWorkspace data={timer} />
       ) : (
         <div className={cn("min-w-0 overflow-auto p-4 sm:p-6", view === "dashboard" && "p-4")}>
-          {view === "dashboard" ? <PlannerDashboardBuilder initial={dashboard} /> : null}
+          {view === "dashboard" && dashboard ? <PlannerDashboardBuilder initial={dashboard} /> : null}
           {view === "plant" ? <PlantModelWorkspace data={plant} /> : null}
           {view === "roster" && roster ? <WorkstationRosterWorkspace data={roster} /> : null}
-          {view === "orders" ? <ProductionOrdersWorkspace data={orders} /> : null}
-          {view === "engine" ? <PlannerEngineWorkspace initial={planner} canGlobalRules={canGlobalRules} /> : null}
-          {view === "integrations" ? <PlannerIntegrationsWorkspace data={integrations} /> : null}
+          {view === "orders" && orders ? <ProductionOrdersWorkspace data={orders} /> : null}
+          {view === "engine" && planner ? <PlannerEngineWorkspace initial={planner} canGlobalRules={canGlobalRules} /> : null}
+          {view === "integrations" && integrations ? <PlannerIntegrationsWorkspace data={integrations} /> : null}
           {view === "import" ? <PlannerDataImportWorkspace /> : null}
           {view === "api" ? <PlannerApiWorkspace canManage={canGlobalRules} /> : null}
           {view === "assistant" ? <PlannerAssistantWorkspace /> : null}

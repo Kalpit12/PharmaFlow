@@ -26,9 +26,18 @@ import { ServerError } from "@/lib/server/errors";
 import { computeOrderMaterialReadiness } from "@/lib/operations/planning";
 import { getMaterialsSnapshot, resolveMaterialsFilters } from "@/lib/server/materials";
 import { filterOpenStationJobs, sortStationQueue } from "@/lib/production-execution/shop-floor";
-import { loadActiveShopFloorTimerOperationIds } from "@/lib/server/active-shop-floor-timers";
+import {
+  loadOpenShopFloorTimerOperationIds,
+  loadOpenShopFloorTimers,
+} from "@/lib/server/active-shop-floor-timers";
 import { countDeliveryLateOrders } from "@/lib/operations/schedule-issue-format";
-import { listRecentShopFloorEvents } from "@/lib/server/production-operation-events";
+import { isQaHoldOperation } from "@/lib/operations/elapsed-workstation";
+import { listRecentShopFloorEvents, recordProductionOperationEvent } from "@/lib/server/production-operation-events";
+import {
+  resolveCurrentShopFloorOperation,
+  shopFloorStepLabel,
+} from "@/lib/operations/current-shop-floor-operation";
+import { routingStepDisplayName } from "@/lib/operations/routing-step-labels";
 
 export type ProductionExecutionFilters = {
   view: ExecutionViewId;
@@ -100,6 +109,7 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
         select: {
           id: true,
           operationCode: true,
+          operationName: true,
           status: true,
           sequence: true,
           plannedStart: true,
@@ -146,16 +156,11 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
   }
 
   const now = new Date();
-  const openShopFloorTimers = await loadActiveShopFloorTimerOperationIds(ctx.tenantId);
+  const openTimerDetails = await loadOpenShopFloorTimers(ctx.tenantId);
+  const openShopFloorTimers = new Set(openTimerDetails.keys());
   const canExecute = can(ctx.role, "production.execute");
   const activeOperationIds = orders
-    .map((order) => {
-      const active =
-        order.operations.find((operation) => operation.status === "IN_PROGRESS") ??
-        order.operations.find((operation) => operation.status === "SCHEDULED") ??
-        order.operations[0];
-      return active?.id ?? null;
-    })
+    .map((order) => resolveCurrentShopFloorOperation(order.operations, openShopFloorTimers)?.id ?? null)
     .filter((id): id is string => Boolean(id));
   const shopFloorEventsByOperation = await listRecentShopFloorEvents(ctx, activeOperationIds);
 
@@ -166,12 +171,13 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     const producedQuantity = order.batch?.producedQuantity ?? null;
     const hasInProgressOperation = order.operations.some((operation) => operation.status === "IN_PROGRESS");
     const hasOpenShopFloorTimer = order.operations.some((operation) => openShopFloorTimers.has(operation.id));
+    const currentOp = resolveCurrentShopFloorOperation(order.operations, openShopFloorTimers);
     const overlay = {
       planningStatus: order.status,
-      plannedStart: order.plannedStart,
-      plannedEnd: order.plannedEnd,
-      workstationId: order.workstationId,
-      workstationActive: order.workstation?.active ?? null,
+      plannedStart: currentOp?.plannedStart ?? order.plannedStart,
+      plannedEnd: currentOp?.plannedEnd ?? order.plannedEnd,
+      workstationId: currentOp?.workstationId ?? order.workstationId,
+      workstationActive: currentOp?.workstation?.active ?? order.workstation?.active ?? null,
       plannedQuantity,
       producedQuantity,
       productionStartedAt: order.batch?.productionStartedAt ?? null,
@@ -183,11 +189,13 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     };
     const executionState = deriveExecutionState(overlay);
     const progress = computeProgress(plannedQuantity, producedQuantity);
-    const actualStart = resolveActualStart(overlay.productionStartedAt, overlay.history);
+    const timerStart = currentOp ? openTimerDetails.get(currentOp.id)?.startedAt ?? null : null;
+    const actualStart =
+      resolveActualStart(overlay.productionStartedAt, overlay.history) ?? timerStart;
     const actualCompletion = resolveActualCompletion(overlay.productionCompletedAt, overlay.history);
     const durations = computeDurations({
-      plannedStart: order.plannedStart,
-      plannedEnd: order.plannedEnd,
+      plannedStart: currentOp?.plannedStart ?? order.plannedStart,
+      plannedEnd: currentOp?.plannedEnd ?? order.plannedEnd,
       actualStart,
       actualCompletion,
       now,
@@ -198,11 +206,7 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
     const readiness = materials
       ? computeOrderMaterialReadiness(materials.materials, order.id, true)
       : null;
-    const activeOperation =
-      order.operations.find((operation) => operation.status === "IN_PROGRESS") ??
-      order.operations.find((operation) => operation.status === "SCHEDULED") ??
-      order.operations[0] ??
-      null;
+    const activeOperation = currentOp;
     const firstOperation = order.operations[0] ?? null;
     const requiresLineClearance = firstOperation?.routingOperation?.requiresLineClearance ?? false;
     const lineClearanceComplete = historyRows.some((row) => row.action === "PRODUCTION_LINE_CLEARANCE");
@@ -250,8 +254,14 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       isPaused: executionState === "PAUSED",
       canRelease: canExecute && actions.canRelease,
       canStart:
-        canExecute && actions.canStart && (!requiresLineClearance || lineClearanceComplete),
-      canPause: canExecute && actions.canPause,
+        canExecute &&
+        (actions.canStart || executionState === "WAITING") &&
+        (!requiresLineClearance || lineClearanceComplete),
+      canPause: canExecute && actions.canPause && !isQaHoldOperation(activeOperation?.operationCode),
+      canQaRelease:
+        (can(ctx.role, "quality.manage") || can(ctx.role, "batches.quality_action")) &&
+        executionState === "IN_PROGRESS" &&
+        isQaHoldOperation(activeOperation?.operationCode),
       canResume: canExecute && actions.canResume,
       canComplete: canExecute && actions.canComplete,
       requiresLineClearance,
@@ -264,6 +274,10 @@ async function loadExecutionOrders(ctx: TenantContext, options?: { includeMateri
       history,
       activeOperationId: activeOperation?.id ?? null,
       activeOperationCode: activeOperation?.operationCode ?? null,
+      activeOperationName: activeOperation
+        ? routingStepDisplayName(activeOperation.operationCode, activeOperation.operationName)
+        : null,
+      activeOperationLabel: shopFloorStepLabel(activeOperation),
       shopFloorEvents: activeOperation
         ? shopFloorEventsByOperation.get(activeOperation.id) ?? []
         : [],
@@ -341,10 +355,7 @@ export async function getProductionExecutionSnapshot(
   );
 
   const openWithDuration = allOrders.filter(
-    (row) =>
-      row.executionState !== "COMPLETED" &&
-      row.plannedDurationMinutes != null &&
-      row.actualDurationMinutes != null
+    (row) => row.plannedDurationMinutes != null && row.actualDurationMinutes != null
   );
   const plannedDurationSum = openWithDuration.reduce((sum, row) => sum + (row.plannedDurationMinutes ?? 0), 0);
   const actualDurationSum = openWithDuration.reduce((sum, row) => sum + (row.actualDurationMinutes ?? 0), 0);
@@ -353,6 +364,19 @@ export async function getProductionExecutionSnapshot(
   );
   const plannedQtySum = completedWithQty.reduce((sum, row) => sum + row.plannedQuantity, 0);
   const actualQtySum = completedWithQty.reduce((sum, row) => sum + (row.producedQuantity ?? 0), 0);
+
+  const prisma = getPrisma();
+  const [actor, employees] = await Promise.all([
+    ctx.userId
+      ? prisma.user.findFirst({ where: { id: ctx.userId, tenantId: ctx.tenantId }, select: { id: true, name: true } })
+      : Promise.resolve(null),
+    prisma.plantEmployee.findMany({
+      where: { tenantId: ctx.tenantId, status: "ACTIVE" },
+      select: { id: true, name: true },
+      orderBy: { name: "asc" },
+      take: 40,
+    }),
+  ]);
 
   return {
     asOf: new Date().toISOString(),
@@ -386,7 +410,7 @@ export async function getProductionExecutionSnapshot(
     performance: [
       {
         id: "duration",
-        label: "Duration (open with timestamps)",
+        label: "Duration (planned vs logged history)",
         planned: openWithDuration.length > 0 ? plannedDurationSum : null,
         actual: openWithDuration.length > 0 ? actualDurationSum : null,
         unit: "minutes",
@@ -403,6 +427,8 @@ export async function getProductionExecutionSnapshot(
       canExecute: can(ctx.role, "production.execute"),
       canRead: can(ctx.role, "production.read"),
     },
+    currentUser: { id: actor?.id ?? ctx.userId, name: actor?.name ?? null },
+    operators: employees,
   };
 }
 
@@ -411,12 +437,58 @@ async function loadOrderForMutation(ctx: TenantContext, orderId: string) {
   const order = await prisma.productionOrder.findFirst({
     where: { id: orderId, tenantId: ctx.tenantId },
     include: {
-      workstation: { select: { id: true, name: true, active: true } },
+      workstation: { select: { id: true, name: true, active: true, allowedParallelJobs: true } },
       batch: true,
+      operations: {
+        orderBy: { sequence: "asc" },
+        include: { workstation: { select: { id: true, name: true, active: true, allowedParallelJobs: true } } },
+      },
     },
   });
   if (!order) throw new ServerError("Production order not found.", "NOT_FOUND");
   return order;
+}
+
+async function currentMutationOperation(
+  ctx: TenantContext,
+  order: Awaited<ReturnType<typeof loadOrderForMutation>>
+) {
+  const openIds = await loadOpenShopFloorTimerOperationIds(ctx.tenantId);
+  return resolveCurrentShopFloorOperation(order.operations, openIds);
+}
+
+async function assertWorkstationHasRunCapacity(
+  ctx: TenantContext,
+  workstationId: string | null,
+  allowedParallel: number,
+  exceptOrderId: string
+) {
+  if (!workstationId) return;
+  const open = await loadOpenShopFloorTimers(ctx.tenantId);
+  const runningOnWs = [...open.values()].filter((row) => row.isRunning);
+  if (runningOnWs.length === 0) return;
+  const prisma = getPrisma();
+  const ops = await prisma.productionOperation.findMany({
+    where: { tenantId: ctx.tenantId, id: { in: runningOnWs.map((row) => row.operationId) } },
+    select: { id: true, workstationId: true, productionOrderId: true },
+  });
+  const others = ops.filter((op) => op.workstationId === workstationId && op.productionOrderId !== exceptOrderId);
+  if (others.length >= Math.max(1, allowedParallel)) {
+    throw new ServerError("Another job is already in progress on this workstation.", "FORBIDDEN");
+  }
+}
+
+async function writeShopFloorEvent(
+  ctx: TenantContext,
+  operationId: string,
+  eventType: "START" | "STOP" | "PAUSE" | "RESUME" | "SCRAP",
+  input?: { quantity?: number; reason?: string }
+) {
+  await recordProductionOperationEvent(ctx, operationId, {
+    eventType,
+    quantity: input?.quantity,
+    reason: input?.reason,
+  });
 }
 
 async function loadExecutionHistory(ctx: TenantContext, orderId: string) {
@@ -533,7 +605,18 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
   if (state === "PAUSED") {
     throw new ServerError("Paused orders must be resumed, not started again.", "INTERNAL");
   }
-  if (state !== "RELEASED") {
+  if (state === "WAITING") {
+    if (order.status !== "SCHEDULED" && order.status !== "AT_RISK") {
+      throw new ServerError("Release the order before starting execution.", "INTERNAL");
+    }
+    await writeAuditLog(ctx, {
+      action: "PRODUCTION_RELEASE",
+      entityType: "PRODUCTION_ORDER",
+      entityId: order.id,
+      newValue: "RELEASED",
+      reason: reason?.trim() || "Shop-floor start",
+    });
+  } else if (state !== "RELEASED") {
     throw new ServerError("Release the order before starting execution.", "INTERNAL");
   }
   if (!order.workstationId) {
@@ -548,25 +631,31 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
     }
   }
   const prisma = getPrisma();
-  if (order.workstationId) {
-    const otherActive = await prisma.productionOrder.count({
-      where: {
-        tenantId: ctx.tenantId,
-        id: { not: order.id },
-        workstationId: order.workstationId,
-        status: "IN_PROGRESS",
-      },
-    });
-    if (otherActive > 0) {
-      throw new ServerError("Another job is already in progress on this workstation.", "FORBIDDEN");
-    }
-  }
+  const current = await currentMutationOperation(ctx, order);
+  const workstationId = current?.workstationId ?? order.workstationId;
+  const allowedParallel = current?.workstation?.allowedParallelJobs ?? order.workstation?.allowedParallelJobs ?? 1;
+  await assertWorkstationHasRunCapacity(ctx, workstationId, allowedParallel, order.id);
 
   const now = new Date();
   await prisma.productionOrder.update({
     where: { id: order.id },
-    data: { status: "IN_PROGRESS", isLocked: true },
+    data: { status: "IN_PROGRESS", isLocked: true, workstationId: workstationId ?? order.workstationId },
   });
+  if (current) {
+    await prisma.productionOperation.update({
+      where: { id: current.id },
+      data: {
+        status: "IN_PROGRESS",
+        actualStart: current.actualStart ?? now,
+        plannedStart: current.plannedStart ?? now,
+        plannedEnd:
+          current.plannedEnd && current.plannedEnd.getTime() > now.getTime()
+            ? current.plannedEnd
+            : new Date(now.getTime() + Math.max(30, current.durationMinutes) * 60_000),
+      },
+    });
+    await writeShopFloorEvent(ctx, current.id, "START", { reason: reason?.trim() || undefined });
+  }
   if (order.batch && !order.batch.productionStartedAt) {
     await prisma.productionBatch.update({
       where: { id: order.batch.id },
@@ -606,6 +695,11 @@ export async function pauseProductionOrder(ctx: TenantContext, orderId: string, 
     throw new ServerError("Only in-progress orders can be paused.", "INTERNAL");
   }
 
+  const current = await currentMutationOperation(ctx, order);
+  if (current) {
+    await writeShopFloorEvent(ctx, current.id, "PAUSE", { reason: reason?.trim() || undefined });
+  }
+
   const change = formatStateChange("EXECUTION_STATE", state, "PAUSED");
   await writeAuditLog(ctx, {
     action: "PRODUCTION_PAUSE",
@@ -632,6 +726,11 @@ export async function resumeProductionOrder(ctx: TenantContext, orderId: string,
     throw new ServerError("Only paused orders can be resumed.", "INTERNAL");
   }
 
+  const current = await currentMutationOperation(ctx, order);
+  if (current) {
+    await writeShopFloorEvent(ctx, current.id, "RESUME", { reason: reason?.trim() || undefined });
+  }
+
   const change = formatStateChange("EXECUTION_STATE", state, "IN_PROGRESS");
   await writeAuditLog(ctx, {
     action: "PRODUCTION_RESUME",
@@ -648,7 +747,7 @@ export async function resumeProductionOrder(ctx: TenantContext, orderId: string,
 export async function completeProductionOrder(
   ctx: TenantContext,
   orderId: string,
-  input?: { producedQuantity?: number | null; reason?: string | null }
+  input?: { producedQuantity?: number | null; scrapQuantity?: number | null; reason?: string | null }
 ) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
@@ -669,6 +768,23 @@ export async function completeProductionOrder(
 
   const now = new Date();
   const prisma = getPrisma();
+  const current = await currentMutationOperation(ctx, order);
+  if (current) {
+    if (input?.scrapQuantity && input.scrapQuantity > 0) {
+      await writeShopFloorEvent(ctx, current.id, "SCRAP", {
+        quantity: input.scrapQuantity,
+        reason: input?.reason?.trim() || "Scrap",
+      });
+    }
+    await writeShopFloorEvent(ctx, current.id, "STOP", {
+      quantity: input?.producedQuantity ?? undefined,
+      reason: input?.reason?.trim() || undefined,
+    });
+    await prisma.productionOperation.update({
+      where: { id: current.id },
+      data: { status: "COMPLETED", actualEnd: now, isLocked: true },
+    });
+  }
   await prisma.productionOrder.update({
     where: { id: order.id },
     data: { status: "COMPLETED", isLocked: true },
@@ -703,6 +819,140 @@ export async function completeProductionOrder(
   }).catch(() => undefined);
 
   return { orderId: order.id, executionState: "COMPLETED" as const, message: "Production completed.", idempotent: false };
+}
+
+export async function stopShopFloorOperation(
+  ctx: TenantContext,
+  orderId: string,
+  input?: { producedQuantity?: number | null; scrapQuantity?: number | null; reason?: string | null }
+) {
+  requirePermission(ctx, "production.execute");
+  const order = await loadOrderForMutation(ctx, orderId);
+  const history = await loadExecutionHistory(ctx, order.id);
+  const state = currentStateFrom(order, history);
+  if (state !== "IN_PROGRESS" && state !== "PAUSED") {
+    throw new ServerError("Start production before stopping.", "INTERNAL");
+  }
+  const current = await currentMutationOperation(ctx, order);
+  if (!current) throw new ServerError("No running operation to stop.", "INTERNAL");
+
+  const plannedQuantity = order.batch?.plannedQuantity ?? order.quantity;
+  if (order.batch) {
+    const validation = validateProducedQuantity(input?.producedQuantity, plannedQuantity, true);
+    if (validation) throw new ServerError(validation, "INTERNAL");
+  }
+
+  const now = new Date();
+  const prisma = getPrisma();
+  if (input?.scrapQuantity && input.scrapQuantity > 0) {
+    await writeShopFloorEvent(ctx, current.id, "SCRAP", {
+      quantity: input.scrapQuantity,
+      reason: input?.reason?.trim() || "Scrap",
+    });
+  }
+  await writeShopFloorEvent(ctx, current.id, "STOP", {
+    quantity: input?.producedQuantity ?? undefined,
+    reason: input?.reason?.trim() || undefined,
+  });
+  await prisma.productionOperation.update({
+    where: { id: current.id },
+    data: { status: "COMPLETED", actualEnd: now, isLocked: true },
+  });
+
+  const remaining = order.operations.filter((op) => op.id !== current.id && op.status !== "COMPLETED");
+  if (remaining.length === 0) {
+    await prisma.productionOrder.update({
+      where: { id: order.id },
+      data: { status: "COMPLETED", isLocked: true },
+    });
+    if (order.batch) {
+      await prisma.productionBatch.update({
+        where: { id: order.batch.id },
+        data: {
+          producedQuantity: input?.producedQuantity ?? order.batch.producedQuantity,
+          productionCompletedAt: now,
+          productionStartedAt: order.batch.productionStartedAt ?? now,
+        },
+      });
+    }
+    await writeAuditLog(ctx, {
+      action: "PRODUCTION_COMPLETE",
+      entityType: "PRODUCTION_ORDER",
+      entityId: order.id,
+      newValue: "COMPLETED",
+      reason: input?.reason?.trim() || null,
+    });
+    return {
+      orderId: order.id,
+      operationId: current.id,
+      executionState: "COMPLETED" as const,
+      message: "Production completed.",
+      idempotent: false,
+    };
+  }
+
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_COMPLETE",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: `${current.operationCode} stopped`,
+    reason: input?.reason?.trim() || null,
+  });
+  return {
+    orderId: order.id,
+    operationId: current.id,
+    executionState: "IN_PROGRESS" as const,
+    message: "Operation stopped. Next step is in the station queue.",
+    idempotent: false,
+  };
+}
+
+export async function qaReleaseProductionOperation(
+  ctx: TenantContext,
+  orderId: string,
+  input: { signature: string }
+) {
+  if (!can(ctx.role, "quality.manage") && !can(ctx.role, "batches.quality_action")) {
+    throw new ServerError("QA release requires a quality role.", "FORBIDDEN");
+  }
+  const signature = input.signature.trim();
+  if (signature.length < 3) {
+    throw new ServerError("Type your name to e-sign this QA release.", "INTERNAL");
+  }
+  const order = await loadOrderForMutation(ctx, orderId);
+  const prisma = getPrisma();
+  const active = await currentMutationOperation(ctx, order);
+  if (!active || !isQaHoldOperation(active.operationCode)) {
+    throw new ServerError("No quarantine or QC step is in progress on this order.", "INTERNAL");
+  }
+
+  const now = new Date();
+  await prisma.productionOperation.update({
+    where: { id: active.id },
+    data: { status: "COMPLETED", actualEnd: now, isLocked: true },
+  });
+  await prisma.productionOperationEvent.create({
+    data: {
+      tenantId: ctx.tenantId,
+      productionOperationId: active.id,
+      eventType: "STOP",
+      recordedAt: now,
+      recordedById: ctx.userId,
+      reason: `QA release · signed ${signature}`,
+    },
+  });
+  await writeAuditLog(ctx, {
+    action: "PRODUCTION_QA_RELEASE",
+    entityType: "PRODUCTION_ORDER",
+    entityId: order.id,
+    newValue: `${active.operationCode} released`,
+    reason: `E-signed by ${signature}`,
+  });
+  return {
+    orderId: order.id,
+    operationId: active.id,
+    message: "QA released. The next step can start.",
+  };
 }
 
 /** Compact signals for Command Center / Reports — lightweight, no materials. */

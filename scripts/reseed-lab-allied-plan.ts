@@ -9,6 +9,9 @@ import { reconcileLabAlliedDueDatesWithPlanner } from "../prisma/reconcile-lab-a
 import { syncLabAlliedDueDatesAfterSchedule } from "../prisma/sync-lab-allied-due-dates";
 import { seedLabAlliedLateDemoOrders } from "../prisma/seed-lab-allied-late-demo";
 import { seedLabAlliedShopFloorHistory } from "../prisma/seed-lab-allied-shop-floor-history";
+import { scheduleAwaitingPackingSoon } from "../prisma/seed-lab-allied-packing-wip";
+import { assertSingleRunningOpPerWorkstation, pinRunningShopFloorOps } from "../prisma/pin-running-shop-floor-ops";
+import { spreadLabAlliedIdleLines } from "../prisma/spread-lab-allied-idle-lines";
 import { bumpPastScheduledStarts } from "../prisma/bump-past-scheduled-starts";
 import { syncLabAlliedOrderWorkstations } from "../prisma/sync-lab-allied-order-workstations";
 import { getOperationsGanttSnapshot } from "../src/lib/server/operations-gantt";
@@ -83,11 +86,10 @@ async function main() {
     const dueUpdates = await syncLabAlliedDueDatesAfterSchedule(prisma, tenant.id);
     const dueReconciled = await reconcileLabAlliedDueDatesWithPlanner(prisma, ctx);
     const rollup = await syncLabAlliedOrderWorkstations(prisma, tenant.id);
-    const historyEvents = await seedLabAlliedShopFloorHistory(prisma, tenant.id, user.id);
     const bumped = await bumpPastScheduledStarts(prisma, tenant.id);
     await syncLabAlliedOrderWorkstations(prisma, tenant.id);
     console.log(
-      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}; order rollup ${rollup}; history ops ${historyEvents}; bumped ${bumped}.`
+      `[lab-allied-demo] Accepted plan v${proposal.version}; WIP ${wip.wipOrders} orders (${wip.runningTimers} timers); realigned ${realigned} ops; due dates ${dueUpdates} + planner reconcile ${dueReconciled}; order rollup ${rollup}; bumped ${bumped}.`
     );
 
     await printOrderTimeline(prisma, tenant.id, "ORD011-2026/10");
@@ -99,8 +101,15 @@ async function main() {
     let lateDemo = await seedLabAlliedLateDemoOrders(prisma, tenant.id);
     const bumpedAfterLate = await bumpPastScheduledStarts(prisma, tenant.id);
     lateDemo += await seedLabAlliedLateDemoOrders(prisma, tenant.id);
+    const packed = await scheduleAwaitingPackingSoon(prisma, tenant.id);
+    const historyEvents = await seedLabAlliedShopFloorHistory(prisma, tenant.id, user.id);
+    const wipFinal = await applyLabAlliedSteadyStateWip(prisma, tenant.id, user.id);
+    const pinned = await pinRunningShopFloorOps(prisma, tenant.id);
+    const spread = await spreadLabAlliedIdleLines(prisma, tenant.id);
+    await assertSingleRunningOpPerWorkstation(prisma, tenant.id);
+    await syncLabAlliedOrderWorkstations(prisma, tenant.id);
     console.log(
-      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}; bumped ${bumpedAfterLate}.`
+      `[lab-allied-demo] Post-seed demo heartbeat applied; WIP refresh ${wipAfterHeartbeat.wipOrders} orders (${wipAfterHeartbeat.runningTimers} timers); late demo ${lateDemo}; bumped ${bumpedAfterLate}; packing soon ${packed}; history ops ${historyEvents}; WIP final ${wipFinal.wipOrders} (${wipFinal.runningTimers} timers); pinned ${pinned}; idle-line spread ${spread}.`
     );
 
     const lateOps = await prisma.productionOperation.count({
@@ -141,6 +150,24 @@ async function main() {
     const activeExecution = Number(execution.kpis.find((row) => row.id === "active")?.value ?? 0);
     if (activeExecution === 0 && wipAfterHeartbeat.runningTimers === 0) {
       throw new Error("Execution must show active shop-floor timers after replan.");
+    }
+    const runningMismatch = execution.orders.filter((row) => {
+      if (row.executionState !== "IN_PROGRESS" || !row.activeOperationId) return false;
+      const bar = gantt.bars.find((item) => item.operationId === row.activeOperationId);
+      if (!bar) return true;
+      return bar.workstationId !== row.workstationId;
+    });
+    if (runningMismatch.length > 0) {
+      throw new Error(
+        `Execution workstation must match Gantt row for running ops (${runningMismatch.map((row) => row.orderNumber).join(", ")}).`
+      );
+    }
+    const futureRunning = gantt.bars.filter((bar) => {
+      if (bar.tone !== "running") return false;
+      return new Date(bar.start).getTime() > Date.now() + 5 * 60_000;
+    });
+    if (futureRunning.length > 0) {
+      throw new Error(`Running Gantt bars must touch now, not sit in the future (${futureRunning.length}).`);
     }
   } finally {
     await prisma.$disconnect();

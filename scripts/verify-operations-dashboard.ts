@@ -7,24 +7,38 @@ import {
   pickBottleneckWorkstation,
 } from "../src/lib/operations/planner-dashboard-metrics";
 
-const anchor = new Date("2026-10-15T00:00:00.000Z");
+const sunday = new Date("2026-10-25T00:00:00.000Z");
+const monday = new Date("2026-10-26T00:00:00.000Z");
 const daily = buildDailyCapacityLoad({
-  anchor,
-  horizonDays: 2,
+  from: sunday,
+  to: new Date("2026-10-28T00:00:00.000Z"),
   workstations: [
-    { id: "w1", code: "CMP-1", name: "Compression 1", capacityHoursPerDay: 8, utilization: 50 },
+    { id: "w1", code: "CMP-1", name: "Compression 1", capacityHoursPerDay: 21.5, utilization: 50 },
+    { id: "q1", code: "SFG-QUAR", name: "sFG quarantine", capacityHoursPerDay: 24, utilization: 10 },
   ],
   operations: [
     {
       workstationId: "w1",
-      plannedStart: "2026-10-15T08:00:00.000Z",
-      plannedEnd: "2026-10-15T12:00:00.000Z",
+      workstationCode: "CMP-1",
+      plannedStart: "2026-10-26T08:00:00.000Z",
+      plannedEnd: "2026-10-26T12:00:00.000Z",
       changeoverMinutes: 0,
+    },
+    {
+      workstationId: "q1",
+      workstationCode: "SFG-QUAR",
+      plannedStart: "2026-10-25T00:00:00.000Z",
+      plannedEnd: "2026-10-25T12:00:00.000Z",
+      changeoverMinutes: 0,
+      isElapsed: true,
     },
   ],
 });
-assert.equal(daily.length, 2);
-assert.ok(daily[0]!.value > 0);
+assert.equal(daily.production.length, 3);
+assert.equal(daily.production[0]!.value, 0, "Sunday production load is 0");
+assert.ok(daily.qcQueue[0]!.value > 0, "Sunday QC queue still shows elapsed hours");
+assert.ok(daily.production[1]!.value > 0, "Monday has production load");
+void monday;
 
 const otif = computeOtif([
   {
@@ -44,6 +58,7 @@ assert.equal(otif.onTimeCount, 1);
 const bottleneck = pickBottleneckWorkstation([
   { id: "a", code: "A", name: "A", capacityHoursPerDay: 8, utilization: 40 },
   { id: "b", code: "B", name: "B", capacityHoursPerDay: 8, utilization: 92 },
+  { id: "q", code: "SFG-QUAR", name: "Quarantine", capacityHoursPerDay: 24, utilization: 99 },
 ]);
 assert.equal(bottleneck?.code, "B");
 

@@ -11,6 +11,17 @@ export type ScheduleAdherenceSummary = {
   sampleSize: number;
 };
 
+/** Default ±30 minutes, or 10% of the planned window when both ends exist. */
+export const SCHEDULE_ADHERENCE_TOLERANCE_MS = 30 * 60_000;
+
+export function scheduleAdherenceToleranceMs(plannedStart: Date | null, plannedEnd: Date | null): number {
+  if (plannedStart && plannedEnd) {
+    const windowMs = plannedEnd.getTime() - plannedStart.getTime();
+    if (windowMs > 0) return Math.max(SCHEDULE_ADHERENCE_TOLERANCE_MS, Math.round(windowMs * 0.1));
+  }
+  return SCHEDULE_ADHERENCE_TOLERANCE_MS;
+}
+
 export function computeScheduleAdherence(rows: ScheduleAdherenceInput[]): ScheduleAdherenceSummary {
   const completed = rows.filter(
     (row) => row.status === "COMPLETED" && row.plannedEnd && row.actualCompletion
@@ -18,9 +29,10 @@ export function computeScheduleAdherence(rows: ScheduleAdherenceInput[]): Schedu
   if (completed.length === 0) {
     return { adherencePercent: null, onTimeCount: 0, lateCount: 0, sampleSize: 0 };
   }
-  const onTime = completed.filter(
-    (row) => row.actualCompletion!.getTime() <= row.plannedEnd!.getTime()
-  );
+  const onTime = completed.filter((row) => {
+    const tolerance = scheduleAdherenceToleranceMs(null, row.plannedEnd);
+    return row.actualCompletion!.getTime() <= row.plannedEnd!.getTime() + tolerance;
+  });
   const lateCount = completed.length - onTime.length;
   return {
     adherencePercent: Math.round((onTime.length / completed.length) * 100),

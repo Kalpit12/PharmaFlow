@@ -63,3 +63,25 @@ export function floorToPlantStep(instant: Date, stepMinutes: number): Date {
   const floored = minute - (minute % stepMinutes);
   return atPlantMinute(dayStart, floored);
 }
+
+/** Customer due / export clock: 17:00 East Africa Time on that plant day. */
+export function dueAtPlantClose(instant: Date): Date {
+  return atPlantMinute(startOfPlantDay(instant), 17 * 60);
+}
+
+/** CSV/PDF stamp: "21 Oct 2026 14:00" in EAT. */
+export function formatPlantDateTime(iso: string | Date | null | undefined): string {
+  if (!iso) return "";
+  const date = typeof iso === "string" ? new Date(iso) : iso;
+  if (Number.isNaN(date.getTime())) return "";
+  const text = date.toLocaleString("en-GB", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: PLANT_TIME_ZONE,
+  });
+  return text.replace(",", "");
+}

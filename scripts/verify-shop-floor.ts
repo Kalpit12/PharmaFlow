@@ -44,6 +44,7 @@ function row(partial: Partial<ExecutionOrderRow> & Pick<ExecutionOrderRow, "id" 
     canRelease: true,
     canStart: false,
     canPause: false,
+    canQaRelease: false,
     canResume: false,
     canComplete: false,
     requiresLineClearance: false,
@@ -52,6 +53,8 @@ function row(partial: Partial<ExecutionOrderRow> & Pick<ExecutionOrderRow, "id" 
     history: [],
     activeOperationId: null,
     activeOperationCode: null,
+    activeOperationName: null,
+    activeOperationLabel: null,
     shopFloorEvents: [],
     ...partial,
   };

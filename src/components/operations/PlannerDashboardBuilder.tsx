@@ -35,13 +35,16 @@ function parseReportFocus(value: string | null): ReportFocus {
 
 function formatStamp(iso: string | null): string {
   if (!iso) return "—";
-  return new Date(iso).toLocaleString("en-GB", {
+  const text = new Date(iso).toLocaleString("en-GB", {
     day: "numeric",
     month: "short",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
     timeZone: "Africa/Nairobi",
   });
+  return text.replace(",", "");
 }
 
 function formatMinutes(mins: number): string {
@@ -154,15 +157,25 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
         </section>
       ),
       CAPACITY_LOAD_FACTOR: (
-        <ColumnChart
-          title="Capacity load factor (14 days)"
-          description="Daily scheduled load ÷ total workstation capacity (%)"
-          rows={data.dailyLoad}
-          valueSuffix="%"
-          embedded
-          dominant
-          maxColumns={14}
-        />
+        <div className="flex min-w-0 flex-col gap-4">
+          <ColumnChart
+            title="Capacity load factor"
+            description="Production lines only. Daily scheduled load ÷ shift capacity (%). Sunday is closed."
+            rows={data.dailyLoad}
+            valueSuffix="%"
+            embedded
+            dominant
+            maxColumns={21}
+          />
+          <ColumnChart
+            title="QC / quarantine queue"
+            description="Elapsed QC and quarantine time — not counted as machine load."
+            rows={data.qcDailyLoad}
+            valueSuffix="h"
+            embedded
+            maxColumns={21}
+          />
+        </div>
       ),
       WORKSTATION_UTILIZATION: (
         <HorizontalBarChart
@@ -218,17 +231,17 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
         </section>
       ),
       JOB_REPORT: (
-        <section className="work-surface overflow-x-auto p-4">
+        <section className="work-surface min-w-0 overflow-x-auto p-4">
           <p className="text-sm font-medium">Job report (by step)</p>
-          <table className="mt-3 w-full min-w-[880px] text-left text-sm">
+          <table className="mt-3 w-full min-w-[960px] table-fixed text-left text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr>
-                <th className="pb-2 pr-3">Order</th>
-                <th className="pb-2 pr-3">Step</th>
-                <th className="pb-2 pr-3">Workstation</th>
-                <th className="pb-2 pr-3">Planned</th>
-                <th className="pb-2 pr-3">Logged</th>
-                <th className="pb-2">Difference</th>
+                <th className="w-[14%] pb-2 pr-3">Order</th>
+                <th className="w-[22%] pb-2 pr-3">Step</th>
+                <th className="w-[22%] pb-2 pr-3">Workstation</th>
+                <th className="w-[14%] pb-2 pr-3">Planned</th>
+                <th className="w-[14%] pb-2 pr-3">Logged</th>
+                <th className="w-[14%] pb-2 pr-3">Difference</th>
               </tr>
             </thead>
             <tbody>
@@ -241,8 +254,12 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
                   <td className="py-2 pr-3">{row.workstationName ?? "—"}</td>
                   <td className="py-2 pr-3">{formatMinutes(row.plannedMinutes)}</td>
                   <td className="py-2 pr-3">{row.loggedMinutes > 0 ? formatMinutes(row.loggedMinutes) : "—"}</td>
-                  <td className={cn("py-2 font-medium tabular-nums", ratioClass(row.ratio))}>
-                    {row.ratio == null ? "—" : row.ratio.toFixed(2)}
+                  <td className={cn("py-2 pr-3 font-medium tabular-nums whitespace-nowrap", ratioClass(row.ratio))}>
+                    {row.loggedMinutes <= 0
+                      ? "—"
+                      : row.loggedMinutes === row.plannedMinutes
+                        ? "0m"
+                        : `${row.loggedMinutes > row.plannedMinutes ? "+" : "−"}${formatMinutes(Math.abs(row.loggedMinutes - row.plannedMinutes))}`}
                   </td>
                 </tr>
               ))}
@@ -272,6 +289,7 @@ export function PlannerDashboardBuilder({ initial }: { initial: PlannerDashboard
                     <td className="py-2 pr-3">{row.eventType}</td>
                     <td className="py-2 pr-3">
                       {row.orderNumber} · {row.operationCode}
+                      {row.actorName ? ` · ${row.actorName}` : ""}
                     </td>
                     <td className="py-2">{row.workstationName ?? "—"}</td>
                   </tr>

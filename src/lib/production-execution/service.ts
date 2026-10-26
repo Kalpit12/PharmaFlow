@@ -44,6 +44,8 @@ export function executionActionLabel(action: ExecutionAuditAction): string {
       return "Resumed";
     case "PRODUCTION_COMPLETE":
       return "Completed";
+    case "PRODUCTION_QA_RELEASE":
+      return "QA released";
   }
 }
 

@@ -10,7 +10,7 @@ import {
   Home,
   LayoutGrid,
   MoreHorizontal,
-  Package,
+  Timer,
   ShoppingCart,
   Warehouse,
 } from "lucide-react";
@@ -33,7 +33,8 @@ export type PlannerShellView =
   | "integrations"
   | "import"
   | "api"
-  | "assistant";
+  | "assistant"
+  | "timer";
 
 const PRIMARY: Array<{
   view?: PlannerShellView;
@@ -47,11 +48,11 @@ const PRIMARY: Array<{
   { href: "/materials", label: "Warehouse", icon: Warehouse },
   { view: "gantt", label: "Scheduling", icon: Clock },
   { view: "roster", label: "Roster", icon: CalendarRange },
-  { href: "/execution/production", label: "Timer", icon: Package },
+  { view: "timer", label: "Timer", icon: Timer },
   { view: "dashboard", label: "Reporting", icon: BarChart3 },
 ];
 
-const OVERFLOW: Array<{ view: PlannerShellView; label: string }> = [
+const OVERFLOW: Array<{ view: PlannerShellView; label: string; href?: string }> = [
   { view: "engine", label: "Planner engine" },
   { view: "integrations", label: "Integrations" },
   { view: "import", label: "Data import" },

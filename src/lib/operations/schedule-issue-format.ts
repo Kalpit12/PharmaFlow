@@ -60,27 +60,26 @@ export function formatRoutingIssueDetail(kind: string, raw: string, now = new Da
   return raw;
 }
 
-/** Shared delivery-late order count for Gantt Late tab and Execution KPIs. */
-export function countDeliveryLateOrders(
-  orders: Array<{
-    id: string;
-    orderKind: "FIRM" | "PROSPECT";
-    dueDate: string | Date;
-    routing: {
-      operations: Array<{
-        id: string;
-        status: string;
-        plannedStart: string | Date | null;
-        plannedEnd: string | Date | null;
-        isQcHold?: boolean;
-      }>;
-    };
-  }>,
-  orderPlannedEnd: Map<string, string | null>,
-  activeTimerOperationIds: Set<string>,
-  now: Date
-): number {
-  let count = 0;
+export type DeliveryLateOrderInput = {
+  id: string;
+  orderKind: "FIRM" | "PROSPECT";
+  dueDate: string | Date;
+  routing: {
+    operations: Array<{
+      id: string;
+      status: string;
+      plannedStart: string | Date | null;
+      plannedEnd: string | Date | null;
+      isQcHold?: boolean;
+    }>;
+  };
+};
+
+export function listDeliveryLateOrderIds(
+  orders: DeliveryLateOrderInput[],
+  orderPlannedEnd: Map<string, string | null>
+): string[] {
+  const ids: string[] = [];
   for (const order of orders) {
     if (order.orderKind !== "FIRM") continue;
     const ends = order.routing.operations
@@ -95,7 +94,17 @@ export function countDeliveryLateOrders(
           : null;
     if (orderEndMs == null) continue;
     const dueMs = new Date(order.dueDate).getTime();
-    if (orderEndMs > dueMs) count += 1;
+    if (orderEndMs > dueMs) ids.push(order.id);
   }
-  return count;
+  return ids;
+}
+
+/** Shared delivery-late order count for Gantt Late tab and Execution KPIs. */
+export function countDeliveryLateOrders(
+  orders: DeliveryLateOrderInput[],
+  orderPlannedEnd: Map<string, string | null>,
+  _activeTimerOperationIds?: Set<string>,
+  _now?: Date
+): number {
+  return listDeliveryLateOrderIds(orders, orderPlannedEnd).length;
 }

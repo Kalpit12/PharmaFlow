@@ -10,9 +10,13 @@ import type { ChartBarRow } from "@/lib/charts/types";
 import { requirePermission } from "@/lib/auth/authorization";
 import { getPrisma } from "@/lib/server/db";
 import type { TenantContext } from "@/lib/server/errors";
-import { addPlantDays, startOfPlantDay } from "@/lib/operations/plant-time";
+import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
+import { addPlantDays, dueAtPlantClose, startOfPlantDay } from "@/lib/operations/plant-time";
+import { countDeliveryLateOrders } from "@/lib/operations/schedule-issue-format";
+import { routingStepDisplayName } from "@/lib/operations/routing-step-labels";
 import { getOperationsPlanner, resolvePlanningWindow } from "@/lib/server/operations";
 import { getPlanSnapshot } from "@/lib/server/plan-snapshot";
+import { loadWorkstationCalendars } from "@/lib/server/aps-plan";
 import type { OperationsOrder } from "@/lib/server/operations";
 
 export type PlannerJobReportRow = {
@@ -67,6 +71,7 @@ export type OperationsDashboardSnapshot = {
   window: { start: string; end: string };
   kpis: Array<{ id: string; label: string; value: string; hint: string }>;
   dailyLoad: ChartBarRow[];
+  qcDailyLoad: ChartBarRow[];
   workstationLoad: ChartBarRow[];
   bottleneck: { code: string; name: string; utilization: number } | null;
   jobReport: PlannerJobReportRow[];
@@ -89,11 +94,14 @@ const TIMELOG_HORIZON_DAYS = 30;
 
 function resolveDashboardWindow(options?: { from?: Date | null; to?: Date | null }) {
   if (options?.from && options?.to && !Number.isNaN(options.from.getTime()) && !Number.isNaN(options.to.getTime())) {
-    return { start: options.from, end: options.to };
+    const start = startOfPlantDay(options.from);
+    let end = startOfPlantDay(options.to);
+    if (end.getTime() <= start.getTime()) end = addPlantDays(start, 1);
+    else end = addPlantDays(end, 1);
+    return { start, end };
   }
-  const start = startOfPlantDay(new Date());
-  const end = addPlantDays(start, 7);
-  return { start, end };
+  const today = startOfPlantDay(new Date());
+  return { start: addPlantDays(today, -14), end: addPlantDays(today, 7) };
 }
 
 function firstOperationPlannedStart(order: OperationsOrder): string | null {
@@ -103,8 +111,18 @@ function firstOperationPlannedStart(order: OperationsOrder): string | null {
   return ops[0]?.plannedStart ?? null;
 }
 
+function currentOrNextWorkstation(order: OperationsOrder): string | null {
+  const open = order.routing.operations.filter((row) => row.status !== "COMPLETED");
+  const focus =
+    open.find((row) => row.status === "IN_PROGRESS") ??
+    open.find((row) => row.status === "SCHEDULED") ??
+    open[0];
+  return focus?.workstationName ?? order.workstationName;
+}
+
 function reportStatusLabel(order: OperationsOrder): string {
   if (order.orderKind === "PROSPECT") return "Prospect";
+  if (order.routing.operations.some((row) => row.status === "IN_PROGRESS")) return "IN_PROGRESS";
   return order.displayStatus;
 }
 
@@ -132,6 +150,15 @@ export async function getOperationsDashboardSnapshot(
   const now = new Date();
   const scope = options?.scopedWorkstationIds;
 
+  const calendars = await loadWorkstationCalendars(
+    ctx.tenantId,
+    planner.workstations.map((row) => ({
+      id: row.id,
+      code: row.code,
+      capacityHoursPerDay: row.capacityHoursPerDay,
+    }))
+  );
+  const wsCodeById = new Map(planner.workstations.map((row) => [row.id, row.code]));
   const workstationCapacity = planner.workstations
     .filter((row) => inScope(row.id, scope))
     .map((row) => ({
@@ -140,6 +167,7 @@ export async function getOperationsDashboardSnapshot(
     name: row.name,
     capacityHoursPerDay: row.capacityHoursPerDay,
     utilization: row.utilization,
+    calendar: calendars.get(row.id),
   }));
 
   const operationSlices: ScheduledOperationSlice[] = [];
@@ -149,21 +177,26 @@ export async function getOperationsDashboardSnapshot(
     for (const operation of order.routing.operations) {
       if (!operation.plannedStart || !operation.plannedEnd) continue;
       if (!inScope(operation.workstationId, scope)) continue;
+      const wsCode = operation.workstationId ? wsCodeById.get(operation.workstationId) ?? null : null;
       operationSlices.push({
         workstationId: operation.workstationId,
+        workstationCode: wsCode,
         plannedStart: operation.plannedStart,
         plannedEnd: operation.plannedEnd,
         changeoverMinutes: operation.changeoverMinutes,
+        isElapsed: operation.isQcHold || isElapsedOnlyWorkstation(wsCode),
       });
     }
   }
 
-  const dailyLoad = buildDailyCapacityLoad({
+  const dailyLoads = buildDailyCapacityLoad({
     operations: operationSlices,
     workstations: workstationCapacity,
-    horizonDays: 14,
-    anchor: window.start,
+    from: window.start,
+    to: window.end,
   });
+  const dailyLoad = dailyLoads.production;
+  const qcDailyLoad = dailyLoads.qcQueue;
   const workstationLoad = workstationUtilizationRows(workstationCapacity);
   const bottleneck = pickBottleneckWorkstation(workstationCapacity);
 
@@ -190,11 +223,28 @@ export async function getOperationsDashboardSnapshot(
     (row) => inScope(row.workstationId, scope) || row.routing.operations.some((op) => inScope(op.workstationId, scope))
   );
   const scopedOrderIds = new Set(scopedOrders.map((row) => row.id));
-  const lateOpen = planSnapshot.jobs.filter(
-    (job) =>
-      scopedOrderIds.has(job.orderId) &&
-      (job.status === "LATE" || job.status === "AT_RISK")
-  ).length;
+  const orderPlannedEnd = new Map(
+    scopedOrders.map((order) => {
+      const ends = order.routing.operations
+        .map((op) => op.plannedEnd)
+        .filter((value): value is string => Boolean(value));
+      const latest = ends.length
+        ? ends.reduce((max, iso) => (new Date(iso).getTime() > new Date(max).getTime() ? iso : max))
+        : order.plannedEnd;
+      return [order.id, latest] as const;
+    })
+  );
+  const lateOpen = countDeliveryLateOrders(
+    scopedOrders.map((order) => ({
+      id: order.id,
+      orderKind: order.orderKind,
+      dueDate: order.dueDate,
+      routing: { operations: order.routing.operations },
+    })),
+    orderPlannedEnd,
+    new Set(planSnapshot.activeTimerOperationIds),
+    now
+  );
   const startedInWindow = planSnapshot.jobs.filter(
     (job) => scopedOrderIds.has(job.orderId) && job.status === "RUNNING"
   ).length;
@@ -226,7 +276,7 @@ export async function getOperationsDashboardSnapshot(
       id: "late",
       label: "Late / at-risk jobs",
       value: String(lateOpen),
-      hint: "Past due while still open in planner window",
+      hint: "Same count as the Late tab (finish after due)",
     },
     {
       id: "changeover",
@@ -266,21 +316,25 @@ export async function getOperationsDashboardSnapshot(
     take: 80,
   });
 
-  const jobReport: PlannerJobReportRow[] = scopedOrders.slice(0, 60).map((order) => ({
+  const jobReport: PlannerJobReportRow[] = scopedOrders.slice(0, 80).map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
     productName: order.productName,
-    workstationName: order.workstationName,
+    workstationName: currentOrNextWorkstation(order),
     plannedStart: order.orderKind === "PROSPECT" ? null : firstOperationPlannedStart(order) ?? order.plannedStart,
     plannedEnd: order.orderKind === "PROSPECT" ? null : order.plannedEnd,
-    dueDate: order.dueDate,
+    dueDate: dueAtPlantClose(new Date(order.dueDate)).toISOString(),
     status: reportStatusLabel(order),
     quantity: order.quantity,
     producedQuantity: order.producedQuantity,
   }));
 
   const pairingEvents = await prisma.productionOperationEvent.findMany({
-    where: { tenantId: ctx.tenantId, recordedAt: { gte: timelogSince }, eventType: { in: ["START", "STOP"] } },
+    where: {
+      tenantId: ctx.tenantId,
+      recordedAt: { gte: timelogSince },
+      eventType: { in: ["START", "STOP", "PAUSE", "RESUME"] },
+    },
     orderBy: { recordedAt: "asc" },
     select: { productionOperationId: true, eventType: true, recordedAt: true },
   });
@@ -289,9 +343,9 @@ export async function getOperationsDashboardSnapshot(
   const startAtByOp = new Map<string, number>();
   for (const event of pairingEvents) {
     const opId = event.productionOperationId;
-    if (event.eventType === "START") {
+    if (event.eventType === "START" || event.eventType === "RESUME") {
       startAtByOp.set(opId, event.recordedAt.getTime());
-    } else {
+    } else if (event.eventType === "STOP" || event.eventType === "PAUSE") {
       const startMs = startAtByOp.get(opId);
       if (startMs) {
         const mins = Math.max(0, Math.round((event.recordedAt.getTime() - startMs) / 60_000));
@@ -314,7 +368,7 @@ export async function getOperationsDashboardSnapshot(
           id: operation.id,
           orderNumber: order.orderNumber,
           stepCode: operation.code,
-          stepName: operation.name,
+          stepName: routingStepDisplayName(operation.code, operation.name),
           workstationName: operation.workstationName,
           plannedMinutes,
           loggedMinutes,
@@ -323,17 +377,18 @@ export async function getOperationsDashboardSnapshot(
       })
     )
     .filter((row) => row.plannedMinutes > 0)
-    .slice(0, 120);
+    .sort((a, b) => Number(b.loggedMinutes > 0) - Number(a.loggedMinutes > 0))
+    .slice(0, 160);
 
-  const orderItems: PlannerOrderItemRow[] = scopedOrders.slice(0, 60).map((order) => ({
+  const orderItems: PlannerOrderItemRow[] = scopedOrders.slice(0, 80).map((order) => ({
     id: order.id,
     orderNumber: order.orderNumber,
     productSku: productSkuById.get(order.productId) ?? "—",
     productName: order.productName,
     quantity: order.quantity,
-    dueDate: order.dueDate,
+    dueDate: dueAtPlantClose(new Date(order.dueDate)).toISOString(),
     status: reportStatusLabel(order),
-    workstationName: order.workstationName,
+    workstationName: currentOrNextWorkstation(order),
   }));
 
   const timelogs: PlannerTimelogRow[] = events
@@ -347,7 +402,10 @@ export async function getOperationsDashboardSnapshot(
     workstationName: row.productionOperation.workstation?.name ?? null,
     quantity: row.quantity,
     reason: row.reason,
-    actorName: row.recordedBy?.name ?? (row.reason && !row.reason.startsWith("Demo") ? row.reason : null),
+    actorName:
+      row.reason && !row.reason.startsWith("Demo")
+        ? row.reason.split(" · ")[0] ?? row.reason
+        : row.recordedBy?.name ?? null,
   }));
 
   const hasTimelogData = events.some((row) => row.eventType === "START" || row.eventType === "STOP");
@@ -422,6 +480,7 @@ export async function getOperationsDashboardSnapshot(
     window: { start: window.start.toISOString(), end: window.end.toISOString() },
     kpis,
     dailyLoad,
+    qcDailyLoad,
     workstationLoad,
     bottleneck: bottleneck
       ? { code: bottleneck.code, name: bottleneck.name, utilization: bottleneck.utilization }

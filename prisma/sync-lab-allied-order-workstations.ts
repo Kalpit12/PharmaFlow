@@ -18,11 +18,13 @@ export async function syncLabAlliedOrderWorkstations(prisma: PrismaClient, tenan
         plannedEnd: true,
       },
     });
+    const open = ops.filter((row) => row.status !== "COMPLETED");
     const focus =
-      ops.find((row) => row.status === "IN_PROGRESS") ??
-      ops.find((row) => row.status === "SCHEDULED" && row.plannedStart) ??
-      ops.find((row) => row.plannedStart) ??
-      ops[0];
+      open.find((row) => row.status === "IN_PROGRESS") ??
+      open.find((row) => row.status === "SCHEDULED" && row.plannedStart) ??
+      open.find((row) => row.plannedStart) ??
+      open[0] ??
+      ops[ops.length - 1];
     if (!focus) continue;
     const firstStart = ops.find((row) => row.plannedStart)?.plannedStart ?? null;
     const lastEnd = ops.reduce<Date | null>((latest, row) => {

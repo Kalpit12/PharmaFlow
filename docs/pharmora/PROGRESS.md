@@ -1349,8 +1349,36 @@ Status: **COMPLETE** (verification pass; not all gates green)
 - **C. Controlled pilot readiness** — **FAIL** (incomplete verifier + no browser regression)
 - **D. Production readiness** — **NOT RUN / FAIL** (pilot gates not green; ERP/MES webhooks operator-owned)
 
+## Round 10 — Planner reports, shop-floor history, Global Rules, QA release
+
+Status: **IMPLEMENTED** (26 Oct 2026)
+
+- 14-day completed-order history with START/PAUSE/RESUME/STOP by roster operators; running STARTs are no longer evenly spaced or attributed to Lab Demo Planner.
+- Shop-floor WIP no longer wipes the whole tenant event log.
+- Daily capacity uses shift calendars (Sun 0 for production). QC/quarantine is a separate queue line, not machine load. Utilization display is capped at 100%.
+- Late/at-risk KPI uses `countDeliveryLateOrders`. Dashboard From/To drives the daily list. CSV/PDF stamps are EAT (`21 Oct 2026 14:00`); dues round to 17:00; in-progress orders export as `IN_PROGRESS`.
+- PACK-WIP / ORD-JAR renamed to `ORD056+` / `ORD066+`. Remaining pack steps are placed in the first 2–3 plant days.
+- Quarantine/QC shows **QA release** (e-signature + audit), not Pause. Progress bar is empty when quantity is not recorded.
+- Global Rules: lock value in minutes, lock-until from now, help under sliders, Reset to defaults.
+- Demo safety: `docs/pharmora/DEMO-GOLDEN.md`, `npm run demo:snapshot` / `demo:restore`.
+
+## Round 11 — One truth for running ops, Timer, history realism
+
+Status: **IMPLEMENTED** (26 Oct 2026)
+
+- Execution cards use the op with an open START (not the first routing step). Running QUAR/QC show **QA release**.
+- Gantt running bars are drawn from actual START → max(now, planned end) so they cross the red now line.
+- Max one running op per workstation unless `allowedParallelJobs > 1` (verify on reseed).
+- New `/operations?view=timer` operator screen: workstation tiles, live clock, Start / Pause / Resume / Stop with qty good/scrap.
+- One Execution page (Plan → Execute → Batches → Reports). Planned vs actual uses history.
+- History load denser; 1–2 historical late deliveries (OTIF ~90%); schedule adherence uses ±30 min / 10% tolerance.
+- Overview Late count uses the same delivery-late definition as the Gantt Late tab.
+- Job report Difference column fits; step names are routing names (never “Process”).
+- Preferred lines default weight is 10. Idle pack/fill lines get a fallback assignment if still empty.
+
 ## Next
 
+- After a good Lab & Allied reseed (`npm run db:seed:lab-allied:replan`), create Neon branch `demo-golden` (`npm run demo:snapshot`).
 - Re-run `npm run db:verify` on stable Neon (or local Postgres) to completion; install Playwright Chromium once, then `npm run qa:phase38` (or per-route QA scripts).
 - Post-pilot: external connector credentials and monitored webhook endpoints (operator-owned).
 
@@ -1466,6 +1494,8 @@ npm run qa:phase35
 npm run qa:phase36
 npm run qa:phase37
 npm run qa:phase38
+npm run demo:snapshot
+npm run demo:restore
 ```
 
 Inspect: [http://localhost:3000](http://localhost:3000) → [http://localhost:3000/login](http://localhost:3000/login) → [http://localhost:3000/daily-review](http://localhost:3000/daily-review)  

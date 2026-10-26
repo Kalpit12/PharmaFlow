@@ -1,6 +1,9 @@
 import { toneForOperation } from "@/lib/operations/planner-gantt-colors";
 import { assignParallelSubLanes } from "@/lib/operations/gantt-parallel-lanes";
-import { jobStatusIsLate, jobStatusIsScheduleSlip, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
+import { jobStatusIsScheduleSlip, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
+import { runningBarWindow } from "@/lib/operations/gantt-running-window";
+import { routingStepDisplayName } from "@/lib/operations/routing-step-labels";
+import { loadOpenShopFloorTimers } from "@/lib/server/active-shop-floor-timers";
 import { formatRoutingIssueDetail, formatSlippedStartDetail } from "@/lib/operations/schedule-issue-format";
 import {
   capacityStateFromLoad,
@@ -12,7 +15,11 @@ import {
   buildOnShiftBlocks,
   type GanttOffShiftBlock,
 } from "@/lib/operations/gantt-off-shift";
-import { computeGanttLateSummary, type GanttLateSummary } from "@/lib/operations/gantt-late-summary";
+import {
+  computeGanttLateSummary,
+  finishingOperationIdForLateOrder,
+  type GanttLateSummary,
+} from "@/lib/operations/gantt-late-summary";
 
 export type { GanttLateSummary };
 import { shortBatchLabel, workingSegmentsInRange, type GanttWorkSegment } from "@/lib/operations/gantt-shift-segments";
@@ -194,27 +201,8 @@ const GROUP_ORDER = [
   "QC-GRP",
 ];
 
-const STEP_LABELS: Record<string, string> = {
-  DISP: "Dispensing",
-  GRAN: "Granulation",
-  FBD: "FBD drying",
-  BLND: "Blending",
-  COMP: "Compression",
-  COMPRESS: "Compression",
-  COAT: "Coating",
-  ENC: "Encapsulation",
-  ENCAPSULATE: "Encapsulation",
-  COMPOUND: "Compounding",
-  FILL: "Liquid filling",
-  PACK: "Blister packing",
-  QC: "QC hold",
-  "QC-HOLD": "QC hold",
-};
-
 function stepDisplayName(code: string, name: string): string {
-  const key = code.trim().toUpperCase();
-  if (name && name.trim().toUpperCase() !== key) return name;
-  return STEP_LABELS[key] ?? name ?? code;
+  return routingStepDisplayName(code, name);
 }
 
 function formatBarLabel(input: {
@@ -237,11 +225,15 @@ function buildOrderTableRows(
   orderPlannedEnd: Map<string, string | null>,
   now: Date,
   activeTimers: Set<string>,
-  customerByOrderId: Map<string, string>
+  customerByOrderId: Map<string, string>,
+  lateOrderIds: Set<string>
 ): GanttOrderTableRow[] {
   const rows: GanttOrderTableRow[] = [];
   for (const order of planner.orders) {
     const batchLabel = orderBatch.get(order.id) ?? order.orderNumber;
+    const finishingLateId = lateOrderIds.has(order.id)
+      ? finishingOperationIdForLateOrder(order.routing.operations)
+      : null;
     for (const op of order.routing.operations) {
       const stepName = stepDisplayName(op.code, op.name);
       const issue = planner.routingIssuesByOperationId[op.id];
@@ -261,6 +253,10 @@ function buildOrderTableRows(
         customer: customerByOrderId.get(order.id) ?? null,
         reason: issue?.detail ? formatRoutingIssueDetail(issue.kind, issue.detail, now) : null,
       };
+      if (finishingLateId === op.id) {
+        rows.push({ ...base, tab: "late", reason: "Finishes after customer due date." });
+        continue;
+      }
       if (issue) {
         rows.push({
           ...base,
@@ -288,8 +284,6 @@ function buildOrderTableRows(
           tab: "error",
           reason: formatSlippedStartDetail(new Date(op.plannedStart), now),
         });
-      } else if (jobStatusIsLate(status)) {
-        rows.push({ ...base, tab: "late", reason: null });
       } else if (op.plannedStart && op.plannedEnd) {
         rows.push({ ...base, tab: "scheduled", reason: null });
       }
@@ -350,7 +344,10 @@ export async function getOperationsGanttSnapshot(
   const rowLayout: "alpha" | "group" =
     options?.ganttRows === "alpha" ? "alpha" : options?.ganttRows === "group" ? "group" : defaultRowLayout;
   const now = new Date();
-  const activeTimers = new Set(planSnapshot.activeTimerOperationIds);
+  const openTimers = await loadOpenShopFloorTimers(ctx.tenantId);
+  const activeTimers = new Set(
+    [...openTimers.values()].filter((row) => row.isRunning).map((row) => row.operationId)
+  );
 
   const wsRows = await prisma.workstation.findMany({
     where: { tenantId: ctx.tenantId, active: true },
@@ -402,9 +399,11 @@ export async function getOperationsGanttSnapshot(
   const dbOperations = await prisma.productionOperation.findMany({
     where: {
       tenantId: ctx.tenantId,
-      plannedStart: { not: null },
-      plannedEnd: { not: null },
       workstationId: { not: null },
+      OR: [
+        { AND: [{ plannedStart: { not: null } }, { plannedEnd: { not: null } }] },
+        { id: { in: [...openTimers.keys()] } },
+      ],
     },
     include: {
       productionOrder: {
@@ -460,8 +459,20 @@ export async function getOperationsGanttSnapshot(
       isLocked: dbOp.productionOrder.isLocked,
     };
     const routingOp = routingOpMeta.get(dbOp.id);
-    const plannedStart = dbOp.plannedStart!.toISOString();
-    const plannedEnd = dbOp.plannedEnd!.toISOString();
+    const timer = openTimers.get(dbOp.id);
+    const plannedStartDate = dbOp.plannedStart ?? timer?.startedAt ?? now;
+    const plannedEndDate = dbOp.plannedEnd ?? new Date(plannedStartDate.getTime() + Math.max(1, dbOp.durationMinutes) * 60_000);
+    const liveWindow =
+      timer?.isRunning
+        ? runningBarWindow({
+            openStartAt: timer.startedAt,
+            plannedStart: plannedStartDate,
+            plannedEnd: plannedEndDate,
+            now,
+          })
+        : { start: plannedStartDate, end: plannedEndDate };
+    const plannedStart = liveWindow.start.toISOString();
+    const plannedEnd = liveWindow.end.toISOString();
     const batchLabel = orderBatch.get(order.id) ?? order.orderNumber;
     const isQcHold = dbOp.routingOperation?.isQcHold ?? routingOp?.isQcHold ?? false;
     const workstationCode = wsRows.find((row) => row.id === dbOp.workstationId)?.code ?? null;
@@ -505,7 +516,7 @@ export async function getOperationsGanttSnapshot(
       batchLabel,
       productName: order.productName,
       operationCode: dbOp.operationCode,
-      operationName: dbOp.operationName,
+      operationName: stepDisplayName(dbOp.operationCode, dbOp.operationName ?? ""),
       start: changed ? proposed!.start : plannedStart,
       end: changed ? proposed!.end : plannedEnd,
       dueDate: order.dueDate,
@@ -813,20 +824,6 @@ export async function getOperationsGanttSnapshot(
     if (row.customer?.name) customerByOrderId.set(row.id, row.customer.name);
   }
 
-  const orderTableRows = buildOrderTableRows(
-    planner,
-    orderBatch,
-    orderEndForStatus,
-    now,
-    activeTimers,
-    customerByOrderId
-  ).map(
-    (row) =>
-      row.tab === "unscheduled" && unscheduledReasonByOp.has(row.operationId)
-        ? { ...row, reason: unscheduledReasonByOp.get(row.operationId)! }
-        : row
-  );
-
   const lateSummary = computeGanttLateSummary(
     planner.orders.map((order) => ({
       id: order.id,
@@ -845,6 +842,21 @@ export async function getOperationsGanttSnapshot(
     activeTimers,
     orderEndForStatus,
     now
+  );
+
+  const orderTableRows = buildOrderTableRows(
+    planner,
+    orderBatch,
+    orderEndForStatus,
+    now,
+    activeTimers,
+    customerByOrderId,
+    new Set(lateSummary.lateOrderIds)
+  ).map(
+    (row) =>
+      row.tab === "unscheduled" && unscheduledReasonByOp.has(row.operationId)
+        ? { ...row, reason: unscheduledReasonByOp.get(row.operationId)! }
+        : row
   );
 
   const acceptedPlan = await prisma.schedulePlan.findFirst({

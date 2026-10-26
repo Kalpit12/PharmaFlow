@@ -61,7 +61,12 @@
     "demo:medicrest-ui": "dotenv-cli -e .env -- node scripts/lab-allied-day-walkthrough.mjs",
     "demo:lab-allied:catchup": "tsx scripts/demo-lab-allied-catchup.ts",
     "demo:lab-allied-day": "npm run demo:medicrest-day",
-    "demo:lab-allied-ui": "npm run demo:medicrest-ui"
+    "demo:lab-allied-ui": "npm run demo:medicrest-ui",
+    "demo:snapshot": "node scripts/demo-neon-branch.mjs snapshot",
+    "demo:restore": "node scripts/demo-neon-branch.mjs restore",
+    "verify:operations-dashboard": "tsx scripts/verify-operations-dashboard.ts",
+    "verify:running-shop-floor": "tsx scripts/verify-running-shop-floor.ts",
+    "verify:shop-floor": "tsx scripts/verify-shop-floor.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3",

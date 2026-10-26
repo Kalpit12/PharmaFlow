@@ -1,10 +1,19 @@
 import type { ChartBarRow } from "@/lib/charts/types";
+import {
+  availableMinutesForDay,
+  type WorkCalendar,
+} from "@/lib/operations/calendar";
+import { isElapsedOnlyWorkstation } from "@/lib/operations/elapsed-workstation";
+import { addPlantDays, plantWeekday, startOfPlantDay } from "@/lib/operations/plant-time";
+import { PLANT_CAPACITY_HOURS_PER_DAY } from "@/lib/operations/plant-shift-template";
 
 export type ScheduledOperationSlice = {
   workstationId: string | null;
+  workstationCode?: string | null;
   plannedStart: string;
   plannedEnd: string;
   changeoverMinutes: number;
+  isElapsed?: boolean;
 };
 
 export type WorkstationCapacity = {
@@ -13,6 +22,7 @@ export type WorkstationCapacity = {
   name: string;
   capacityHoursPerDay: number;
   utilization: number;
+  calendar?: WorkCalendar;
 };
 
 export type OtifInput = {
@@ -44,11 +54,6 @@ export type OeeSummary = {
 };
 
 const MS_PER_HOUR = 3_600_000;
-const MS_PER_DAY = 86_400_000;
-
-function startOfUtcDay(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-}
 
 function overlapHours(startMs: number, endMs: number, dayStartMs: number, dayEndMs: number): number {
   const from = Math.max(startMs, dayStartMs);
@@ -57,47 +62,92 @@ function overlapHours(startMs: number, endMs: number, dayStartMs: number, dayEnd
   return (to - from) / MS_PER_HOUR;
 }
 
-/** Scheduled load vs total workstation capacity for each UTC day. */
+function productionCapacityHours(ws: WorkstationCapacity, day: Date): number {
+  if (isElapsedOnlyWorkstation(ws.code)) return 0;
+  if (ws.calendar) return availableMinutesForDay(day, ws.calendar) / 60;
+  const weekday = plantWeekday(day);
+  if (weekday === 0) return 0;
+  if (weekday === 6) return 9.5;
+  return ws.capacityHoursPerDay > 0 ? ws.capacityHoursPerDay : PLANT_CAPACITY_HOURS_PER_DAY;
+}
+
+export type DailyCapacityLoad = {
+  production: ChartBarRow[];
+  qcQueue: ChartBarRow[];
+};
+
+/** Scheduled machine load vs shift capacity for each plant day in [from, to). */
 export function buildDailyCapacityLoad(input: {
   operations: ScheduledOperationSlice[];
   workstations: WorkstationCapacity[];
-  horizonDays: number;
-  anchor: Date;
-}): ChartBarRow[] {
-  const active = input.workstations.filter((row) => row.capacityHoursPerDay > 0);
-  const dailyCapacityHours = active.reduce((sum, row) => sum + row.capacityHoursPerDay, 0);
-  const day0 = startOfUtcDay(input.anchor);
-  const rows: ChartBarRow[] = [];
+  horizonDays?: number;
+  anchor?: Date;
+  from?: Date;
+  to?: Date;
+}): DailyCapacityLoad {
+  const from = input.from ?? input.anchor ?? new Date();
+  const to =
+    input.to ??
+    (input.horizonDays != null ? addPlantDays(startOfPlantDay(from), input.horizonDays) : addPlantDays(startOfPlantDay(from), 7));
+  const day0 = startOfPlantDay(from);
+  const dayCount = Math.max(1, Math.round((startOfPlantDay(to).getTime() - day0.getTime()) / 86_400_000) || 1);
+  const productionWs = input.workstations.filter((row) => !isElapsedOnlyWorkstation(row.code));
+  const production: ChartBarRow[] = [];
+  const qcQueue: ChartBarRow[] = [];
 
-  for (let d = 0; d < input.horizonDays; d += 1) {
-    const dayStart = day0.getTime() + d * MS_PER_DAY;
-    const dayEnd = dayStart + MS_PER_DAY;
-    let loadHours = 0;
+  for (let d = 0; d < dayCount; d += 1) {
+    const dayStart = addPlantDays(day0, d);
+    const dayEnd = addPlantDays(dayStart, 1);
+    const dayStartMs = dayStart.getTime();
+    const dayEndMs = dayEnd.getTime();
+    const label = dayStart.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Africa/Nairobi" });
+
+    let machineHours = 0;
+    let qcHours = 0;
     for (const operation of input.operations) {
       if (!operation.workstationId) continue;
       const startMs = new Date(operation.plannedStart).getTime();
       const endMs = new Date(operation.plannedEnd).getTime();
       if (Number.isNaN(startMs) || Number.isNaN(endMs)) continue;
-      loadHours += overlapHours(startMs, endMs, dayStart, dayEnd);
-      if (operation.changeoverMinutes > 0) {
-        loadHours += operation.changeoverMinutes / 60;
+      const hours = overlapHours(startMs, endMs, dayStartMs, dayEndMs);
+      const elapsed = operation.isElapsed || isElapsedOnlyWorkstation(operation.workstationCode);
+      if (elapsed) {
+        qcHours += hours;
+        continue;
+      }
+      machineHours += hours;
+      if (operation.changeoverMinutes > 0 && startMs >= dayStartMs && startMs < dayEndMs) {
+        machineHours += operation.changeoverMinutes / 60;
       }
     }
-    const loadFactor = dailyCapacityHours > 0 ? Math.round((loadHours / dailyCapacityHours) * 100) : 0;
-    const label = new Date(dayStart).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
-    rows.push({
+
+    const capacityHours = productionWs.reduce((sum, ws) => sum + productionCapacityHours(ws, dayStart), 0);
+    const loadFactor =
+      capacityHours > 0 ? Math.min(100, Math.round((machineHours / capacityHours) * 100)) : 0;
+
+    production.push({
       id: `day-${d}`,
       label,
       value: loadFactor,
-      hint: `${Math.round(loadHours)}h load · ${Math.round(dailyCapacityHours)}h capacity`,
+      hint: `${Math.round(machineHours)}h load · ${Math.round(capacityHours)}h capacity`,
+    });
+    qcQueue.push({
+      id: `qc-${d}`,
+      label,
+      value: Math.round(qcHours * 10) / 10,
+      hint: `${Math.round(qcHours)}h elapsed QC / quarantine (not machine load)`,
+      tone: "material",
     });
   }
-  return rows;
+
+  return { production, qcQueue };
 }
 
 export function pickBottleneckWorkstation(workstations: WorkstationCapacity[]): WorkstationCapacity | null {
-  if (workstations.length === 0) return null;
-  return workstations.reduce((best, row) => (row.utilization > best.utilization ? row : best));
+  const production = workstations.filter((row) => !isElapsedOnlyWorkstation(row.code));
+  const pool = production.length > 0 ? production : workstations;
+  if (pool.length === 0) return null;
+  return pool.reduce((best, row) => (row.utilization > best.utilization ? row : best));
 }
 
 /** On-time-in-full: completed orders finished on or before customer due date. */
@@ -137,12 +187,13 @@ export function computeOeeProxy(input: OeeInput): OeeSummary {
 
 export function workstationUtilizationRows(workstations: WorkstationCapacity[]): ChartBarRow[] {
   return workstations
+    .filter((row) => !isElapsedOnlyWorkstation(row.code))
     .slice()
     .sort((a, b) => b.utilization - a.utilization)
     .map((row) => ({
       id: row.id,
       label: row.code,
-      value: row.utilization,
+      value: Math.min(100, row.utilization),
       hint: row.name,
     }));
 }

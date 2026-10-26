@@ -9,6 +9,7 @@ import { reconcileLabAlliedDueDatesWithPlanner } from "../../../prisma/reconcile
 import { syncLabAlliedDueDatesAfterSchedule } from "../../../prisma/sync-lab-allied-due-dates";
 import { syncLabAlliedOrderWorkstations } from "../../../prisma/sync-lab-allied-order-workstations";
 import { applyLabAlliedSteadyStateWip } from "../../../prisma/apply-lab-allied-steady-state-wip";
+import { pinRunningShopFloorOps } from "../../../prisma/pin-running-shop-floor-ops";
 
 const ELAPSED_CODES = new Set(["QUAR", "QC", "QC-HOLD"]);
 const HEARTBEAT_SUMMARY_PREFIX = "DEMO_HEARTBEAT ";
@@ -132,6 +133,7 @@ export async function runLabAlliedDemoHeartbeat(
     if (openAfter.size < 8) {
       await applyLabAlliedSteadyStateWip(prisma, ctx.tenantId, ctx.userId);
     }
+    await pinRunningShopFloorOps(prisma, ctx.tenantId);
   }
 
   return {

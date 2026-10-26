@@ -358,6 +358,7 @@ export async function getOperationsPlanner(
       .flatMap((order) => order.operations)
       .filter((op) => op.workstationId === ws.id && op.plannedStart && op.plannedEnd)
       .reduce((sum, op) => {
+        if (op.operationCode === "QUAR" || op.operationCode === "QC" || op.operationCode === "QC-HOLD") return sum;
         const start = Math.max(op.plannedStart!.getTime(), window.start.getTime());
         const end = Math.min(op.plannedEnd!.getTime(), window.end.getTime());
         return sum + Math.max(0, (end - start) / 60000);
@@ -525,11 +526,21 @@ export async function getOperationsPlanner(
     0
   );
   const adherence = computeScheduleAdherence(
-    orderRows.map((row) => ({
-      plannedEnd: row.plannedEnd,
-      actualCompletion: row.batch?.productionCompletedAt ?? null,
-      status: row.status,
-    }))
+    orderRows.map((row) => {
+      const lastActual = row.operations
+        .map((op) => op.actualEnd)
+        .filter((value): value is Date => Boolean(value))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      const lastPlanned = row.operations
+        .map((op) => op.plannedEnd)
+        .filter((value): value is Date => Boolean(value))
+        .sort((a, b) => b.getTime() - a.getTime())[0] ?? null;
+      return {
+        plannedEnd: lastPlanned ?? row.plannedEnd,
+        actualCompletion: row.batch?.productionCompletedAt ?? lastActual,
+        status: row.status,
+      };
+    })
   );
   const planningEventsLast7Days = await prisma.planningEvent.count({
     where: {

@@ -2,11 +2,12 @@
 
 import type { AutopilotMode } from "@prisma/client";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { useCallback, useState, useTransition } from "react";
+import { useCallback, useMemo, useState, useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { formatGanttDateTime } from "@/lib/operations/gantt-format";
+import { GLOBAL_RULE_HELP, PLANNING_POLICY_DEFAULTS } from "@/lib/operations/planning-policy-defaults";
 import type { PlanningPolicyView } from "@/lib/server/aps-plan";
 import { cn } from "@/lib/utils";
 
@@ -67,40 +68,57 @@ export function PlannerGlobalRulesPanel({
   const [message, setMessage] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const savePolicy = useCallback(() => {
-    if (!canEdit) return;
-    startTransition(async () => {
-      setMessage(null);
-      const response = await fetch("/api/planning-policy", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          priorityWeight: policy.priorityWeight,
-          dueDateWeight: policy.dueDateWeight,
-          changeoverWeight: policy.changeoverWeight,
-          utilizationWeight: policy.utilizationWeight,
-          leadTimeWeight: policy.leadTimeWeight,
-          onTimeCountWeight: policy.onTimeCountWeight,
-          customerPriorityWeight: policy.customerPriorityWeight,
-          similarJobsWeight: policy.similarJobsWeight,
-          eligibilityWeight: policy.eligibilityWeight,
-          considerMaterials: policy.considerMaterials,
-          considerEligibility: policy.considerEligibility,
-          freezeMinutes: policy.freezeMinutes,
-          autopilotMode: policy.autopilotMode,
-          useGlobalOptimizer: policy.useGlobalOptimizer,
-        }),
+  const freezeUntilIso = useMemo(
+    () => new Date(Date.now() + Math.max(0, policy.freezeMinutes) * 60_000).toISOString(),
+    [policy.freezeMinutes]
+  );
+
+  const savePolicy = useCallback(
+    (next = policy) => {
+      if (!canEdit) return;
+      startTransition(async () => {
+        setMessage(null);
+        const response = await fetch("/api/planning-policy", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            priorityWeight: next.priorityWeight,
+            dueDateWeight: next.dueDateWeight,
+            changeoverWeight: next.changeoverWeight,
+            utilizationWeight: next.utilizationWeight,
+            leadTimeWeight: next.leadTimeWeight,
+            onTimeCountWeight: next.onTimeCountWeight,
+            customerPriorityWeight: next.customerPriorityWeight,
+            similarJobsWeight: next.similarJobsWeight,
+            eligibilityWeight: next.eligibilityWeight,
+            considerMaterials: next.considerMaterials,
+            considerEligibility: next.considerEligibility,
+            freezeMinutes: next.freezeMinutes,
+            autopilotMode: next.autopilotMode,
+            useGlobalOptimizer: next.useGlobalOptimizer,
+          }),
+        });
+        const payload = (await response.json().catch(() => ({}))) as { message?: string; policy?: PlanningPolicyView };
+        if (!response.ok) {
+          setMessage(payload.message ?? "Unable to save global rules.");
+          return;
+        }
+        if (payload.policy) setPolicy(payload.policy);
+        setMessage("Global rules saved.");
+        onSaved?.();
       });
-      const payload = (await response.json().catch(() => ({}))) as { message?: string; policy?: PlanningPolicyView };
-      if (!response.ok) {
-        setMessage(payload.message ?? "Unable to save global rules.");
-        return;
-      }
-      if (payload.policy) setPolicy(payload.policy);
-      setMessage("Global rules saved.");
-      onSaved?.();
-    });
-  }, [canEdit, onSaved, policy]);
+    },
+    [canEdit, onSaved, policy]
+  );
+
+  const resetDefaults = () => {
+    setPolicy((prev) => ({
+      ...prev,
+      ...PLANNING_POLICY_DEFAULTS,
+      freezeUntil: new Date(Date.now() + PLANNING_POLICY_DEFAULTS.freezeMinutes * 60_000).toISOString(),
+    }));
+    setMessage("Defaults restored — save to apply.");
+  };
 
   const fields =
     variant === "compact" ? WEIGHT_FIELDS.filter((row) => row.ganttPrimary) : WEIGHT_FIELDS;
@@ -164,6 +182,7 @@ export function PlannerGlobalRulesPanel({
                   setPolicy((prev) => ({ ...prev, [key]: clampWeight(Number(event.target.value)) }))
                 }
               />
+              <p className="text-[11px] text-muted-foreground">{GLOBAL_RULE_HELP[key]}</p>
             </div>
           ))}
           {variant === "full" ? (
@@ -173,7 +192,10 @@ export function PlannerGlobalRulesPanel({
 
         <div className="space-y-4">
           <div className="space-y-2 rounded-md border border-border/60 bg-muted/20 p-3">
-            <Label htmlFor="gr-freeze">Running time lock (minutes)</Label>
+            <div className="flex items-center justify-between gap-2">
+              <Label htmlFor="gr-freeze">Running time lock</Label>
+              <span className="text-xs tabular-nums text-muted-foreground">{policy.freezeMinutes} min</span>
+            </div>
             <input
               id="gr-freeze"
               type="range"
@@ -191,8 +213,14 @@ export function PlannerGlobalRulesPanel({
               }
             />
             <p className="text-xs text-muted-foreground">
-              Jobs that already started within this window stay fixed until{" "}
-              <time dateTime={policy.freezeUntil}>{formatGanttDateTime(policy.freezeUntil)}</time>.
+              {policy.freezeMinutes <= 0 ? (
+                "No running-time lock — started jobs can still be moved."
+              ) : (
+                <>
+                  Jobs that already started stay fixed until{" "}
+                  <time dateTime={freezeUntilIso}>{formatGanttDateTime(freezeUntilIso)}</time>.
+                </>
+              )}
             </p>
           </div>
 
@@ -251,9 +279,14 @@ export function PlannerGlobalRulesPanel({
           ) : null}
 
           {canEdit ? (
-            <Button type="button" size="sm" disabled={pending} onClick={savePolicy}>
-              Save global rules
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" size="sm" disabled={pending} onClick={() => savePolicy()}>
+                Save global rules
+              </Button>
+              <Button type="button" size="sm" variant="outline" disabled={pending} onClick={resetDefaults}>
+                Reset to defaults
+              </Button>
+            </div>
           ) : null}
         </div>
       </div>

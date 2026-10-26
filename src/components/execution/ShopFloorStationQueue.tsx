@@ -115,6 +115,24 @@ function ShopFloorQueueCard({
               Start
             </Button>
           ) : null}
+          {row.canQaRelease ? (
+            <Button
+              type="button"
+              size="sm"
+              className="min-h-11"
+              disabled={pending}
+              onClick={() => {
+                const signature = window.prompt("Type your name to e-sign this QA release");
+                if (!signature || signature.trim().length < 3) {
+                  setError("A signed name is required for QA release.");
+                  return;
+                }
+                run("qa-release", { signature: signature.trim() });
+              }}
+            >
+              QA release
+            </Button>
+          ) : null}
           {row.canPause ? (
             <>
               <select

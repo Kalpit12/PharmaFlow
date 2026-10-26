@@ -1,7 +1,14 @@
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+
+function CrumbSeparator() {
+  return (
+    <svg viewBox="0 0 24 24" className="size-3.5 shrink-0 opacity-50" aria-hidden>
+      <path d="m9 6 6 6-6 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
 
 export type BreadcrumbItem = {
   label: string;
@@ -24,13 +31,13 @@ export function Breadcrumbs({ items, className }: { items: BreadcrumbItem[]; cla
               <Crumb item={first} />
             </li>
             <li className="hidden sm:flex" aria-hidden>
-              <ChevronRight className="size-3.5 opacity-50" />
+              <CrumbSeparator />
             </li>
             <li className="hidden text-muted-foreground/70 sm:block" aria-hidden>
               …
             </li>
             <li className="hidden sm:flex" aria-hidden>
-              <ChevronRight className="size-3.5 opacity-50" />
+              <CrumbSeparator />
             </li>
             <li className="min-w-0 truncate font-medium text-foreground">
               <span className="sm:hidden">{last.label}</span>
@@ -44,7 +51,7 @@ export function Breadcrumbs({ items, className }: { items: BreadcrumbItem[]; cla
             const current = index === items.length - 1;
             return (
               <li key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1">
-                {index > 0 ? <ChevronRight className="size-3.5 shrink-0 opacity-50" aria-hidden /> : null}
+                {index > 0 ? <CrumbSeparator /> : null}
                 <span className={cn("truncate", current && "font-medium text-foreground")}>
                   <Crumb item={item} current={current} />
                 </span>

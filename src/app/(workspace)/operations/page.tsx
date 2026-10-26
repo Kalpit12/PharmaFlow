@@ -11,6 +11,7 @@ import { getOperationsGanttSnapshot } from "@/lib/server/operations-gantt";
 import { getPlannerDashboardPageData } from "@/lib/server/planner-dashboards";
 import { getPlannerIntegrationSnapshot } from "@/lib/server/planner-integrations";
 import { getProductionOrdersSnapshot } from "@/lib/server/production-orders-phase2";
+import { getProductionExecutionSnapshot, resolveProductionExecutionFilters } from "@/lib/server/production-execution";
 import { workspaceLoginPath } from "@/lib/auth/login-redirect";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 import { getWorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
@@ -37,26 +38,32 @@ export default async function OperationsPage({
     const params = await searchParams;
     const canGlobalRules = can(ctx.role, "production.global_rules");
     const needRoster = params.view === "roster";
-    const [plant, orders, planner, gantt, integrations, dashboard, roster] = await Promise.all([
+    const isTimer = params.view === "timer";
+    const [plant, orders, planner, gantt, integrations, dashboard, roster, timer] = await Promise.all([
       getPlantModelSnapshot(ctx),
-      getProductionOrdersSnapshot(ctx),
-      getPlannerEngineSnapshot(ctx),
-      getOperationsGanttSnapshot(ctx, {
-        zoom: params.ganttZoom,
-        start: params.ganttStart,
-        end: params.ganttEnd,
-        ganttRows: params.ganttRows,
-      }),
-      getPlannerIntegrationSnapshot(ctx),
-      getPlannerDashboardPageData(ctx, params.dashboard),
+      isTimer ? Promise.resolve(null) : getProductionOrdersSnapshot(ctx),
+      isTimer ? Promise.resolve(null) : getPlannerEngineSnapshot(ctx),
+      isTimer
+        ? Promise.resolve(null)
+        : getOperationsGanttSnapshot(ctx, {
+            zoom: params.ganttZoom,
+            start: params.ganttStart,
+            end: params.ganttEnd,
+            ganttRows: params.ganttRows,
+          }),
+      isTimer ? Promise.resolve(null) : getPlannerIntegrationSnapshot(ctx),
+      isTimer ? Promise.resolve(null) : getPlannerDashboardPageData(ctx, params.dashboard),
       needRoster ? getWorkstationRosterSnapshot(ctx, params.rosterWeek) : Promise.resolve(null),
+      isTimer
+        ? getProductionExecutionSnapshot(ctx, resolveProductionExecutionFilters({}), { includeMaterials: false })
+        : Promise.resolve(null),
     ]);
 
     const isGantt = !params.view || params.view === "gantt";
 
     return (
       <WorkspacePage width="full" className={isGantt ? "gap-0 px-0 py-0 sm:px-0 lg:px-0" : undefined}>
-        {isGantt ? null : (
+        {isGantt || isTimer ? null : (
           <div className="px-4 pt-4 sm:px-6 lg:px-8">
             <PageHeader
               context="Operations"
@@ -75,6 +82,7 @@ export default async function OperationsPage({
           roster={roster}
           canGlobalRules={canGlobalRules}
           initialView={params.view}
+          timer={timer}
         />
       </WorkspacePage>
     );

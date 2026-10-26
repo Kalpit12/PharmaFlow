@@ -10,7 +10,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const ctx = await getAuthenticatedTenantContext();
     const { id } = await params;
-    const body = (await request.json().catch(() => ({}))) as { producedQuantity?: number; reason?: string };
+    const body = (await request.json().catch(() => ({}))) as {
+      producedQuantity?: number;
+      scrapQuantity?: number;
+      reason?: string;
+    };
     const result = await completeProductionOrder(ctx, id, body);
     return NextResponse.json(result);
   } catch (error) {

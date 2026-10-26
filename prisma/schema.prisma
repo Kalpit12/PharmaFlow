@@ -274,6 +274,8 @@ enum ChangeoverLevel {
 enum ProductionOperationEventType {
   START
   STOP
+  PAUSE
+  RESUME
   DOWNTIME
   SCRAP
 }

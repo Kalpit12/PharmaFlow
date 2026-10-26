@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -20,7 +20,6 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { useLayoutMode, usePreferences } from "@/components/providers/preferences-provider";
 import { useCompactLayout } from "@/hooks/use-compact-layout";
 import { ShopFloorStationQueue } from "@/components/execution/ShopFloorStationQueue";
 import { cn } from "@/lib/utils";
@@ -88,13 +87,8 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const compact = useCompactLayout();
-  const { simple } = useLayoutMode();
-  const { setLayoutMode } = usePreferences();
   const shopMode = Boolean(searchParams.get("workstation")) || searchParams.get("mode") === "shop";
-  useEffect(() => {
-    if (shopMode) setLayoutMode("simple");
-  }, [shopMode, setLayoutMode]);
-  const boardCompact = compact || simple || shopMode;
+  const boardCompact = compact || shopMode;
   const [selectedId, setSelectedId] = useState<string | null>(searchParams.get("order"));
   const selected =
     data.orders.find((row) => row.id === selectedId) ??
@@ -128,46 +122,23 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
     );
   }, [data.orders]);
 
-  const simpleViews: ExecutionViewId[] = ["active", "at-risk", "all"];
-  const kpiItems = simple
-    ? data.kpis.filter((kpi) => ["active", "at-risk", "paused", "waiting"].includes(kpi.id))
-    : data.kpis;
-  const attentionItems = useMemo(
-    () => (simple ? data.attention.slice(0, 5) : data.attention),
-    [data.attention, simple]
-  );
+  const kpiItems = data.kpis;
+  const attentionItems = data.attention;
 
   return (
     <div className="flex min-w-0 flex-col gap-4">
-      {simple ? (
-        <div className="flex flex-wrap items-center justify-between gap-3 work-surface px-4 py-3">
-          <p className="text-sm font-medium">Shop floor</p>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
-              <Link href="/operations">Planning</Link>
-            </Button>
-            <Button asChild size="sm" variant="outline" className="min-h-11 sm:min-h-8">
-              <Link href="/execution/production/board">TV board</Link>
-            </Button>
-            <Button type="button" size="sm" variant="outline" className="min-h-11 sm:min-h-8" onClick={() => setLayoutMode("advanced")}>
-              Full board
-            </Button>
-          </div>
-        </div>
-      ) : (
-        <ProcessTrail
-          steps={[
-            { id: "plan", label: "Plan", href: "/operations" },
-            { id: "execute", label: "Execute" },
-            { id: "batch", label: "Batches", href: "/batches" },
-            { id: "reports", label: "Reports", href: "/reports?view=production" },
-          ]}
-          current="execute"
-        />
-      )}
+      <ProcessTrail
+        steps={[
+          { id: "plan", label: "Plan", href: "/operations" },
+          { id: "execute", label: "Execute" },
+          { id: "batch", label: "Batches", href: "/batches" },
+          { id: "reports", label: "Reports", href: "/reports?view=production" },
+        ]}
+        current="execute"
+      />
 
       {attentionItems.length > 0 ? (
-        <AttentionList title="Production attention" subtitle={simple ? "Orders that need a shop-floor decision." : undefined}>
+        <AttentionList title="Production attention">
           {attentionItems.map((item) => (
             <AttentionItem
               key={item.id}
@@ -222,8 +193,7 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
         </section>
       ) : null}
 
-      {!simple ? (
-        <section aria-label="Planned vs actual" className="min-w-0 work-surface p-3">
+      <section aria-label="Planned vs actual" className="min-w-0 work-surface p-3">
           <p className="text-sm font-medium">Planned vs actual</p>
           <div className="mt-3 grid gap-3 sm:grid-cols-2">
             {data.performance.map((row) => (
@@ -257,18 +227,16 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
             ))}
           </div>
         </section>
-      ) : null}
 
       <div className="flex min-w-0 flex-col gap-3 work-surface p-3">
         <nav aria-label="Execution views" className="flex min-w-0 flex-wrap gap-1">
-          {(simple ? simpleViews : EXECUTION_VIEWS).map((view) => (
+          {EXECUTION_VIEWS.map((view) => (
             <Button key={view} asChild size="sm" variant={data.view === view ? "secondary" : "ghost"} className="min-h-11 sm:min-h-7">
               <Link href={href({ view: view === "all" ? undefined : view })}>{VIEW_LABEL[view]}</Link>
             </Button>
           ))}
         </nav>
-        {!simple ? (
-          <SearchInput
+        <SearchInput
             defaultValue={searchParams.get("q") ?? ""}
             placeholder="Order, product, workstation"
             aria-label="Search production execution"
@@ -280,7 +248,6 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
               }
             }}
           />
-        ) : null}
         {data.workstations.length > 0 ? (
           <label className="flex min-w-0 items-center gap-2 text-xs font-medium">
             <span className="shrink-0 text-muted-foreground">Station</span>
@@ -319,7 +286,7 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
                 </div>
                 <p className="font-medium">{row.productName}</p>
                 <p className="text-xs text-muted-foreground">
-                  {row.orderNumber} · {row.workstationName ?? "No workstation"} · {row.plannedQuantity.toLocaleString("en-GB")} {row.unit}
+                  {row.orderNumber} · {row.activeOperationLabel ?? "—"} · {row.workstationName ?? "No workstation"} · {row.plannedQuantity.toLocaleString("en-GB")} {row.unit}
                 </p>
                 <ProgressMeter percent={row.progressPercent} label={row.progressLabel} />
                 <PrimaryAction row={row} onDone={() => router.refresh()} />
@@ -366,7 +333,10 @@ export function ProductionExecutionWorkspace({ data }: { data: ProductionExecuti
                     <td className="min-w-[9rem]">
                       <ProgressMeter percent={row.progressPercent} label={row.progressLabel} />
                     </td>
-                    <td>{row.workstationName ?? "Not assigned"}</td>
+                    <td>
+                      <span className="block">{row.activeOperationLabel ?? "—"}</span>
+                      <span className="text-xs text-muted-foreground">{row.workstationName ?? "Not assigned"}</span>
+                    </td>
                     <td>
                       <StatusBadge tone={riskTone[row.risk]}>{row.risk.replace(/_/g, " ")}</StatusBadge>
                     </td>
@@ -404,6 +374,8 @@ function PrimaryAction({ row, onDone }: { row: ExecutionOrderRow; onDone: () => 
         ? ("start" as const)
         : row.canResume
           ? ("resume" as const)
+          : row.canQaRelease
+            ? ("qa-release" as const)
           : row.canPause
             ? ("pause" as const)
             : row.canComplete
@@ -414,7 +386,7 @@ function PrimaryAction({ row, onDone }: { row: ExecutionOrderRow; onDone: () => 
     return <span className="text-xs text-muted-foreground">—</span>;
   }
 
-  const label = action.charAt(0).toUpperCase() + action.slice(1);
+  const label = action === "qa-release" ? "QA release" : action.charAt(0).toUpperCase() + action.slice(1);
 
   return (
     <div className="flex flex-col gap-1">
@@ -425,13 +397,22 @@ function PrimaryAction({ row, onDone }: { row: ExecutionOrderRow; onDone: () => 
         onClick={(event) => {
           event.stopPropagation();
           setError(null);
+          const signature =
+            action === "qa-release" ? window.prompt("Type your name to e-sign this QA release") : null;
+          if (action === "qa-release" && (!signature || signature.trim().length < 3)) {
+            setError("A signed name is required for QA release.");
+            return;
+          }
           startTransition(async () => {
             try {
               const body =
                 action === "complete" && row.batchId
                   ? { producedQuantity: row.producedQuantity ?? row.plannedQuantity }
-                  : {};
-              const response = await fetch(`/api/production-orders/${row.id}/${action}`, {
+                  : action === "qa-release"
+                    ? { signature: signature!.trim() }
+                    : {};
+              const path = action === "qa-release" ? "qa-release" : action;
+              const response = await fetch(`/api/production-orders/${row.id}/${path}`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body),
@@ -466,6 +447,7 @@ function ExecutionDetail({
 }) {
   const [producedQuantity, setProducedQuantity] = useState(String(row.producedQuantity ?? row.plannedQuantity));
   const [pauseReason, setPauseReason] = useState<string>(SHOP_FLOOR_PAUSE_REASONS[0].id);
+  const [qaSignature, setQaSignature] = useState("");
   const [downtimeReason, setDowntimeReason] = useState("");
   const [scrapQty, setScrapQty] = useState("1");
   const [scrapReason, setScrapReason] = useState("");
@@ -556,6 +538,7 @@ function ExecutionDetail({
               { label: "Product", value: row.productName },
               { label: "Order", value: row.orderNumber },
               { label: "Priority", value: row.priority },
+              { label: "Step", value: row.activeOperationLabel ?? "—" },
               { label: "Workstation", value: row.workstationName ?? "Not assigned" },
               { label: "Batch", value: row.batchNumber ?? "No data" },
               { label: "Planning status", value: row.planningStatus.replace(/_/g, " ") },
@@ -685,6 +668,55 @@ function ExecutionDetail({
                   Start
                 </Button>
               ) : null}
+              {row.activeOperationCode &&
+              (row.activeOperationCode === "QUAR" ||
+                row.activeOperationCode === "QC" ||
+                row.activeOperationCode === "QC-HOLD") &&
+              !row.canQaRelease &&
+              !row.canPause ? (
+                <p className="text-xs text-muted-foreground">Quarantine/QC holds need a QA e-signature to release.</p>
+              ) : null}
+              {row.canQaRelease ? (
+                <>
+                  <label className="block min-w-[12rem] flex-1 text-xs">
+                    E-signature
+                    <input
+                      value={qaSignature}
+                      onChange={(event) => setQaSignature(event.target.value)}
+                      placeholder="Type your name"
+                      className="mt-1 flex h-11 w-full rounded-sm border border-border bg-background px-3 text-sm sm:h-8"
+                    />
+                  </label>
+                  <Button
+                    className="min-h-11 sm:min-h-8"
+                    disabled={pending || qaSignature.trim().length < 3}
+                    onClick={() => {
+                      setError(null);
+                      setMessage(null);
+                      startTransition(async () => {
+                        try {
+                          const response = await fetch(`/api/production-orders/${row.id}/qa-release`, {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ signature: qaSignature.trim() }),
+                          });
+                          const payload = (await response.json()) as { message?: string };
+                          if (!response.ok) {
+                            setError(payload.message ?? "Unable to record QA release.");
+                            return;
+                          }
+                          setMessage(payload.message ?? "QA released.");
+                          onComplete();
+                        } catch {
+                          setError("Unable to record QA release.");
+                        }
+                      });
+                    }}
+                  >
+                    QA release
+                  </Button>
+                </>
+              ) : null}
               {row.canPause ? (
                 <>
                   <select
@@ -783,8 +815,8 @@ function ProgressMeter({ percent, label }: { percent: number | null; label: stri
     <div className="min-w-0 space-y-1">
       <div className="progress-track" aria-hidden>
         <div
-          className={cn("progress-fill", percent == null && "bg-muted-foreground/30")}
-          style={{ width: `${percent == null ? 8 : width}%` }}
+          className="progress-fill"
+          style={{ width: `${width}%` }}
         />
       </div>
       <p className="text-[11px] tabular-nums text-muted-foreground">{label}</p>

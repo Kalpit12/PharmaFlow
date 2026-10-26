@@ -1,9 +1,8 @@
-import { jobStatusIsLate, resolveJobPlanStatus } from "@/lib/operations/plan-job-status";
-import { countDeliveryLateOrders } from "@/lib/operations/schedule-issue-format";
+import { listDeliveryLateOrderIds } from "@/lib/operations/schedule-issue-format";
 
-export type GanttLateSummary = { lateJobs: number; lateOrders: number };
+export type GanttLateSummary = { lateJobs: number; lateOrders: number; lateOrderIds: string[] };
 
-/** Delivery late: shared by Gantt Late tab, Execution at-risk KPI, and planner overview. */
+/** Delivery late: same definition for Overview KPI and the Gantt Late tab. */
 export function computeGanttLateSummary(
   orders: Array<{
     id: string;
@@ -19,29 +18,29 @@ export function computeGanttLateSummary(
       }>;
     };
   }>,
-  activeTimerOperationIds: Set<string>,
+  _activeTimerOperationIds: Set<string>,
   orderPlannedEnd: Map<string, string | null>,
-  now: Date
+  _now: Date
 ): GanttLateSummary {
+  const lateOrderIds = listDeliveryLateOrderIds(orders, orderPlannedEnd);
+  const lateOrderSet = new Set(lateOrderIds);
   let lateJobs = 0;
-
   for (const order of orders) {
-    for (const op of order.routing.operations) {
-      const status = resolveJobPlanStatus({
-        operationStatus: op.status,
-        orderKind: order.orderKind,
-        plannedStart: op.plannedStart,
-        plannedEnd: op.plannedEnd,
-        dueDate: order.dueDate,
-        isQcHold: op.isQcHold,
-        hasActiveTimer: activeTimerOperationIds.has(op.id),
-        orderPlannedEnd: orderPlannedEnd.get(order.id) ?? null,
-        now,
-      });
-      if (jobStatusIsLate(status)) lateJobs += 1;
-    }
+    if (!lateOrderSet.has(order.id)) continue;
+    const finishing = [...order.routing.operations]
+      .filter((op) => op.plannedEnd)
+      .sort((a, b) => new Date(b.plannedEnd!).getTime() - new Date(a.plannedEnd!).getTime())[0];
+    if (finishing) lateJobs += 1;
   }
+  return { lateJobs, lateOrders: lateOrderIds.length, lateOrderIds };
+}
 
-  const lateOrders = countDeliveryLateOrders(orders, orderPlannedEnd, activeTimerOperationIds, now);
-  return { lateJobs, lateOrders };
+export function finishingOperationIdForLateOrder(
+  operations: Array<{ id: string; plannedEnd: string | Date | null }>
+): string | null {
+  const withEnd = operations.filter((op) => op.plannedEnd);
+  if (withEnd.length === 0) return null;
+  return [...withEnd].sort(
+    (a, b) => new Date(b.plannedEnd!).getTime() - new Date(a.plannedEnd!).getTime()
+  )[0]!.id;
 }

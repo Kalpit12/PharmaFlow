@@ -28,6 +28,7 @@ export const EXECUTION_AUDIT_ACTIONS = [
   "PRODUCTION_PAUSE",
   "PRODUCTION_RESUME",
   "PRODUCTION_COMPLETE",
+  "PRODUCTION_QA_RELEASE",
 ] as const;
 export type ExecutionAuditAction = (typeof EXECUTION_AUDIT_ACTIONS)[number];
 
@@ -89,6 +90,7 @@ export type ExecutionOrderRow = {
   canRelease: boolean;
   canStart: boolean;
   canPause: boolean;
+  canQaRelease: boolean;
   canResume: boolean;
   canComplete: boolean;
   requiresLineClearance: boolean;
@@ -97,9 +99,11 @@ export type ExecutionOrderRow = {
   history: ExecutionHistoryEntry[];
   activeOperationId: string | null;
   activeOperationCode: string | null;
+  activeOperationName: string | null;
+  activeOperationLabel: string | null;
   shopFloorEvents: Array<{
     id: string;
-    eventType: "START" | "STOP" | "DOWNTIME" | "SCRAP";
+    eventType: "START" | "STOP" | "PAUSE" | "RESUME" | "DOWNTIME" | "SCRAP";
     quantity: number | null;
     reason: string | null;
     recordedAt: string;
@@ -140,4 +144,6 @@ export type ProductionExecutionSnapshot = {
     canExecute: boolean;
     canRead: boolean;
   };
+  currentUser: { id: string | null; name: string | null };
+  operators: Array<{ id: string; name: string }>;
 };

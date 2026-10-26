@@ -6,7 +6,7 @@ import {
   LAB_ALLIED_DEMO_SLUG,
 } from "../src/lib/demo-tenant";
 import { hashPassword } from "../src/lib/server/password";
-import { addPlantDays, plantWeekday, plantYmd, startOfPlantDay } from "../src/lib/operations/plant-time";
+import { addPlantDays, dueAtPlantClose, plantWeekday, plantYmd, startOfPlantDay } from "../src/lib/operations/plant-time";
 import {
   PLANT_CAPACITY_HOURS_PER_DAY,
   buildStandardPlantShiftRows,
@@ -68,9 +68,10 @@ const MACHINES: MachineDef[] = [
   { code: "QC-PROC", name: "QC PROCESS", groupCode: "LA-QC", shift: "qc24" },
 ];
 
-function daysFromNow(offset: number, hourUtc = 11): Date {
+function daysFromNow(offset: number, _hourUtc = 11): Date {
   const now = new Date();
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset, hourUtc, 0, 0));
+  const utcDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + offset, 0, 0, 0));
+  return dueAtPlantClose(utcDay);
 }
 
 async function applyPlantShifts(prisma: PrismaClient, tenantId: string, workstationId: string, mode: MachineDef["shift"]) {
@@ -125,11 +126,11 @@ export async function ensureLabAlliedDemoSeed(prisma: PrismaClient) {
     create: {
       tenantId: tenant.id,
       autopilotMode: "AUTO_ACCEPT_UNLOCKED",
-      freezeMinutes: 0,
-      utilizationWeight: 45,
+      freezeMinutes: 120,
+      utilizationWeight: 10,
       useGlobalOptimizer: true,
     },
-    update: { autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 0, utilizationWeight: 45 },
+    update: { autopilotMode: "AUTO_ACCEPT_UNLOCKED", freezeMinutes: 120, utilizationWeight: 10 },
   });
 
   let site = await prisma.plantSite.findFirst({ where: { tenantId: tenant.id, code: "LA-DEMO" } });
@@ -1085,7 +1086,7 @@ async function seedLabAlliedOrders(
     ...(paraJar
       ? [
           {
-            orderNumber: "ORD-JAR-2026/01",
+            orderNumber: "ORD066-2026/65",
             productId: paraJar.id,
             batch: "B-JAR-01",
             dueDays: 21,
@@ -1104,7 +1105,7 @@ async function seedLabAlliedOrders(
     ...(amoxJar
       ? [
           {
-            orderNumber: "ORD-JAR-2026/02",
+            orderNumber: "ORD067-2026/66",
             productId: amoxJar.id,
             batch: "B-JAR-02",
             dueDays: 24,

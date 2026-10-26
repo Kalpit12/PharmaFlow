@@ -363,7 +363,7 @@ export function detectConflicts(
 
 export function utilizationPercent(scheduledMinutes: number, availableMinutes: number): number {
   if (availableMinutes <= 0) return 0;
-  return Math.round((scheduledMinutes / availableMinutes) * 100);
+  return Math.min(100, Math.round((scheduledMinutes / availableMinutes) * 100));
 }
 
 function formatDay(date: Date): string {

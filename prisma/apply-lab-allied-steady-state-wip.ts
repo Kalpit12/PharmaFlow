@@ -51,8 +51,13 @@ export async function applyLabAlliedSteadyStateWip(
 ): Promise<{ wipOrders: number; runningTimers: number }> {
   const workstations = await prisma.workstation.findMany({
     where: { tenantId, active: true },
-    select: { id: true, code: true, capacityHoursPerDay: true },
+    select: { id: true, code: true, capacityHoursPerDay: true, allowedParallelJobs: true },
   });
+  const parallelById = new Map(workstations.map((row) => [row.id, Math.max(1, row.allowedParallelJobs)]));
+  /** Running WIP jobs per station in this pass — never exceed allowedParallelJobs (Round 11 rule). */
+  const runningByWs = new Map<string, number>();
+  const hasRoom = (wsId: string | null | undefined) =>
+    Boolean(wsId) && (runningByWs.get(wsId!) ?? 0) < (parallelById.get(wsId!) ?? 1);
   const wsCodeById = new Map(workstations.map((row) => [row.id, row.code]));
   const wsIdByCode = new Map(workstations.map((row) => [row.code, row.id]));
   const shifts = await prisma.workstationShift.findMany({ where: { tenantId } });
@@ -100,6 +105,44 @@ export async function applyLabAlliedSteadyStateWip(
     const activeIdx = ops.findIndex((op) => op.operationCode === target.activeOperationCode);
     if (activeIdx < 0) continue;
 
+    const active = ops[activeIdx]!;
+
+    const plannedWsId =
+      (target.workstationCode ? wsIdByCode.get(target.workstationCode) : undefined) ??
+      active.workstationId ??
+      (active.operationCode === "QUAR"
+        ? wsIdByCode.get("SFG-QUAR")
+        : active.operationCode === "QC" || active.operationCode === "QC-HOLD"
+          ? wsIdByCode.get("QC-PROC")
+          : undefined);
+    let resolvedWsId = plannedWsId;
+    if (resolvedWsId && !hasRoom(resolvedWsId)) {
+      // Planned station already has a running job: use the next qualified alternative from the routing.
+      const alternatives = active.routingOperationId
+        ? await prisma.routingOperationResource.findMany({
+            where: { tenantId, routingOperationId: active.routingOperationId },
+            orderBy: [{ preferred: "desc" }, { efficiencyPercent: "desc" }],
+            select: { workstationId: true },
+          })
+        : [];
+      resolvedWsId = alternatives
+        .map((row) => row.workstationId)
+        .find((id) => id !== plannedWsId && wsCodeById.has(id) && hasRoom(id));
+      if (!resolvedWsId) {
+        // No free qualified station: leave this order queued rather than double-booking a machine.
+        // Stand down a run left over from an earlier pass, or the history seed would reopen its timer.
+        if (active.status === "IN_PROGRESS") {
+          await prisma.productionOperation.update({
+            where: { id: active.id },
+            data: { status: "SCHEDULED", actualStart: null, actualEnd: null },
+          });
+          await prisma.productionOperationEvent.deleteMany({ where: { tenantId, productionOperationId: active.id } });
+        }
+        continue;
+      }
+    }
+    if (resolvedWsId) runningByWs.set(resolvedWsId, (runningByWs.get(resolvedWsId) ?? 0) + 1);
+
     let cursorHoursBack = 6 + activeIdx * 5;
 
     for (let i = 0; i < activeIdx; i += 1) {
@@ -121,28 +164,17 @@ export async function applyLabAlliedSteadyStateWip(
       });
     }
 
-    const active = ops[activeIdx]!;
-    const wsCode = active.workstationId ? wsCodeById.get(active.workstationId) : null;
+    const wsId = resolvedWsId ?? active.workstationId;
+    const wsCode = wsId ? wsCodeById.get(wsId) : null;
     const useElapsed = operationUsesElapsedCalendar(active.operationCode, wsCode);
     const calendar: WorkCalendar =
-      useElapsed && active.workstationId
-        ? elapsedCalendar
-        : (active.workstationId ? calendars.get(active.workstationId) : undefined) ?? elapsedCalendar;
+      useElapsed && wsId ? elapsedCalendar : (wsId ? calendars.get(wsId) : undefined) ?? elapsedCalendar;
 
     const activeRun = runMinutes(active);
     const activeStart = alignToCalendar(new Date(now.getTime() - 2.5 * 3_600_000), calendar);
     const activeEnd = useElapsed
       ? new Date(activeStart.getTime() + activeRun * 60_000)
       : addWorkingMinutesOnCalendar(activeStart, activeRun, calendar);
-
-    const resolvedWsId =
-      (target.workstationCode ? wsIdByCode.get(target.workstationCode) : undefined) ??
-      active.workstationId ??
-      (active.operationCode === "QUAR"
-        ? wsIdByCode.get("SFG-QUAR")
-        : active.operationCode === "QC" || active.operationCode === "QC-HOLD"
-          ? wsIdByCode.get("QC-PROC")
-          : undefined);
 
     await prisma.productionOperation.update({
       where: { id: active.id },

@@ -1376,8 +1376,25 @@ Status: **IMPLEMENTED** (26 Oct 2026)
 - Job report Difference column fits; step names are routing names (never “Process”).
 - Preferred lines default weight is 10. Idle pack/fill lines get a fallback assignment if still empty.
 
+## Round 12 — Shop-floor completeness + duration learning
+
+Status: **IMPLEMENTED** (30 Oct 2026) · no schema migration
+
+Closes the remaining spec Phase 5 (shop floor app) items and Phase 3 duration learning.
+
+- **Pause reasons** — Timer Pause asks why: Breakdown, Material missing, Waiting QA, Cleaning / changeover, Operator break, Other (+ note). One list (`pause-reasons.ts`) now drives Timer, Execution and the station queue. Breakdown / material / QA pauses also log `DOWNTIME`, so the autopilot policy can propose a replan. Paused tiles show the reason.
+- **Raise an issue** — `POST /api/production-orders/[id]/issue` (operator, `production.execute`). A breakdown with a down estimate writes a `WorkstationCalendarException` for the remaining working window (crosses midnight correctly) *before* logging `DOWNTIME`, so any replan already sees the outage. Material / quality deviations open a linked Quality exception (`Q-YYYY-NNN`) for QA. All branches audited (`PRODUCTION_SHOP_FLOOR_ISSUE`, `WORKSTATION_EXCEPTION_FROM_SHOP_FLOOR`, `QUALITY_EXCEPTION_CREATED`).
+- **Offline tolerance** — Timer queues Start / Pause / Resume / Stop / Issue in browser storage when the network drops, with the tap time. On reconnect it replays in order. Server accepts `recordedAt` (clamped to the last 24 h) and `expectedOperationId`; a replay of an action that already landed returns **409** and is dropped. QA release (e-signature) is never queued.
+- **Live refresh** — Timer refreshes every 15 s when idle (paused while a dialog is open or logs are queued); actions refresh in place instead of a full reload.
+- **TV board** — `/operations?view=board` (More → Shop-floor TV board, or the Timer station picker): read-only tiles per department — Running / Paused (reason) / QA hold / Down (today's breakdown exception) / Ready / Idle, elapsed, next job, plant clock, full-screen, 30 s refresh. Department scoping follows planner access.
+- **Duration learning** — `/operations?view=durations` (More → Duration learning): logged run time (pauses excluded) ÷ planned per routing step over 60 days; ≥3 clean logs, ≥10% gap, outliers (×0.2 / ×5) dropped, rounded to 5 min, per-workstation evidence. Head planner (`production.global_rules`) accepts → `RoutingOperation.runMinutesPerBatch` updated, audited `ROUTING_DURATION_LEARNED` with before/after. Accept re-checks the live value (409 if stale). Affects new orders only.
+- `ServerError` gains `CONFLICT` → 409. Shop-floor routes share `shopFloorErrorResponse`.
+- Tests: `npm run verify:shop-floor-round12` (16 pure checks); `verify:shop-floor`, `verify:running-shop-floor` still pass. `tsc` + `next build` pass.
+
 ## Next
 
+- Reseed + verify on Neon: `npm run db:seed:lab-allied:replan && npm run verify:running-shop-floor` (confirms Round 11 "one running op per workstation").
+- Browser-check Round 12 on the seeded tenant: Timer pause reason → TV board shows it; raise a breakdown (2 h) → Gantt capacity band gap after replan; Duration learning list populated from history.
 - After a good Lab & Allied reseed (`npm run db:seed:lab-allied:replan`), create Neon branch `demo-golden` (`npm run demo:snapshot`).
 - Re-run `npm run db:verify` on stable Neon (or local Postgres) to completion; install Playwright Chromium once, then `npm run qa:phase38` (or per-route QA scripts).
 - Post-pilot: external connector credentials and monitored webhook endpoints (operator-owned).

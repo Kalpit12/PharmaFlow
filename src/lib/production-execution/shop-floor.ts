@@ -1,13 +1,10 @@
+import { PAUSE_REASON_CODES, PAUSE_REASON_LABELS, type PauseReasonCode } from "@/lib/production-execution/pause-reasons";
 import type { ExecutionOrderRow, ExecutionState } from "@/lib/production-execution/types";
 
-export const SHOP_FLOOR_PAUSE_REASONS = [
-  { id: "BREAKDOWN", label: "Breakdown" },
-  { id: "MATERIAL_MISSING", label: "Material missing" },
-  { id: "WAITING_QA", label: "Waiting QA" },
-  { id: "OPERATOR_BREAK", label: "Operator break" },
-] as const;
+/** One list for Execution, station queue and Timer (codes live in pause-reasons.ts). */
+export const SHOP_FLOOR_PAUSE_REASONS = PAUSE_REASON_CODES.map((id) => ({ id, label: PAUSE_REASON_LABELS[id] }));
 
-export type ShopFloorPauseReasonId = (typeof SHOP_FLOOR_PAUSE_REASONS)[number]["id"];
+export type ShopFloorPauseReasonId = PauseReasonCode;
 
 const STATE_QUEUE_RANK: Record<ExecutionState, number> = {
   IN_PROGRESS: 0,

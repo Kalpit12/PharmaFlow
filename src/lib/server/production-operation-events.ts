@@ -22,6 +22,8 @@ export async function recordProductionOperationEvent(
     eventType: ProductionOperationEventType;
     quantity?: number;
     reason?: string;
+    /** Back-dated time for offline-queued logs (already clamped by the caller). */
+    recordedAt?: Date | null;
   }
 ): Promise<ShopFloorEventView> {
   requirePermission(ctx, "production.execute");
@@ -46,6 +48,7 @@ export async function recordProductionOperationEvent(
       quantity: input.quantity ?? null,
       reason: input.reason?.trim() || null,
       recordedById: ctx.userId,
+      ...(input.recordedAt ? { recordedAt: input.recordedAt } : {}),
     },
     include: { recordedBy: { select: { name: true } } },
   });

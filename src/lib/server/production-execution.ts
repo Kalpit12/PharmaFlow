@@ -38,6 +38,13 @@ import {
   shopFloorStepLabel,
 } from "@/lib/operations/current-shop-floor-operation";
 import { routingStepDisplayName } from "@/lib/operations/routing-step-labels";
+import {
+  PAUSE_REASON_LABELS,
+  formatPauseReason,
+  isDowntimePause,
+  parsePauseReasonCode,
+} from "@/lib/production-execution/pause-reasons";
+import type { ShopFloorActionOptions } from "@/lib/production-execution/shop-floor-action-input";
 
 export type ProductionExecutionFilters = {
   view: ExecutionViewId;
@@ -457,6 +464,19 @@ async function currentMutationOperation(
   return resolveCurrentShopFloorOperation(order.operations, openIds);
 }
 
+/**
+ * Offline replay guard. The Timer sends the operation the operator saw; if the server has moved on
+ * (the same tap already landed), answer CONFLICT so the client drops the queued copy.
+ */
+function assertShopFloorReplay(current: { id: string } | null, options?: ShopFloorActionOptions) {
+  if (options?.recordedAt === null) {
+    throw new ServerError("This offline log is more than 24 hours old. Ask a supervisor to enter it manually.", "INTERNAL");
+  }
+  if (options?.expectedOperationId && current && current.id !== options.expectedOperationId) {
+    throw new ServerError("This step was already logged. Refresh the station to see the current job.", "CONFLICT");
+  }
+}
+
 async function assertWorkstationHasRunCapacity(
   ctx: TenantContext,
   workstationId: string | null,
@@ -481,13 +501,14 @@ async function assertWorkstationHasRunCapacity(
 async function writeShopFloorEvent(
   ctx: TenantContext,
   operationId: string,
-  eventType: "START" | "STOP" | "PAUSE" | "RESUME" | "SCRAP",
-  input?: { quantity?: number; reason?: string }
+  eventType: "START" | "STOP" | "PAUSE" | "RESUME" | "SCRAP" | "DOWNTIME",
+  input?: { quantity?: number; reason?: string; recordedAt?: Date | null }
 ) {
   await recordProductionOperationEvent(ctx, operationId, {
     eventType,
     quantity: input?.quantity,
     reason: input?.reason,
+    recordedAt: input?.recordedAt ?? undefined,
   });
 }
 
@@ -590,7 +611,12 @@ export async function signProductionLineClearance(
   return { orderId: order.id, message: "Line clearance recorded.", idempotent: false };
 }
 
-export async function startProductionOrder(ctx: TenantContext, orderId: string, reason?: string | null) {
+export async function startProductionOrder(
+  ctx: TenantContext,
+  orderId: string,
+  reason?: string | null,
+  options?: ShopFloorActionOptions
+) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
   const history = await loadExecutionHistory(ctx, order.id);
@@ -632,11 +658,12 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
   }
   const prisma = getPrisma();
   const current = await currentMutationOperation(ctx, order);
+  assertShopFloorReplay(current, options);
   const workstationId = current?.workstationId ?? order.workstationId;
   const allowedParallel = current?.workstation?.allowedParallelJobs ?? order.workstation?.allowedParallelJobs ?? 1;
   await assertWorkstationHasRunCapacity(ctx, workstationId, allowedParallel, order.id);
 
-  const now = new Date();
+  const now = options?.recordedAt ?? new Date();
   await prisma.productionOrder.update({
     where: { id: order.id },
     data: { status: "IN_PROGRESS", isLocked: true, workstationId: workstationId ?? order.workstationId },
@@ -654,7 +681,7 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
             : new Date(now.getTime() + Math.max(30, current.durationMinutes) * 60_000),
       },
     });
-    await writeShopFloorEvent(ctx, current.id, "START", { reason: reason?.trim() || undefined });
+    await writeShopFloorEvent(ctx, current.id, "START", { reason: reason?.trim() || undefined, recordedAt: options?.recordedAt });
   }
   if (order.batch && !order.batch.productionStartedAt) {
     await prisma.productionBatch.update({
@@ -682,7 +709,12 @@ export async function startProductionOrder(ctx: TenantContext, orderId: string, 
   return { orderId: order.id, executionState: "IN_PROGRESS" as const, message: "Production started.", idempotent: false };
 }
 
-export async function pauseProductionOrder(ctx: TenantContext, orderId: string, reason?: string | null) {
+export async function pauseProductionOrder(
+  ctx: TenantContext,
+  orderId: string,
+  reason?: string | null,
+  options?: ShopFloorActionOptions
+) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
   const history = await loadExecutionHistory(ctx, order.id);
@@ -696,8 +728,20 @@ export async function pauseProductionOrder(ctx: TenantContext, orderId: string, 
   }
 
   const current = await currentMutationOperation(ctx, order);
+  assertShopFloorReplay(current, options);
+  // Execution page / station queue send the bare code as `reason`; the Timer sends reasonCode + note.
+  const bareCode = options?.reasonCode ? null : parsePauseReasonCode(reason);
+  const code = options?.reasonCode ?? bareCode;
+  const pauseReason = formatPauseReason(code, bareCode ? null : reason);
   if (current) {
-    await writeShopFloorEvent(ctx, current.id, "PAUSE", { reason: reason?.trim() || undefined });
+    await writeShopFloorEvent(ctx, current.id, "PAUSE", { reason: pauseReason, recordedAt: options?.recordedAt });
+    if (isDowntimePause(code)) {
+      // Unplanned stop: also log DOWNTIME so the shop-floor replan rules (autopilot policy) can react.
+      await writeShopFloorEvent(ctx, current.id, "DOWNTIME", {
+        reason: pauseReason ?? PAUSE_REASON_LABELS[code!],
+        recordedAt: options?.recordedAt,
+      });
+    }
   }
 
   const change = formatStateChange("EXECUTION_STATE", state, "PAUSED");
@@ -707,13 +751,18 @@ export async function pauseProductionOrder(ctx: TenantContext, orderId: string, 
     entityId: order.id,
     oldValue: change.oldValue,
     newValue: change.newValue,
-    reason: reason?.trim() || null,
+    reason: pauseReason ?? null,
   });
 
   return { orderId: order.id, executionState: "PAUSED" as const, message: "Production paused.", idempotent: false };
 }
 
-export async function resumeProductionOrder(ctx: TenantContext, orderId: string, reason?: string | null) {
+export async function resumeProductionOrder(
+  ctx: TenantContext,
+  orderId: string,
+  reason?: string | null,
+  options?: ShopFloorActionOptions
+) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
   const history = await loadExecutionHistory(ctx, order.id);
@@ -727,8 +776,9 @@ export async function resumeProductionOrder(ctx: TenantContext, orderId: string,
   }
 
   const current = await currentMutationOperation(ctx, order);
+  assertShopFloorReplay(current, options);
   if (current) {
-    await writeShopFloorEvent(ctx, current.id, "RESUME", { reason: reason?.trim() || undefined });
+    await writeShopFloorEvent(ctx, current.id, "RESUME", { reason: reason?.trim() || undefined, recordedAt: options?.recordedAt });
   }
 
   const change = formatStateChange("EXECUTION_STATE", state, "IN_PROGRESS");
@@ -824,17 +874,21 @@ export async function completeProductionOrder(
 export async function stopShopFloorOperation(
   ctx: TenantContext,
   orderId: string,
-  input?: { producedQuantity?: number | null; scrapQuantity?: number | null; reason?: string | null }
+  input?: { producedQuantity?: number | null; scrapQuantity?: number | null; reason?: string | null } & ShopFloorActionOptions
 ) {
   requirePermission(ctx, "production.execute");
   const order = await loadOrderForMutation(ctx, orderId);
   const history = await loadExecutionHistory(ctx, order.id);
   const state = currentStateFrom(order, history);
+  if (state === "COMPLETED" && input?.expectedOperationId) {
+    throw new ServerError("This order is already complete.", "CONFLICT");
+  }
   if (state !== "IN_PROGRESS" && state !== "PAUSED") {
     throw new ServerError("Start production before stopping.", "INTERNAL");
   }
   const current = await currentMutationOperation(ctx, order);
   if (!current) throw new ServerError("No running operation to stop.", "INTERNAL");
+  assertShopFloorReplay(current, input);
 
   const plannedQuantity = order.batch?.plannedQuantity ?? order.quantity;
   if (order.batch) {
@@ -842,17 +896,19 @@ export async function stopShopFloorOperation(
     if (validation) throw new ServerError(validation, "INTERNAL");
   }
 
-  const now = new Date();
+  const now = input?.recordedAt ?? new Date();
   const prisma = getPrisma();
   if (input?.scrapQuantity && input.scrapQuantity > 0) {
     await writeShopFloorEvent(ctx, current.id, "SCRAP", {
       quantity: input.scrapQuantity,
       reason: input?.reason?.trim() || "Scrap",
+      recordedAt: input?.recordedAt,
     });
   }
   await writeShopFloorEvent(ctx, current.id, "STOP", {
     quantity: input?.producedQuantity ?? undefined,
     reason: input?.reason?.trim() || undefined,
+    recordedAt: input?.recordedAt,
   });
   await prisma.productionOperation.update({
     where: { id: current.id },

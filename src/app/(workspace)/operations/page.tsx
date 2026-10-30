@@ -15,6 +15,8 @@ import { getProductionExecutionSnapshot, resolveProductionExecutionFilters } fro
 import { workspaceLoginPath } from "@/lib/auth/login-redirect";
 import { getAuthenticatedTenantContext } from "@/lib/server/tenant-context";
 import { getWorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
+import { getDurationLearningSnapshot } from "@/lib/server/duration-learning";
+import { getShopFloorBoardSnapshot } from "@/lib/server/shop-floor-board";
 import { headers } from "next/headers";
 
 export const dynamic = "force-dynamic";
@@ -39,11 +41,15 @@ export default async function OperationsPage({
     const canGlobalRules = can(ctx.role, "production.global_rules");
     const needRoster = params.view === "roster";
     const isTimer = params.view === "timer";
-    const [plant, orders, planner, gantt, integrations, dashboard, roster, timer] = await Promise.all([
+    const isBoard = params.view === "board";
+    const isDurations = params.view === "durations";
+    /** Shop-floor screens (Timer, TV board) and Duration learning skip the heavy planner loads. */
+    const lean = isTimer || isBoard || isDurations;
+    const [plant, orders, planner, gantt, integrations, dashboard, roster, timer, board, durations] = await Promise.all([
       getPlantModelSnapshot(ctx),
-      isTimer ? Promise.resolve(null) : getProductionOrdersSnapshot(ctx),
-      isTimer ? Promise.resolve(null) : getPlannerEngineSnapshot(ctx),
-      isTimer
+      lean ? Promise.resolve(null) : getProductionOrdersSnapshot(ctx),
+      lean ? Promise.resolve(null) : getPlannerEngineSnapshot(ctx),
+      lean
         ? Promise.resolve(null)
         : getOperationsGanttSnapshot(ctx, {
             zoom: params.ganttZoom,
@@ -51,19 +57,21 @@ export default async function OperationsPage({
             end: params.ganttEnd,
             ganttRows: params.ganttRows,
           }),
-      isTimer ? Promise.resolve(null) : getPlannerIntegrationSnapshot(ctx),
-      isTimer ? Promise.resolve(null) : getPlannerDashboardPageData(ctx, params.dashboard),
+      lean ? Promise.resolve(null) : getPlannerIntegrationSnapshot(ctx),
+      lean ? Promise.resolve(null) : getPlannerDashboardPageData(ctx, params.dashboard),
       needRoster ? getWorkstationRosterSnapshot(ctx, params.rosterWeek) : Promise.resolve(null),
       isTimer
         ? getProductionExecutionSnapshot(ctx, resolveProductionExecutionFilters({}), { includeMaterials: false })
         : Promise.resolve(null),
+      isBoard ? getShopFloorBoardSnapshot(ctx) : Promise.resolve(null),
+      isDurations ? getDurationLearningSnapshot(ctx) : Promise.resolve(null),
     ]);
 
     const isGantt = !params.view || params.view === "gantt";
 
     return (
       <WorkspacePage width="full" className={isGantt ? "gap-0 px-0 py-0 sm:px-0 lg:px-0" : undefined}>
-        {isGantt || isTimer ? null : (
+        {isGantt || isTimer || isBoard || isDurations ? null : (
           <div className="px-4 pt-4 sm:px-6 lg:px-8">
             <PageHeader
               context="Operations"
@@ -83,6 +91,8 @@ export default async function OperationsPage({
           canGlobalRules={canGlobalRules}
           initialView={params.view}
           timer={timer}
+          board={board}
+          durations={durations}
         />
       </WorkspacePage>
     );

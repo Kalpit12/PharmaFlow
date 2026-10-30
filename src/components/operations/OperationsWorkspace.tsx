@@ -13,7 +13,11 @@ import { PlannerIntegrationsWorkspace } from "@/components/operations/PlannerInt
 import { PlannerEngineWorkspace } from "@/components/operations/PlannerEngineWorkspace";
 import { PlantModelWorkspace } from "@/components/operations/PlantModelWorkspace";
 import { ProductionOrdersWorkspace } from "@/components/operations/ProductionOrdersWorkspace";
+import { DurationLearningWorkspace } from "@/components/operations/DurationLearningWorkspace";
+import { ShopFloorBoardWorkspace } from "@/components/operations/ShopFloorBoardWorkspace";
 import { ShopFloorTimerWorkspace } from "@/components/operations/ShopFloorTimerWorkspace";
+import type { DurationLearningSnapshot } from "@/lib/server/duration-learning";
+import type { ShopFloorBoardSnapshot } from "@/lib/server/shop-floor-board";
 import { WorkstationRosterWorkspace } from "@/components/operations/WorkstationRosterWorkspace";
 import type { WorkstationRosterSnapshot } from "@/lib/server/workstation-roster";
 import type { PlannerEngineSnapshot } from "@/lib/server/aps-plan";
@@ -37,6 +41,8 @@ const VIEWS: PlannerShellView[] = [
   "api",
   "assistant",
   "timer",
+  "board",
+  "durations",
 ];
 
 function parseView(value: string | undefined): PlannerShellView {
@@ -55,6 +61,8 @@ export function OperationsWorkspace({
   canGlobalRules,
   initialView,
   timer,
+  board,
+  durations,
 }: {
   plant: PlantModelSnapshot;
   orders: ProductionOrdersSnapshot | null;
@@ -66,6 +74,8 @@ export function OperationsWorkspace({
   canGlobalRules: boolean;
   initialView?: string;
   timer?: ProductionExecutionSnapshot | null;
+  board?: ShopFloorBoardSnapshot | null;
+  durations?: DurationLearningSnapshot | null;
 }) {
   const view = parseView(initialView);
   const { setNavChromeHidden } = useShell();
@@ -81,6 +91,8 @@ export function OperationsWorkspace({
         <OperationsGanttWorkspace data={gantt} canGlobalRules={canGlobalRules} />
       ) : view === "timer" && timer ? (
         <ShopFloorTimerWorkspace data={timer} />
+      ) : view === "board" && board ? (
+        <ShopFloorBoardWorkspace data={board} />
       ) : (
         <div className={cn("min-w-0 overflow-auto p-4 sm:p-6", view === "dashboard" && "p-4")}>
           {view === "dashboard" && dashboard ? <PlannerDashboardBuilder initial={dashboard} /> : null}
@@ -92,6 +104,7 @@ export function OperationsWorkspace({
           {view === "import" ? <PlannerDataImportWorkspace /> : null}
           {view === "api" ? <PlannerApiWorkspace canManage={canGlobalRules} /> : null}
           {view === "assistant" ? <PlannerAssistantWorkspace /> : null}
+          {view === "durations" && durations ? <DurationLearningWorkspace data={durations} /> : null}
         </div>
       )}
     </OperationsPlannerShell>

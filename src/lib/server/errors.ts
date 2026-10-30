@@ -7,7 +7,7 @@ export type TenantContext = {
 export class ServerError extends Error {
   constructor(
     message: string,
-    readonly code: "CONFIG" | "NOT_FOUND" | "FORBIDDEN" | "UNAUTHORIZED" | "INTERNAL" = "INTERNAL"
+    readonly code: "CONFIG" | "NOT_FOUND" | "FORBIDDEN" | "UNAUTHORIZED" | "CONFLICT" | "INTERNAL" = "INTERNAL"
   ) {
     super(message);
     this.name = "ServerError";

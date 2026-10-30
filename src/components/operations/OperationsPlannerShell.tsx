@@ -34,7 +34,9 @@ export type PlannerShellView =
   | "import"
   | "api"
   | "assistant"
-  | "timer";
+  | "timer"
+  | "board"
+  | "durations";
 
 const PRIMARY: Array<{
   view?: PlannerShellView;
@@ -53,6 +55,8 @@ const PRIMARY: Array<{
 ];
 
 const OVERFLOW: Array<{ view: PlannerShellView; label: string; href?: string }> = [
+  { view: "board", label: "Shop-floor TV board" },
+  { view: "durations", label: "Duration learning" },
   { view: "engine", label: "Planner engine" },
   { view: "integrations", label: "Integrations" },
   { view: "import", label: "Data import" },
